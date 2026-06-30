@@ -121,25 +121,36 @@ function parseSheet(sheet) {
   const unitTypes = []
   let current = null
 
+  // Rows to ignore entirely regardless of position
+  const SKIP_LABELS = /^(QTY|SKU|UNIT TYPE|QUANTITY|TOTAL|TOTALS?)$/i
+  const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC(?:ELLANEOUS)?|FILLERS?|TRIM|MOLDING)S?$/i
+
   sheet.eachRow((row) => {
-    const a = cellVal(row, 1)   // Col A: qty per unit OR unit name
-    const b = cellVal(row, 2)   // Col B: SKU OR unit count
-    const e = cellVal(row, 5)   // Col E: hardware count
-    const j = cellVal(row, 10)  // Col J: countertop SF
+    const a = cellVal(row, 1)   // Col A: qty per unit, OR unit name, OR category label
+    const b = cellVal(row, 2)   // Col B: SKU, OR unit total quantity
+    const e = cellVal(row, 5)   // Col E: hardware count per cabinet
+    const ctLength = parseFloat(String(cellVal(row, 7) ?? '0')) || 0   // Col G: length (in)
+    const ctDepth  = parseFloat(String(cellVal(row, 8) ?? '0')) || 0   // Col H: depth (in)
 
     const aStr = String(a ?? '').trim()
     const bStr = String(b ?? '').trim()
+    const aIsNum = typeof a === 'number'
+    const bIsNum = typeof b === 'number'
 
-    // ── Unit header row ─────────────────────────────────────────────────
-    // Matches "UNIT 1A", "KITCHEN 1", "ROOM 204", "BLDG A", etc. — a label word + qty in col B
-    const isHeaderLabel = /^(UNIT|KITCHEN|ROOM|BLDG|BUILDING|SUITE|APT|APARTMENT|FLOOR|AMENITY)\s/i.test(aStr)
-    if (isHeaderLabel) {
-      const qty = parseInt(bStr) || 1
+    // ── Skip known header/label rows ("QTY", "SKU", "UNIT TYPE", "TOTAL") ──
+    if (SKIP_LABELS.test(aStr)) return
+
+    // ── UNIT HEADER: col A is text, col B is a whole number ──────────────
+    // Matches ANY naming convention: "UNIT 1A", "KITCHEN 3", "EFFICIENCY-A",
+    // "2BR.1-B", "AMENITIES", "BLDG A", etc. Name format is irrelevant —
+    // what matters structurally is text-then-number.
+    if (!aIsNum && aStr && bIsNum && Number.isInteger(b) && !CATEGORY_LABELS.test(aStr)) {
+      const qty = Math.max(1, Math.round(b))
       current = {
         unit_type_name:        aStr,
-        is_ada:                aStr.toUpperCase().includes('ADA'),
         unit_quantity:         qty,
-        is_amenity:            false,
+        is_ada:                /\b(ADA|HC|ACCESSIBLE)\b/i.test(aStr),
+        is_amenity:            /\bAMENIT(Y|IES)\b/i.test(aStr),
         sheet_reference:       '',
         skus:                  [],
         fillers:               [],
@@ -158,71 +169,50 @@ function parseSheet(sheet) {
 
     if (!current) return
 
-    // ── Skip category label rows (BASES, VANITIES, WALLS, TALLS, etc.) ──
-    const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC|FILLERS?|AMENIT(?:Y|IES))$/i
-    if (CATEGORY_LABELS.test(aStr) && !bStr) return
+    // ── Category label row (BASES, VANITIES, WALLS, TALLS, ACCESSORIES) ──
+    if (CATEGORY_LABELS.test(aStr) && !bIsNum) return
 
-    // ── Skip totals/summary rows (first value is large number > 20) ────
-    const aNum = parseFloat(aStr)
-    if (!isNaN(aNum) && aNum > 20) return
-
-    // ── Skip blank rows or non-item rows ────────────────────────────────
-    const qty = parseInt(aStr) || 0
+    // ── Data row: col A = qty (0-10), col B = SKU text ────────────────────
+    const qty = aIsNum ? Math.round(a) : (parseInt(aStr) || 0)
     const sku = bStr
-    if (!sku || qty < 0 || qty > 10) return  // allow qty=0 placeholder rows through to appliance filter
-    if (qty === 0) return  // but skip them entirely — no real cabinet
+    if (!sku || qty < 1 || qty > 10) return   // qty=0 placeholder rows, or junk, skip
     if (APPLIANCE_RE.test(sku)) return
 
     // ── Filler / trim ───────────────────────────────────────────────────
     if (FILLER_RE.test(sku)) {
-      if (/^TK8/i.test(sku)) {
-        current.toe_kick_lf += qty * (8 / 12)
-      }
-      current.fillers.push({
-        sku,
-        description:       sku,
-        quantity_per_unit: qty,
-        location:          'kitchen',
-      })
+      if (/^TK8/i.test(sku)) current.toe_kick_lf += qty * (8 / 12)
+      current.fillers.push({ sku, description: sku, quantity_per_unit: qty, location: 'kitchen' })
       return
     }
 
-    // ── Cabinet SKU ─────────────────────────────────────────────────────
-    const hardware  = parseFloat(String(e ?? '0')) || 0
-    const ctLength  = parseFloat(String(cellVal(row, 7) ?? '0')) || 0  // Col G: length (inches)
-    const ctDepth   = parseFloat(String(cellVal(row, 8) ?? '0')) || 0  // Col H: depth (inches)
-    // Col I and J are formulas — compute directly from raw values
-    const ctSF      = ctLength > 0 && ctDepth > 0 ? (ctLength * ctDepth) / 144 : 0
-
-    // Hinge: trailing L or R on SKU, LDRD = double door
-    let hinge = 'L/R'
-    if (/LDRD/i.test(sku)) hinge = 'L/R'
-    else if (/L$/i.test(sku) && !/^(BLS|BW|BRL)/i.test(sku)) hinge = 'L'
-    else if (/R$/i.test(sku) && !/^(BSR|WOR|EPR)/i.test(sku)) hinge = 'R'
-
-    const location = /^V(SB|DB|B)/i.test(sku) ? 'bathroom' : 'kitchen'
-
+    // ── Auto-apply ADA height suffix if unit is ADA/HC and not already tagged
     const finalSku = current.is_ada ? applyADA(sku) : sku
+
+    // ── Hardware + countertop SF (computed from raw L×D — cols I/J are formulas)
+    const hardware = parseFloat(String(e ?? '0')) || 0
+    const ctSF = ctLength > 0 && ctDepth > 0 ? (ctLength * ctDepth) / 144 : 0
+
+    const isVanity = VANITY_RE.test(finalSku)
+    const location = isVanity ? 'bathroom' : 'kitchen'
+
     current.skus.push({
       sku:               finalSku,
       description:       skuDesc(finalSku),
       quantity_per_unit: qty,
-      hinge_side:        hinge,
+      hinge_side:        /(\d)L$/i.test(finalSku) ? 'L' : /(\d)R$/i.test(finalSku) ? 'R' : 'L/R',
       location,
       notes:             '',
       hardware_count:    hardware,
     })
 
-    // Accumulate countertop SF by type
+    // Accumulate SF by type
     if (ctSF > 0) {
-      const isVanityForSF = VANITY_RE.test(finalSku)
-      if (isVanityForSF) current.vanitySF  = (current.vanitySF  || 0) + (ctSF * qty)
-      else               current.kitchenSF = (current.kitchenSF || 0) + (ctSF * qty)
+      if (isVanity) current.vanitySF  = (current.vanitySF  || 0) + (ctSF * qty)
+      else          current.kitchenSF = (current.kitchenSF || 0) + (ctSF * qty)
       current.countertop_sf = (current.countertop_sf || 0) + (ctSF * qty)
     }
     // Accumulate kitchen vs vanity LF
     if (ctLength > 0) {
-      const isVanity = VANITY_RE.test(finalSku)
       const lf = (ctLength * qty) / 12
       if (isVanity) current.vanityLF  = (current.vanityLF  || 0) + lf
       else          current.kitchenLF = (current.kitchenLF || 0) + lf
@@ -233,13 +223,12 @@ function parseSheet(sheet) {
 
   // Final totals
   unitTypes.forEach(ut => {
-    ut.total_cabinets_per_unit =
-      ut.skus.reduce((s, sk) => s + (Number(sk.quantity_per_unit) || 0), 0)
+    ut.total_cabinets_per_unit = ut.skus.reduce((s, sk) => s + (Number(sk.quantity_per_unit) || 0), 0)
     ut.toe_kick_lf = Math.ceil(ut.toe_kick_lf * 2) / 2
-    ut.kitchenLF  = Math.round(ut.kitchenLF  * 100) / 100
-    ut.vanityLF   = Math.round(ut.vanityLF   * 100) / 100
-    ut.kitchenSF  = Math.round(ut.kitchenSF  * 100) / 100
-    ut.vanitySF   = Math.round(ut.vanitySF   * 100) / 100
+    ut.kitchenLF   = Math.round(ut.kitchenLF * 100) / 100
+    ut.vanityLF    = Math.round(ut.vanityLF  * 100) / 100
+    ut.kitchenSF   = Math.round(ut.kitchenSF * 100) / 100
+    ut.vanitySF    = Math.round(ut.vanitySF  * 100) / 100
   })
 
   return unitTypes
