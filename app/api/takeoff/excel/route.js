@@ -136,9 +136,21 @@ function parseSheet(sheet) {
     const bStr = String(b ?? '').trim()
     const aIsNum = typeof a === 'number'
     const bIsNum = typeof b === 'number'
+    const cCell  = cellVal(row, 3)
+    const cIsNum = typeof cCell === 'number'
+    const kCell  = cellVal(row, 11)   // Col K: per-unit SF subtotal (when present)
 
     // ── Skip known header/label rows ("QTY", "SKU", "UNIT TYPE", "TOTAL") ──
     if (SKIP_LABELS.test(aStr)) return
+
+    // ── Per-unit SUBTOTAL row: col A=number, col B=empty, col C=number ───
+    // This is the spreadsheet's OWN computed total for the unit just finished —
+    // trust it over our own row-by-row sum since it's the source of truth
+    // the project is built and quoted from.
+    if (aIsNum && !bStr && cIsNum && current && typeof kCell === 'number') {
+      current.excelSubtotalSF = kCell
+      return
+    }
 
     // ── UNIT HEADER: col A is text, col B is a whole number ──────────────
     // Matches ANY naming convention: "UNIT 1A", "KITCHEN 3", "EFFICIENCY-A",
@@ -157,6 +169,7 @@ function parseSheet(sheet) {
         countertop_sf:         0,
         kitchenSF:             0,
         vanitySF:              0,
+        excelSubtotalSF:       null,  // authoritative SF from the sheet's own subtotal row, if found
         kitchenLF:             0,
         vanityLF:              0,
         sinks:                 0,
@@ -229,6 +242,12 @@ function parseSheet(sheet) {
     ut.vanityLF    = Math.round(ut.vanityLF  * 100) / 100
     ut.kitchenSF   = Math.round(ut.kitchenSF * 100) / 100
     ut.vanitySF    = Math.round(ut.vanitySF  * 100) / 100
+    // Prefer the spreadsheet's own per-unit SF subtotal when present — it's
+    // computed from the source file directly and may include legitimate
+    // amenity/appliance-area SF our row-by-row sum doesn't independently derive.
+    if (ut.excelSubtotalSF !== null && ut.excelSubtotalSF !== undefined) {
+      ut.countertop_sf = ut.excelSubtotalSF
+    }
   })
 
   return unitTypes
