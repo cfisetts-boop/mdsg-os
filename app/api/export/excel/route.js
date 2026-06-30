@@ -137,18 +137,24 @@ function groupBySection(skus, fillers = []) {
 }
 
 // ── Build Unit Type tab ───────────────────────────────────────────────────────
-let usedSheetNames = new Set()
+// Pre-scan all unit type names; any name occurring 2+ times gets (1), (2)... suffixes on EVERY occurrence
+let sheetNameCounts = {}
+let sheetNameSeen = {}
+function prepSheetNames(unitTypes) {
+  sheetNameCounts = {}
+  sheetNameSeen = {}
+  unitTypes.forEach(ut => {
+    const base = (ut.unit_type_name || 'Unit').replace(/[*?:\\/\[\]]/g, '-').substring(0, 31).toUpperCase()
+    sheetNameCounts[base] = (sheetNameCounts[base] || 0) + 1
+  })
+}
 function uniqueSheetName(rawName) {
-  let base = (rawName || 'Unit').replace(/[*?:\\/\[\]]/g, '-').substring(0, 31)
-  let name = base
-  let n = 2
-  while (usedSheetNames.has(name.toUpperCase())) {
-    const suffix = ` (${n})`
-    name = base.substring(0, 31 - suffix.length) + suffix
-    n++
-  }
-  usedSheetNames.add(name.toUpperCase())
-  return name
+  const base = (rawName || 'Unit').replace(/[*?:\\/\[\]]/g, '-').substring(0, 31)
+  const key = base.toUpperCase()
+  if ((sheetNameCounts[key] || 1) <= 1) return base
+  sheetNameSeen[key] = (sheetNameSeen[key] || 0) + 1
+  const suffix = ` (${sheetNameSeen[key]})`
+  return base.substring(0, 31 - suffix.length) + suffix
 }
 
 function buildUnitTab(wb, unitType, projectName, supplierName, catalogRef) {
@@ -770,7 +776,7 @@ export async function POST(request) {
 
     const unitTypes = takeoffData.unit_types
     const totalUnits = unitTypes.reduce((s, u) => s + (u.unit_quantity || 1), 0)
-    usedSheetNames = new Set()   // reset per-request so names don't collide across exports
+    prepSheetNames(unitTypes)   // figure out which names need (1)/(2) suffixes
     const wb = new ExcelJS.Workbook()
 
     wb.creator = 'MDSG OS'
