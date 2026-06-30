@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 
-const FILLER_RE    = /^(WF|TF|BF|TK8|SCM|OCM|BEP|DWEP|EPT|PLYS)/i
+const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|OCM|BEP|DWEP|EPT|PLYS)/i
 const APPLIANCE_RE = /^(DISH|DW|DISW|RANGE|REF|MICRO|OTR|WASH|DRYER|OVEN|HOOD|VENT)/i
 const BASE_RE      = /^(B[^WF]|SB|DB|BMC|BB|HC)/i   // base cabinets (not BW blind wall, not BF3 filler)
 const VANITY_RE    = /^V(SB|DB|B)/i

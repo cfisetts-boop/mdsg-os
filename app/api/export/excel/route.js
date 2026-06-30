@@ -137,8 +137,22 @@ function groupBySection(skus, fillers = []) {
 }
 
 // ── Build Unit Type tab ───────────────────────────────────────────────────────
+let usedSheetNames = new Set()
+function uniqueSheetName(rawName) {
+  let base = (rawName || 'Unit').replace(/[*?:\\/\[\]]/g, '-').substring(0, 31)
+  let name = base
+  let n = 2
+  while (usedSheetNames.has(name.toUpperCase())) {
+    const suffix = ` (${n})`
+    name = base.substring(0, 31 - suffix.length) + suffix
+    n++
+  }
+  usedSheetNames.add(name.toUpperCase())
+  return name
+}
+
 function buildUnitTab(wb, unitType, projectName, supplierName, catalogRef) {
-  const safeName = (unitType.unit_type_name || 'Unit').replace(/[*?:\\/\[\]]/g, '-').substring(0, 31)
+  const safeName = uniqueSheetName(unitType.unit_type_name)
   const ws = wb.addWorksheet(safeName)
   ws.columns = [
     { width: 5 },   // #
@@ -756,6 +770,7 @@ export async function POST(request) {
 
     const unitTypes = takeoffData.unit_types
     const totalUnits = unitTypes.reduce((s, u) => s + (u.unit_quantity || 1), 0)
+    usedSheetNames = new Set()   // reset per-request so names don't collide across exports
     const wb = new ExcelJS.Workbook()
 
     wb.creator = 'MDSG OS'
