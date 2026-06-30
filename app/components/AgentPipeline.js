@@ -1,12 +1,7 @@
 'use client'
 import { useState, useRef } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  { auth: { storageKey: 'mdsg-agent-pipeline', persistSession: false } }
-)
 
 // ── Light theme ──────────────────────────────────────────────────────────────
 const BG     = '#f5f5f3'
@@ -94,6 +89,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
   const initStatus   = () => Object.fromEntries(AGENTS.map(a => [a.key, 'pending']))
   const initProgress = () => Object.fromEntries(AGENTS.map(a => [a.key, 0]))
   const [activeAgent,  setActiveAgent]  = useState('upload')
+  const [inputMode,    setInputMode]    = useState('excel')  // 'excel' (default) or 'pdf'
   const [agentStatus,  setAgentStatus]  = useState(initStatus)
   const [agentProg,    setAgentProg]    = useState(initProgress)
   const [savedAt,      setSavedAt]      = useState({})  // {agentKey: timestamp}
@@ -645,33 +641,68 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
   function UploadPanel() {
     return (
       <div>
-        <PanelHeader agentKey="upload" title="Upload Plan Set" subtitle="Select the full plan set PDF — the Page Classifier will sort the pages for the other agents" />
-        <div style={dcard}>
-          <label style={dlbl}>Full Plan Set PDF</label>
-          <label style={{ display:'block', border:`2px dashed ${files.length?'#6366f1':'#252545'}`, borderRadius:10, padding:28, textAlign:'center', cursor:'pointer', background:files.length?'#6366f110':'transparent', marginBottom:12, transition:'all 0.2s' }}>
-            <div style={{ fontSize:14, color:files.length?TEXT:MUTED, marginBottom:4 }}>
-              {hasExcel() ? ('📊 Excel ready: ' + (files.find(isExcelFile)?.name || '')) : files.length===0 ? '📤 Click to select PDF, JPEGs, or Excel (.xlsx)' : `${files.length} file${files.length>1?'s':''} selected`}
-            </div>
-            <div style={{ fontSize:11, color:MUTED }}>Full plan set OK — Page Classifier finds relevant pages automatically</div>
-            {files.length>0 && (
-              <div style={{ marginTop:10 }}>
-                {files.map((f,i)=><div key={i} style={{ fontSize:11, color:'#6366f1', padding:'2px 0' }}>📄 {f.name} ({(f.size/1024/1024).toFixed(1)} MB)</div>)}
-              </div>
-            )}
-            <input type="file" accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xlsm" multiple onChange={e=>setFiles(Array.from(e.target.files))} style={{ display:'none' }}/>
-          </label>
-          <label style={{ display:'block', border:`1px dashed ${shopFiles.length?'#0d9488':'#252545'}`, borderRadius:8, padding:14, textAlign:'center', cursor:'pointer', background:shopFiles.length?'#0d948810':'transparent', marginBottom:16, transition:'all 0.2s' }}>
-            <div style={{ fontSize:12, color:shopFiles.length?TEXT:MUTED }}>
-              {shopFiles.length===0 ? '📐 Shop drawings — optional, upload if available' : `✓ ${shopFiles.length} shop drawing file${shopFiles.length>1?'s':''}`}
-            </div>
-            <input type="file" accept=".pdf" multiple onChange={e=>setShopFiles(Array.from(e.target.files))} style={{ display:'none' }}/>
-          </label>
-          <div style={{ marginBottom:16 }}>
-            <label style={dlbl}>Cabinet Specs (optional)</label>
-            <input value={specs} onChange={e=>setSpecs(e.target.value)} style={dinp} placeholder="e.g. Northern Contours — Flat Panel — 2212 Braelyn laminate"/>
-          </div>
-          <Btn label={hasExcel() ? "Confirm Upload → Import from Excel" : files.some(f=>f.type.startsWith('image/')) ? "Confirm Upload → Skip to Elevation" : "Confirm Upload → Classify Pages"} onClick={confirmUpload} color="#6366f1" disabled={!files.length}/>
+        <PanelHeader agentKey="upload" title="Upload" subtitle="Choose your input — most projects now come from a cabinet list Excel file" />
+
+        {/* Mode toggle */}
+        <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+          <button onClick={()=>{setInputMode('excel'); setFiles([])}} style={{
+            flex:1, padding:'14px 16px', borderRadius:10, cursor:'pointer', textAlign:'left',
+            background: inputMode==='excel' ? '#0d948814' : CARD,
+            border: `1.5px solid ${inputMode==='excel' ? '#0d9488' : BORDER}`,
+          }}>
+            <div style={{ fontSize:13, fontWeight:600, color: inputMode==='excel' ? '#0d9488' : TEXT }}>📊 Excel Cabinet List</div>
+            <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>Recommended — instant import, no AI processing</div>
+          </button>
+          <button onClick={()=>{setInputMode('pdf'); setFiles([])}} style={{
+            flex:1, padding:'14px 16px', borderRadius:10, cursor:'pointer', textAlign:'left',
+            background: inputMode==='pdf' ? '#6366f114' : CARD,
+            border: `1.5px solid ${inputMode==='pdf' ? '#6366f1' : BORDER}`,
+          }}>
+            <div style={{ fontSize:13, fontWeight:600, color: inputMode==='pdf' ? '#6366f1' : TEXT }}>📄 PDF / AI Extraction</div>
+            <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>No Excel available — AI reads plan set elevations</div>
+          </button>
         </div>
+
+        {inputMode === 'excel' ? (
+          <div style={dcard}>
+            <label style={dlbl}>Cabinet List Excel File</label>
+            <label style={{ display:'block', border:`2px dashed ${hasExcel()?'#0d9488':BORDER}`, borderRadius:10, padding:32, textAlign:'center', cursor:'pointer', background:hasExcel()?'#0d948810':'transparent', marginBottom:16, transition:'all 0.2s' }}>
+              <div style={{ fontSize:14, color:hasExcel()?TEXT:MUTED, marginBottom:4 }}>
+                {hasExcel() ? ('📊 ' + (files.find(isExcelFile)?.name || 'Excel file ready')) : '📊 Click to select cabinet list (.xlsx)'}
+              </div>
+              <div style={{ fontSize:11, color:MUTED }}>CAB LIST tab is read automatically — works with any unit naming convention</div>
+              <input type="file" accept=".xlsx,.xlsm" onChange={e=>setFiles(Array.from(e.target.files))} style={{ display:'none' }}/>
+            </label>
+            <Btn label="Confirm Upload → Import from Excel" onClick={confirmUpload} color="#0d9488" disabled={!files.length}/>
+          </div>
+        ) : (
+          <div style={dcard}>
+            <label style={dlbl}>Full Plan Set PDF</label>
+            <label style={{ display:'block', border:`2px dashed ${files.length?'#6366f1':BORDER}`, borderRadius:10, padding:28, textAlign:'center', cursor:'pointer', background:files.length?'#6366f110':'transparent', marginBottom:12, transition:'all 0.2s' }}>
+              <div style={{ fontSize:14, color:files.length?TEXT:MUTED, marginBottom:4 }}>
+                {files.length===0 ? '📤 Click to select PDF or elevation JPEGs' : `${files.length} file${files.length>1?'s':''} selected`}
+              </div>
+              <div style={{ fontSize:11, color:MUTED }}>Full plan set OK — Page Classifier finds relevant pages automatically</div>
+              {files.length>0 && (
+                <div style={{ marginTop:10 }}>
+                  {files.map((f,i)=><div key={i} style={{ fontSize:11, color:'#6366f1', padding:'2px 0' }}>📄 {f.name} ({(f.size/1024/1024).toFixed(1)} MB)</div>)}
+                </div>
+              )}
+              <input type="file" accept=".pdf,.jpg,.jpeg,.png" multiple onChange={e=>setFiles(Array.from(e.target.files))} style={{ display:'none' }}/>
+            </label>
+            <label style={{ display:'block', border:`1px dashed ${shopFiles.length?'#0d9488':BORDER}`, borderRadius:8, padding:14, textAlign:'center', cursor:'pointer', background:shopFiles.length?'#0d948810':'transparent', marginBottom:16, transition:'all 0.2s' }}>
+              <div style={{ fontSize:12, color:shopFiles.length?TEXT:MUTED }}>
+                {shopFiles.length===0 ? '📐 Shop drawings — optional, upload if available' : `✓ ${shopFiles.length} shop drawing file${shopFiles.length>1?'s':''}`}
+              </div>
+              <input type="file" accept=".pdf" multiple onChange={e=>setShopFiles(Array.from(e.target.files))} style={{ display:'none' }}/>
+            </label>
+            <div style={{ marginBottom:16 }}>
+              <label style={dlbl}>Cabinet Specs (optional)</label>
+              <input value={specs} onChange={e=>setSpecs(e.target.value)} style={dinp} placeholder="e.g. Northern Contours — Flat Panel — 2212 Braelyn laminate"/>
+            </div>
+            <Btn label={files.some(f=>f.type.startsWith('image/')) ? "Confirm Upload → Skip to Elevation" : "Confirm Upload → Classify Pages"} onClick={confirmUpload} color="#6366f1" disabled={!files.length}/>
+          </div>
+        )}
       </div>
     )
   }
