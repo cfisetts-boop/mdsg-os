@@ -131,7 +131,9 @@ function parseSheet(sheet) {
     const bStr = String(b ?? '').trim()
 
     // ── Unit header row ─────────────────────────────────────────────────
-    if (aStr.toUpperCase().startsWith('UNIT ')) {
+    // Matches "UNIT 1A", "KITCHEN 1", "ROOM 204", "BLDG A", etc. — a label word + qty in col B
+    const isHeaderLabel = /^(UNIT|KITCHEN|ROOM|BLDG|BUILDING|SUITE|APT|APARTMENT|FLOOR|AMENITY)\s/i.test(aStr)
+    if (isHeaderLabel) {
       const qty = parseInt(bStr) || 1
       current = {
         unit_type_name:        aStr,
@@ -156,6 +158,10 @@ function parseSheet(sheet) {
 
     if (!current) return
 
+    // ── Skip category label rows (BASES, VANITIES, WALLS, TALLS, etc.) ──
+    const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC|FILLERS?|AMENIT(?:Y|IES))$/i
+    if (CATEGORY_LABELS.test(aStr) && !bStr) return
+
     // ── Skip totals/summary rows (first value is large number > 20) ────
     const aNum = parseFloat(aStr)
     if (!isNaN(aNum) && aNum > 20) return
@@ -163,7 +169,8 @@ function parseSheet(sheet) {
     // ── Skip blank rows or non-item rows ────────────────────────────────
     const qty = parseInt(aStr) || 0
     const sku = bStr
-    if (!sku || qty < 1 || qty > 10) return
+    if (!sku || qty < 0 || qty > 10) return  // allow qty=0 placeholder rows through to appliance filter
+    if (qty === 0) return  // but skip them entirely — no real cabinet
     if (APPLIANCE_RE.test(sku)) return
 
     // ── Filler / trim ───────────────────────────────────────────────────
@@ -269,17 +276,22 @@ export async function POST(request) {
     'FINISH (COLOR)':   'finish',
     'BOX CONSTRUCTION': 'box_construction',
     'DRAWER BOX':       'box_construction',
+    'OVERLAY':          'door_style',
     'MANUFACTURER':     'cabinet_line',
     'CABINET LINE':     'cabinet_line',
   }
+  // Spec labels can appear in any label/value column pair within the header area
+  // (e.g. cols A/B, or further right like M/O next to contact info)
+  const LABEL_COL_PAIRS = [[1,2],[13,15],[22,24]]
   sheet.eachRow((row, rowNum) => {
     if (rowNum > 20) return  // only check header area
-    const label = String(cellVal(row, 1) ?? '').replace(':', '').trim().toUpperCase()
-    const value = String(cellVal(row, 2) ?? '').trim()
-    if (value && value !== 'null' && value !== 'undefined') {
+    LABEL_COL_PAIRS.forEach(([labelCol, valueCol]) => {
+      const label = String(cellVal(row, labelCol) ?? '').replace(':', '').trim().toUpperCase()
+      const value = String(cellVal(row, valueCol) ?? '').trim()
+      if (!label || !value || value === 'null' || value === 'undefined') return
       const key = Object.keys(SPEC_MAP).find(k => label.includes(k))
       if (key) specs[SPEC_MAP[key]] = value
-    }
+    })
   })
 
   const unitTypes = parseSheet(sheet)
