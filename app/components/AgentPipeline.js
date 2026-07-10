@@ -26,7 +26,8 @@ const AGENTS = [
 // ── Cabinet helpers (from TakeoffEngine) ─────────────────────────────────────
 function isApplianceSku(sku) {
   const u = (sku || '').toUpperCase().trim()
-  return /^(DISH|DW|DISW|RANGE|REF[LR0-9]?|MICRO|OTR|APPLI|WASH|DRYER|OVEN|HOOD|VENT)/.test(u)
+  // DW + 4 digits (DW2430R) = Diagonal Wall corner CABINET, not a dishwasher
+  return /^(DISH|DW(?!\d{4})|DISW|RANGE|REF[LR0-9]?|MICRO|OTR|APPLI|WASH|DRYER|OVEN|HOOD|VENT)/.test(u)
 }
 function isTrueCabinet(sku) {
   const u = (sku || '').toUpperCase().trim()
