@@ -157,6 +157,17 @@ function uniqueSheetName(rawName) {
   return base.substring(0, 31 - suffix.length) + suffix
 }
 
+// Prefer the hardware count imported from the source Excel (col E, stored as
+// hardware_count on each SKU) — the sheet is the law. Fall back to the
+// reference-guide calculation only when the sheet didn't provide a value.
+function resolveHW(item) {
+  const fromSheet = Number(item.hardware_count)
+  if (Number.isFinite(fromSheet) && fromSheet > 0) {
+    return { hardware: fromSheet, specialCase: false, note: 'From source Excel (col E)' }
+  }
+  return calculateHardware(item.sku)
+}
+
 function buildUnitTab(wb, unitType, projectName, supplierName, catalogRef) {
   const safeName = uniqueSheetName(unitType.unit_type_name)
   const ws = wb.addWorksheet(safeName)
@@ -224,7 +235,7 @@ function buildUnitTab(wb, unitType, projectName, supplierName, catalogRef) {
       const qpu = Number(item.quantity_per_unit) || 1
       const dims = parseDimensions(item.sku, section)
       const hinge = normalizeHinge(item.hinge_side)
-      const hw = calculateHardware(item.sku)
+      const hw = resolveHW(item)
 
       const dataRow = ws.getRow(r)
       const rowValues = [rowNum, item.sku, section, dims.width, dims.height, dims.depth, hinge, qpu, qpu * qty]
@@ -361,9 +372,12 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
     allItems.forEach(item => {
       const key = item.sku.toUpperCase()
       if (!skuMap[key]) {
-        skuMap[key] = { ...item, totalQty: 0 }
+        skuMap[key] = { ...item, totalQty: 0, hwTotal: 0 }
       }
-      skuMap[key].totalQty += (Number(item.quantity_per_unit) || 1) * (ut.unit_quantity || 1)
+      const q = (Number(item.quantity_per_unit) || 1) * (ut.unit_quantity || 1)
+      skuMap[key].totalQty += q
+      const hwEach = resolveHW(item).hardware
+      if (hwEach !== null && hwEach > 0) skuMap[key].hwTotal += hwEach * q
     })
   })
 
@@ -384,6 +398,13 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
   let totalCabQty = 0, totalCabUnique = 0
   let totalFillerQty = 0, totalFillerUnique = 0
   let totalHW = 0
+  // Sheet-authoritative grand hardware: when every unit carries the source
+  // spreadsheet's own per-unit hardware subtotal, that sum is the law and
+  // overrides the per-SKU aggregation (source files sometimes carry orphan
+  // hardware values on blank rows that only their subtotal formula captures).
+  const sheetHWGrand = unitTypes.every(ut => typeof ut.excelSubtotalHW === 'number')
+    ? unitTypes.reduce((s, ut) => s + ut.excelSubtotalHW * (ut.unit_quantity || 1), 0)
+    : null
 
   sortedGroups.forEach(([section, items]) => {
     const bannerColor = SECTION_BANNER_COLORS[section] || COLORS.bannerBase
@@ -393,9 +414,10 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
     items.forEach(item => {
       const dims = parseDimensions(item.sku, section)
       const hinge = normalizeHinge(item.hinge_side)
-      const hw = calculateHardware(item.sku)
-      const hwDisplay = hw.hardware !== null && hw.hardware > 0
-        ? `${hw.hardware}  (${hw.hardware * item.totalQty})`
+      const hw = resolveHW(item)
+      const hwTotalExact = item.hwTotal !== undefined ? item.hwTotal : (hw.hardware > 0 ? hw.hardware * item.totalQty : 0)
+      const hwDisplay = hwTotalExact > 0
+        ? `${hw.hardware !== null && hw.hardware > 0 ? hw.hardware : Math.round(hwTotalExact / item.totalQty)}  (${hwTotalExact})`
         : hw.hardware === 0 ? '—' : '?'
 
       const row = ws.getRow(r)
@@ -416,7 +438,7 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
       } else {
         totalCabQty += item.totalQty
         totalCabUnique++
-        if (hw.hardware > 0) totalHW += hw.hardware * item.totalQty
+        totalHW += item.hwTotal !== undefined ? item.hwTotal : (hw.hardware > 0 ? hw.hardware * item.totalQty : 0)
       }
     })
   })
@@ -430,7 +452,7 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
   ws.getCell(r, 8).value = totalCabQty
   ws.getCell(r, 8).font = boldFont(10)
   ws.getCell(r, 8).fill = fill(COLORS.subtotalRow)
-  ws.getCell(r, 9).value = `Total HW: ${totalHW.toLocaleString()}`
+  ws.getCell(r, 9).value = `Total HW: ${(sheetHWGrand ?? totalHW).toLocaleString()}`
   ws.getCell(r, 9).font = boldFont(10)
   ws.getCell(r, 9).fill = fill(COLORS.subtotalRow)
   ws.getRow(r).commit()
@@ -457,7 +479,7 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
   ws.getCell(r, 8).value = totalCabQty + totalFillerQty
   ws.getCell(r, 8).font = boldFont(11)
   ws.getCell(r, 8).fill = fill(COLORS.grandTotal)
-  ws.getCell(r, 9).value = `Total HW: ${totalHW.toLocaleString()}`
+  ws.getCell(r, 9).value = `Total HW: ${(sheetHWGrand ?? totalHW).toLocaleString()}`
   ws.getCell(r, 9).font = boldFont(11)
   ws.getCell(r, 9).fill = fill(COLORS.grandTotal)
   ws.getRow(r).commit()
@@ -531,7 +553,7 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
 
     allItems.forEach(item => {
       const qpu = Number(item.quantity_per_unit) || 1
-      const hw = calculateHardware(item.sku)
+      const hw = resolveHW(item)
       const hwVal = (hw.hardware !== null && hw.hardware > 0) ? hw.hardware : 0
       const hwTotal = qpu * qty * hwVal
 
@@ -593,7 +615,7 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
   const specialSkus = []
   unitTypes.forEach(ut => {
     ;[...(ut.skus || []), ...(ut.fillers || [])].forEach(item => {
-      const hw = calculateHardware(item.sku)
+      const hw = resolveHW(item)
       if (hw.specialCase && hw.hardware !== null) {
         specialSkus.push(`${item.sku} = ${hw.hardware} hardware (${hw.note})`)
       }
@@ -683,8 +705,11 @@ function buildUkonQuoteTab(wb, unitTypes, projectName, printDate) {
     const allItems = [...(ut.skus || []), ...(ut.fillers || [])]
     allItems.forEach(item => {
       const key = item.sku.toUpperCase()
-      if (!skuMap[key]) skuMap[key] = { ...item, totalQty: 0 }
-      skuMap[key].totalQty += (Number(item.quantity_per_unit) || 1) * (ut.unit_quantity || 1)
+      if (!skuMap[key]) skuMap[key] = { ...item, totalQty: 0, hwTotal: 0 }
+      const q2 = (Number(item.quantity_per_unit) || 1) * (ut.unit_quantity || 1)
+      skuMap[key].totalQty += q2
+      const hwEach2 = resolveHW(item).hardware
+      if (hwEach2 !== null && hwEach2 > 0) skuMap[key].hwTotal += hwEach2 * q2
     })
   })
 
@@ -708,6 +733,9 @@ function buildUkonQuoteTab(wb, unitTypes, projectName, printDate) {
   let rowNum = 1
   const NON_CAB = new Set(['Filler','Scribe','Toe Kick','End Panel'])
   let totalCabQty = 0, totalMiscQty = 0, totalHW = 0
+  const sheetHWGrandQ = unitTypes.every(ut => typeof ut.excelSubtotalHW === 'number')
+    ? unitTypes.reduce((s, ut) => s + ut.excelSubtotalHW * (ut.unit_quantity || 1), 0)
+    : null
 
   sortedGroups.forEach(([section, items]) => {
     const bannerColor = SECTION_BANNER_COLORS[items[0]?._section] || COLORS.bannerBase
@@ -717,8 +745,9 @@ function buildUkonQuoteTab(wb, unitTypes, projectName, printDate) {
     items.forEach(item => {
       const dims = parseDimensions(item.sku, item._section)
       const hinge = normalizeHinge(item.hinge_side)
-      const hw = calculateHardware(item.sku)
-      const hwDisplay = hw.hardware > 0 ? `${hw.hardware}  (${hw.hardware * item.totalQty})` : '—'
+      const hw = resolveHW(item)
+      const hwTotalExactQ = item.hwTotal !== undefined ? item.hwTotal : (hw.hardware > 0 ? hw.hardware * item.totalQty : 0)
+      const hwDisplay = hwTotalExactQ > 0 ? `${hw.hardware > 0 ? hw.hardware : Math.round(hwTotalExactQ / item.totalQty)}  (${hwTotalExactQ})` : '—'
 
       const row = ws.getRow(r)
       const vals = [rowNum, item.sku, section, dims.width, dims.height, dims.depth, hinge, item.totalQty, hwDisplay, '$0.00', '$0.00', '$0.00']
@@ -732,7 +761,7 @@ function buildUkonQuoteTab(wb, unitTypes, projectName, printDate) {
       row.commit(); rowNum++; r++
 
       if (NON_CAB.has(section)) totalMiscQty += item.totalQty
-      else { totalCabQty += item.totalQty; if (hw.hardware > 0) totalHW += hw.hardware * item.totalQty }
+      else { totalCabQty += item.totalQty; totalHW += item.hwTotal !== undefined ? item.hwTotal : (hw.hardware > 0 ? hw.hardware * item.totalQty : 0) }
     })
   })
 

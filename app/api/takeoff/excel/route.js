@@ -1,7 +1,8 @@
 import ExcelJS from 'exceljs'
 
 const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|OCM|BEP|DWEP|EPT|PLYS)/i
-const APPLIANCE_RE = /^(DISH|DW|DISW|RANGE|REF|MICRO|OTR|WASH|DRYER|OVEN|HOOD|VENT)/i
+// DW followed by 4 digits (DW2430R) = Diagonal Wall corner CABINET, not a dishwasher
+const APPLIANCE_RE = /^(DISH|DW(?!\d{4})|DISW|RANGE|REF|MICRO|OTR|WASH|DRYER|OVEN|HOOD|VENT)/i
 const BASE_RE      = /^(B[^WF]|SB|DB|BMC|BB|HC)/i   // base cabinets (not BW blind wall, not BF3 filler)
 const VANITY_RE    = /^V(SB|DB|B)/i
 
@@ -149,6 +150,10 @@ function parseSheet(sheet) {
     // the project is built and quoted from.
     if (aIsNum && !bStr && cIsNum && current && typeof kCell === 'number') {
       current.excelSubtotalSF = kCell
+      // Col E on the subtotal row = the sheet's own hardware-per-unit total.
+      // Capture it as authoritative, same as SF — the sheet is the law.
+      const eCell = cellVal(row, 5)
+      if (typeof eCell === 'number') current.excelSubtotalHW = eCell
       return
     }
 
@@ -170,6 +175,7 @@ function parseSheet(sheet) {
         kitchenSF:             0,
         vanitySF:              0,
         excelSubtotalSF:       null,  // authoritative SF from the sheet's own subtotal row, if found
+        excelSubtotalHW:       null,  // authoritative hardware-per-unit from the sheet's subtotal row
         kitchenLF:             0,
         vanityLF:              0,
         sinks:                 0,
