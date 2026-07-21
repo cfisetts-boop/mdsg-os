@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 
-const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|OCM|BEP|DWEP|EPT|PLYS)/i
+const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|SMC|OCM|BEP|REP|TREP|VEP|DWEP|EPT|PLYS)/i  // SMC=SCM typo; REP/TREP/VEP = end panels
 // DW followed by 4 digits (DW2430R) = Diagonal Wall corner CABINET, not a dishwasher
 const APPLIANCE_RE = /^(DISH|DW(?!\d{4})|DISW|RANGE|REF|MICRO|OTR|WASH|DRYER|OVEN|HOOD|VENT)/i
 const BASE_RE      = /^(B[^WF]|SB|DB|BMC|BB|HC)/i   // base cabinets (not BW blind wall, not BF3 filler)
@@ -126,9 +126,60 @@ function parseSheet(sheet) {
   const SKIP_LABELS = /^(QTY|SKU|UNIT TYPE|QUANTITY|TOTAL|TOTALS?)$/i
   const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC(?:ELLANEOUS)?|FILLERS?|TRIM|MOLDING)S?$/i
 
+  const sheetTotals = { cabinets: null, hardware: null, netSF: null, splashSF: null, totalSF: null }
+  let pendingQty = null
+
+  function makeUnit(name, qty) {
+    return {
+      unit_type_name:        name,
+      is_ada:                /\b(ADA|HC|ACCESSIBLE)\b/i.test(name),
+      unit_quantity:         qty,
+      is_amenity:            /\bAMENIT(Y|IES)\b/i.test(name),
+      sheet_reference:       '',
+      skus:                  [],
+      fillers:               [],
+      countertop_sf:         0,
+      kitchenSF:             0,
+      vanitySF:              0,
+      kitchenLF:             0,
+      vanityLF:              0,
+      sinks:                 0,
+      excelSubtotalSF:       null,
+      excelSubtotalHW:       null,
+      toe_kick_lf:           0,
+      total_cabinets_per_unit: 0,
+    }
+  }
+
   sheet.eachRow((row) => {
     const a = cellVal(row, 1)   // Col A: qty per unit, OR unit name, OR category label
     const b = cellVal(row, 2)   // Col B: SKU, OR unit total quantity
+
+    // ── Grand TOTALS / SPLASH / TOTAL block (below the last unit) ─────────
+    // These lines in the source Excel are the law for output totals.
+    // Accept both 'TOTALS' and 'TOTAL' (some sheets use the singular on the
+    // final grand row, e.g. 'FROM SHOPS | TOTAL | 310 | 5038 ...'). The last
+    // totals row encountered wins, so a final grand row overrides section rows.
+    const bLabel = String(b ?? '').trim().toUpperCase()
+    if (bLabel === 'TOTALS' || (bLabel === 'TOTAL' && typeof cellVal(row, 4) === 'number')) {
+      const d = cellVal(row, 4), f = cellVal(row, 6), k11 = cellVal(row, 11)
+      if (typeof d   === 'number') sheetTotals.cabinets = d
+      if (typeof f   === 'number') sheetTotals.hardware = f
+      if (typeof k11 === 'number') sheetTotals.netSF    = k11
+      current = null   // grand block reached — stop attributing rows to the last unit
+      return
+    }
+    const iLabel = String(cellVal(row, 9) ?? '').trim().toUpperCase()
+    if (iLabel === 'SPLASH') {
+      const k11 = cellVal(row, 11)
+      if (typeof k11 === 'number') sheetTotals.splashSF = k11
+      return
+    }
+    if ((iLabel === 'TOTAL' || iLabel === 'TOTAL SF') && current === null) {
+      const k11 = cellVal(row, 11)
+      if (typeof k11 === 'number') sheetTotals.totalSF = k11
+      return
+    }
     const e = cellVal(row, 5)   // Col E: hardware count per cabinet
     const ctLength = parseFloat(String(cellVal(row, 7) ?? '0')) || 0   // Col G: length (in)
     const ctDepth  = parseFloat(String(cellVal(row, 8) ?? '0')) || 0   // Col H: depth (in)
@@ -157,31 +208,27 @@ function parseSheet(sheet) {
       return
     }
 
+    // ── SPLIT UNIT HEADER (part 1): a row with ONLY a col-B integer ──────
+    // Some sheets put the unit quantity one row above the unit name
+    // (e.g. row N has just "7" in col B, row N+1 has "DROP ZONE" in col A).
+    if (!aStr && bIsNum && Number.isInteger(b)) {
+      pendingQty = Math.max(1, Math.round(b))
+      return
+    }
+    // ── SPLIT UNIT HEADER (part 2): name-only row while a qty is pending ─
+    if (pendingQty !== null && !aIsNum && aStr && !bStr && !CATEGORY_LABELS.test(aStr) && !SKIP_LABELS.test(aStr)) {
+      current = makeUnit(aStr, pendingQty)
+      unitTypes.push(current)
+      pendingQty = null
+      return
+    }
+
     // ── UNIT HEADER: col A is text, col B is a whole number ──────────────
     // Matches ANY naming convention: "UNIT 1A", "KITCHEN 3", "EFFICIENCY-A",
     // "2BR.1-B", "AMENITIES", "BLDG A", etc. Name format is irrelevant —
     // what matters structurally is text-then-number.
     if (!aIsNum && aStr && bIsNum && Number.isInteger(b) && !CATEGORY_LABELS.test(aStr)) {
-      const qty = Math.max(1, Math.round(b))
-      current = {
-        unit_type_name:        aStr,
-        unit_quantity:         qty,
-        is_ada:                /\b(ADA|HC|ACCESSIBLE)\b/i.test(aStr),
-        is_amenity:            /\bAMENIT(Y|IES)\b/i.test(aStr),
-        sheet_reference:       '',
-        skus:                  [],
-        fillers:               [],
-        countertop_sf:         0,
-        kitchenSF:             0,
-        vanitySF:              0,
-        excelSubtotalSF:       null,  // authoritative SF from the sheet's own subtotal row, if found
-        excelSubtotalHW:       null,  // authoritative hardware-per-unit from the sheet's subtotal row
-        kitchenLF:             0,
-        vanityLF:              0,
-        sinks:                 0,
-        toe_kick_lf:           0,
-        total_cabinets_per_unit: 0,
-      }
+      current = makeUnit(aStr, Math.max(1, Math.round(b)))
       unitTypes.push(current)
       return
     }
@@ -256,7 +303,7 @@ function parseSheet(sheet) {
     }
   })
 
-  return unitTypes
+  return { unitTypes, sheetTotals }
 }
 
 export async function POST(request) {
@@ -308,7 +355,7 @@ export async function POST(request) {
     })
   })
 
-  const unitTypes = parseSheet(sheet)
+  const { unitTypes, sheetTotals } = parseSheet(sheet)
 
     if (!unitTypes.length) {
       return Response.json({
@@ -333,6 +380,7 @@ export async function POST(request) {
         address:               null,
         specs,
         unit_types:            unitTypes,
+        sheet_totals:          sheetTotals,   // grand TOTALS / SPLASH / TOTAL from the source sheet
         flags:                 [],
         extraction_confidence: 'high',
         extraction_notes:      `Imported from Excel (${xlsxFile.name}) — ${unitTypes.length} unit types, ${totalCabinets.toLocaleString()} total cabinets, ${totalCtSF.toFixed(1)} SF countertop`,
