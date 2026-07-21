@@ -388,7 +388,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
   async function saveCountertopToJob() {
     if (!selectedJobId) return alert('Select a job first')
     setCtSaving(true)
-    const payload = { kitchenLF: ctTotals.kitchenLF, vanityLF: ctTotals.vanityLF, kitchenSF: ctTotals.kitchenSF, vanitySF: ctTotals.vanitySF, materialSF: ctMaterialSF, orderSF: ctOrderSF, sinks: ctTotals.sinks, unitTypes: ctUnits, savedAt: new Date().toISOString() }
+    const payload = { kitchenLF: ctTotals.kitchenLF, vanityLF: ctTotals.vanityLF, kitchenSF: ctTotals.kitchenSF, vanitySF: ctTotals.vanitySF, materialSF: sheetCt ? (sheetCt.netSF ?? ctMaterialSF) : ctMaterialSF, orderSF: sheetCt ? (sheetCt.totalSF ?? ctOrderSF) : ctOrderSF, sheetTotals: sheetCt || null, sinks: ctTotals.sinks, unitTypes: ctUnits, savedAt: new Date().toISOString() }
     await supabase.from('activity_log').insert({ job_id:selectedJobId, user_name:'Cole', action:'__CT_TAKEOFF__:' + JSON.stringify(payload) })
     setCtSaving(false)
     setComplete('countertop')
@@ -1029,11 +1029,11 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
               </div>
             </div>
             <div style={{ background:'#eeeee9', borderRadius:'0 0 10px 10px', border:`0.5px solid ${BORDER}`, borderTop:'none', padding:'10px 20px', marginBottom:16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              {!sheetCt && <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <span style={{ fontSize:11, color:MUTED }}>Waste factor:</span>
                 <input type="number" min="0" max="30" value={wastePct} onChange={e=>setWastePct(Number(e.target.value))} style={{ ...dinp, width:50, textAlign:'center' }}/>
                 <span style={{ fontSize:11, color:MUTED }}>% · LF Kitchen: {ctTotals.kitchenLF.toFixed(1)} · LF Vanity: {ctTotals.vanityLF.toFixed(1)} · Sinks: {ctTotals.sinks}</span>
-              </div>
+              </div>}
             </div>
 
             <div style={{ display:'flex', gap:10 }}>
@@ -1060,7 +1060,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
             {[
               ['Total Cabinets', grandTotal.toLocaleString(), '#8b5cf6'],
               ['Unit Types',     editData?.unit_types?.length||0, '#0d9488'],
-              ['CT Material SF', ctMaterialSF.toFixed(1)+' SF', '#d97706'],
+              ['CT Order SF', (sheetCt ? (sheetCt.totalSF ?? (sheetCt.netSF + (sheetCt.splashSF || 0))) : ctOrderSF).toFixed(1)+' SF', '#d97706'],
               ['Sink Cutouts',   ctTotals.sinks, '#6366f1'],
             ].map(([label,val,color])=>(
               <div key={label} style={{ background:'#1a1a2e', border:`0.5px solid ${BORDER}`, borderRadius:8, padding:'14px 12px', textAlign:'center' }}>
