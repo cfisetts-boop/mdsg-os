@@ -127,6 +127,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
   // ── Countertop ──────────────────────────────────────────────────────────
   const [ctUnits,   setCtUnits]   = useState([])  // [{name, qty, kitchenLF, vanityLF, sinks}]
   const [wastePct,  setWastePct]  = useState(10)
+  const [sheetCt,   setSheetCt]   = useState(null)   // grand TOTALS/SPLASH/TOTAL from source Excel
   const [ctSaving,  setCtSaving]  = useState(false)
 
   // ── Export ──────────────────────────────────────────────────────────────
@@ -207,6 +208,8 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
           sinks:     ut.sinks     || 0,
         })))
         setWastePct(5)  // 5% for side splash per Excel standard
+        // Grand TOTALS / SPLASH / TOTAL block from the source sheet — the law for output totals
+        setSheetCt(result.data.sheet_totals && result.data.sheet_totals.netSF !== null ? result.data.sheet_totals : null)
         setActiveAgent('countertop')
         alert('\u2713 Excel imported \u2014 ' + uts.length + ' unit types \u00b7 ' + (result.summary?.total_cabinets?.toLocaleString() || 0) + ' cabinets')
       } else {
@@ -1013,7 +1016,11 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
             <div style={{ background:'#f5f5f3', borderRadius:'10px 10px 0 0', border:`0.5px solid ${BORDER}`, borderBottom:'none', padding:'14px 20px' }}>
               <div style={{ fontSize:9, color:'#d97706', fontWeight:600, textTransform:'uppercase', letterSpacing:1, marginBottom:10 }}>SQUARE FOOTAGE TAKEOFF</div>
               <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:12 }}>
-                {[['Kitchen Counter',ctTotals.kitchenSF.toFixed(1)+' SF'],['Vanity',ctTotals.vanitySF.toFixed(1)+' SF'],['Total Material',ctMaterialSF.toFixed(1)+' SF'],['Waste',wastePct+'%'],['Order Qty',ctOrderSF.toFixed(1)+' SF']].map(([l,v])=>(
+                {(sheetCt
+                  ? [['Net SF (from Excel)', sheetCt.netSF.toFixed(2)+' SF'],
+                     ['Splash (from Excel)', (sheetCt.splashSF ?? 0).toFixed(2)+' SF'],
+                     ['Order Qty', (sheetCt.totalSF ?? (sheetCt.netSF + (sheetCt.splashSF || 0))).toFixed(2)+' SF']]
+                  : [['Kitchen Counter',ctTotals.kitchenSF.toFixed(1)+' SF'],['Vanity',ctTotals.vanitySF.toFixed(1)+' SF'],['Total Material',ctMaterialSF.toFixed(1)+' SF'],['Waste',wastePct+'%'],['Order Qty',ctOrderSF.toFixed(1)+' SF']]).map(([l,v])=>(
                   <div key={l} style={{ textAlign:'center' }}>
                     <div style={{ fontSize:8, color:MUTED, textTransform:'uppercase', letterSpacing:0.5, marginBottom:2 }}>{l}</div>
                     <div style={{ color:l==='Order Qty'?'#d97706':'#1a1a1a', fontSize:l==='Order Qty'?20:16, fontWeight:700 }}>{v}</div>
