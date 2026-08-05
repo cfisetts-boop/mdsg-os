@@ -16,7 +16,26 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, salesTaxPct } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, salesTaxPct, bidSections = {} } = await request.json()
+
+    const DEFAULT_SECTIONS = {
+      includedInBid: 'Sales Tax  |  Delivery to Job Site',
+      assembly: 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
+      notIncluded: [
+        'Installation — under separate contract with Greenworks Renovations',
+        'Attic stock, locks, labor, shims, screws, supports, grommets, castors, blocking or backing',
+        'Crown molding, scribe or base shoe unless included in writing',
+        'Recessed linen cabinets, desks, entry benches, floating shelves or undercabinet lighting unless included in writing',
+        'Model unit "Out of Phase" delivery',
+      ].join('\n'),
+      bottomNotes: 'Final price subject to approved shop drawings. The first red-line revision is free — subsequent revisions subject to additional fees.',
+    }
+    const SEC = {
+      includedInBid: (bidSections.includedInBid ?? DEFAULT_SECTIONS.includedInBid),
+      assembly:      (bidSections.assembly      ?? DEFAULT_SECTIONS.assembly),
+      notIncluded:   (bidSections.notIncluded   ?? DEFAULT_SECTIONS.notIncluded),
+      bottomNotes:   (bidSections.bottomNotes   ?? DEFAULT_SECTIONS.bottomNotes),
+    }
     const salesTax = (salesTaxPct !== undefined && salesTaxPct !== null) ? Number(salesTaxPct) : 9.15
     if (!jobId) return Response.json({ error: 'Job ID required' }, { status: 400 })
 
@@ -196,7 +215,7 @@ export async function POST(request) {
       dt(val, ML + LBL_W, sy, { size: 7.5, maxWidth: MID - ML - LBL_W - 8 })
       sy -= 11
     })
-    sy = 642
+    sy = 600   // start below the DESCRIPTION bar, same as left column (was 642 — overlapped CONTACT block and bar)
     specR.forEach(([lbl, val]) => {
       dt(lbl, COL_R, sy, { size: 7.5, color: gray })
       dt(val, COL_R + RLBL_W, sy, { size: 7.5 })
@@ -293,24 +312,24 @@ export async function POST(request) {
     // ═══════════════════════════════════════════════════════════════════════
     dt('INCLUDED IN BID:', ML, py, { bold: true, size: 7.5, color: darkGreen })
     py -= 10
-    dt('Sales Tax  |  Delivery to Job Site', ML + 8, py, { size: 7, color: gray })
-    py -= 13
+    SEC.includedInBid.split('\n').filter(l => l.trim()).forEach(line => {
+      dt(line.trim(), ML + 8, py, { size: 7, color: gray, maxWidth: PW - 8 })
+      py -= 10
+    })
+    py -= 3
 
     dt('ASSEMBLY, STAGING & INSTALLATION:', ML, py, { bold: true, size: 7.5, color: darkGreen })
     py -= 10
-    dt('By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com', ML + 8, py, { size: 7, color: gray, maxWidth: PW - 8 })
-    py -= 13
+    SEC.assembly.split('\n').filter(l => l.trim()).forEach(line => {
+      dt(line.trim(), ML + 8, py, { size: 7, color: gray, maxWidth: PW - 8 })
+      py -= 10
+    })
+    py -= 3
 
     dt('NOT INCLUDED IN BID:', ML, py, { bold: true, size: 7.5, color: darkGreen })
     py -= 10
-    ;[
-      'Installation — under separate contract with Greenworks Renovations',
-      'Attic stock, locks, labor, shims, screws, supports, grommets, castors, blocking or backing',
-      'Crown molding, scribe or base shoe unless included in writing',
-      'Recessed linen cabinets, desks, entry benches, floating shelves or undercabinet lighting unless included in writing',
-      'Model unit "Out of Phase" delivery',
-    ].forEach(line => {
-      dt(`• ${line}`, ML + 8, py, { size: 6.5, color: gray, maxWidth: PW - 8 })
+    SEC.notIncluded.split('\n').filter(l => l.trim()).forEach(line => {
+      dt(`• ${line.trim().replace(/^[•\-]\s*/, '')}`, ML + 8, py, { size: 6.5, color: gray, maxWidth: PW - 8 })
       py -= 9
     })
 
@@ -318,7 +337,7 @@ export async function POST(request) {
     py -= 10
 
     dt('NOTES:', ML, py, { bold: true, size: 7, color: darkGreen })
-    dt('Final price subject to approved shop drawings. The first red-line revision is free — subsequent revisions subject to additional fees.', ML + 36, py, { size: 6.5, color: gray, maxWidth: PW - 36 })
+    dt(SEC.bottomNotes, ML + 36, py, { size: 6.5, color: gray, maxWidth: PW - 36 })
     py -= 11
     dt('Thank you for the opportunity to submit our proposal. Unit pricing honored for 90 days from proposal date. All quantities estimated — field measurements and approved shop drawings will prevail.', ML, py, { size: 6.5, color: gray, maxWidth: PW })
     py -= 14

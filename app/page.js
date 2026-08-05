@@ -1,16 +1,11 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase'
 import TakeoffEngine from './components/TakeoffEngine'
 import CountertopCalc from './components/CountertopCalc'
 import AgentPipeline from './components/AgentPipeline'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  { auth: { storageKey: 'mdsg-main' } }
-)
 
 const STAGE_COLORS = {
   'Bid':           { bg: '#EEEDFE', text: '#3C3489' },
@@ -52,6 +47,16 @@ export default function Home() {
   const [reminders, setReminders] = useState([])
   const [proposalSender, setProposalSender] = useState('Cole')
   const [proposalNotes, setProposalNotes] = useState('')
+  const DEFAULT_BID_SECTIONS = {
+    includedInBid: 'Sales Tax  |  Delivery to Job Site',
+    assembly: 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
+    notIncluded: 'Installation — under separate contract with Greenworks Renovations\nAttic stock, locks, labor, shims, screws, supports, grommets, castors, blocking or backing\nCrown molding, scribe or base shoe unless included in writing\nRecessed linen cabinets, desks, entry benches, floating shelves or undercabinet lighting unless included in writing\nModel unit "Out of Phase" delivery',
+    bottomNotes: 'Final price subject to approved shop drawings. The first red-line revision is free — subsequent revisions subject to additional fees.',
+  }
+  const [bidSections, setBidSections] = useState(DEFAULT_BID_SECTIONS)
+  useEffect(() => {
+    setBidSections(selectedJob?.proposal_sections ? { ...DEFAULT_BID_SECTIONS, ...selectedJob.proposal_sections } : DEFAULT_BID_SECTIONS)
+  }, [selectedJob?.id])
   const [proposalMarkup, setProposalMarkup] = useState(1.34)
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
@@ -347,9 +352,11 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, markupMultiplier: Number(proposalMarkup), salesTaxPct: Number(proposalSalesTax), additionalLineItems }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, markupMultiplier: Number(proposalMarkup), salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
+      // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
+      supabase.from('jobs').update({ proposal_sections: bidSections }).eq('id', selectedJob.id).then(() => {})
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -878,6 +885,18 @@ export default function Home() {
                         <option>Cole</option><option>Pam</option><option>Blake</option>
                       </select>
                     </div>
+                    {[
+                      ['includedInBid', 'Included in Bid', 40],
+                      ['assembly', 'Assembly, Staging & Installation', 48],
+                      ['notIncluded', 'Not Included in Bid (one bullet per line)', 90],
+                      ['bottomNotes', 'Proposal Notes (bottom of PDF)', 48],
+                    ].map(([key, label, h]) => (
+                      <div key={key} style={{ marginBottom: 12 }}>
+                        <label style={lbl}>{label}</label>
+                        <textarea value={bidSections[key]} onChange={e => setBidSections(p => ({ ...p, [key]: e.target.value }))} style={{ width: '100%', padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 11.5, height: h, resize: 'vertical', fontFamily: 'inherit' }} />
+                      </div>
+                    ))}
+                    <button onClick={() => setBidSections(DEFAULT_BID_SECTIONS)} style={{ marginBottom: 14, padding: '4px 10px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: '#f5f5f3', color: '#555', border: '0.5px solid #ddd' }}>↺ Reset bid sections to defaults</button>
                     <div style={{ marginBottom: 16 }}>
                       <label style={lbl}>Notes (optional)</label>
                       <textarea value={proposalNotes} onChange={e => setProposalNotes(e.target.value)} placeholder="Any additional notes..." style={{ width: '100%', padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, height: 60, resize: 'vertical' }} />
