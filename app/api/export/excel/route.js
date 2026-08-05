@@ -117,6 +117,18 @@ function mergeFill(ws, rowNum, fromCol, toCol, label, fillColor, fontColor = '00
   ws.getRow(rowNum).commit()
 }
 
+// Same visual banner but WITHOUT merging — keeps rows filter/sort friendly.
+function fillLabel(ws, rowNum, fromCol, toCol, label, fillColor, fontColor = '000000') {
+  for (let col = fromCol; col <= toCol; col++) {
+    ws.getCell(rowNum, col).fill = fill(fillColor)
+  }
+  const cell = ws.getCell(rowNum, fromCol)
+  cell.value = label
+  cell.font = boldFont(10, fontColor)
+  cell.alignment = { horizontal: 'left', vertical: 'middle' }
+  ws.getRow(rowNum).commit()
+}
+
 // ── Group SKUs by section, sorted per Blake's section order ──────────────────
 function groupBySection(skus, fillers = []) {
   const all = [
@@ -197,7 +209,9 @@ function buildUnitTab(wb, unitType, projectName, supplierName, catalogRef) {
 
   // Row 2: Supplier line
   ws.mergeCells(r, 1, r, 9)
-  ws.getCell(r, 1).value = `${projectName} — ${unitType.unit_type_name}  |  ${supplierName}  ${catalogRef}`
+  const utCtSF = typeof unitType.excelSubtotalSF === 'number' ? unitType.excelSubtotalSF
+               : (unitType.countertop_sf > 0 ? unitType.countertop_sf : null)
+  ws.getCell(r, 1).value = `${projectName} — ${unitType.unit_type_name}  |  ${supplierName}  ${catalogRef}${utCtSF !== null ? `  |  Countertop: ${utCtSF.toFixed(2)} SF (all ${qty} units)` : ''}`
   ws.getCell(r, 1).font = normalFont(9)
   r++
 
@@ -311,7 +325,7 @@ function buildUnitTab(wb, unitType, projectName, supplierName, catalogRef) {
 }
 
 // ── Build Master Summary tab ──────────────────────────────────────────────────
-function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits) {
+function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits, sheetTotals) {
   const ws = wb.addWorksheet('Master Summary')
   ws.moveToBeginning ? ws.moveToBeginning() : null // keep it first
 
@@ -324,7 +338,8 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
     { width: 9 },   // Depth
     { width: 9 },   // Hinge
     { width: 16 },  // Total Qty (all units)
-    { width: 18 },  // HW/EA (Total HW)
+    { width: 12 },  // HW / EA (per unit)
+    { width: 14 },  // Total HW (units x each)
   ]
 
   // Build unit type summary string
@@ -335,14 +350,14 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
   let r = 1
 
   // Title
-  ws.mergeCells(r, 1, r, 9)
+  ws.mergeCells(r, 1, r, 10)
   ws.getCell(r, 1).value = `${projectName.toUpperCase()} — CABINET MASTER SUMMARY`
   ws.getCell(r, 1).font = boldFont(13, COLORS.title)
   ws.getRow(r).height = 20
   r++
 
   // Supplier info
-  ws.mergeCells(r, 1, r, 9)
+  ws.mergeCells(r, 1, r, 10)
   ws.getCell(r, 1).value = `Supplier: ${supplierName}  |  Catalog: ${catalogRef}  |  Print Date: ${printDate}  |  ${totalUnits} Total Units: ${unitSummary}`
   ws.getCell(r, 1).font = normalFont(9)
   r++
@@ -351,7 +366,7 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
   r++
 
   // Headers
-  const headers = ['#', 'SKU / User Code', 'Section', 'Width', 'Height', 'Depth', 'Hinge', 'Total Qty\n(All Units)', 'HW / EA\n(Total HW)']
+  const headers = ['#', 'SKU / User Code', 'Section', 'Width', 'Height', 'Depth', 'Hinge', 'Total Qty\n(All Units)', 'HW / EA', 'Total HW\n(Units × EA)']
   const headerRow = ws.getRow(r)
   headers.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1)
@@ -408,7 +423,7 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
 
   sortedGroups.forEach(([section, items]) => {
     const bannerColor = SECTION_BANNER_COLORS[section] || COLORS.bannerBase
-    mergeFill(ws, r, 1, 9, bannerLabel(section), bannerColor)
+    fillLabel(ws, r, 1, 10, bannerLabel(section), bannerColor)
     r++
 
     items.forEach(item => {
@@ -416,12 +431,14 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
       const hinge = normalizeHinge(item.hinge_side)
       const hw = resolveHW(item)
       const hwTotalExact = item.hwTotal !== undefined ? item.hwTotal : (hw.hardware > 0 ? hw.hardware * item.totalQty : 0)
-      const hwDisplay = hwTotalExact > 0
-        ? `${hw.hardware !== null && hw.hardware > 0 ? hw.hardware : Math.round(hwTotalExact / item.totalQty)}  (${hwTotalExact})`
-        : hw.hardware === 0 ? '—' : '?'
+      const hwEach = hw.hardware !== null && hw.hardware > 0
+        ? hw.hardware
+        : hwTotalExact > 0 ? Math.round(hwTotalExact / item.totalQty) : (hw.hardware === 0 ? 0 : null)
+      const hwEachDisplay  = hwEach === null ? '?' : hwEach === 0 ? '—' : hwEach
+      const hwTotalDisplay = hwEach === null ? '?' : hwTotalExact > 0 ? hwTotalExact : '—'
 
       const row = ws.getRow(r)
-      const vals = [rowNum, item.sku, section, dims.width, dims.height, dims.depth, hinge, item.totalQty, hwDisplay]
+      const vals = [rowNum, item.sku, section, dims.width, dims.height, dims.depth, hinge, item.totalQty, hwEachDisplay, hwTotalDisplay]
       vals.forEach((v, i) => {
         const cell = row.getCell(i + 1)
         cell.value = v
@@ -445,44 +462,59 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
 
   // ── Footer: TOTAL CABINETS ────────────────────────────────────────────────
   r++ // blank gap
-  ws.mergeCells(r, 1, r, 7)
-  ws.getCell(r, 1).value = `TOTAL CABINETS  —  ${totalCabUnique} unique SKUs  |  ${totalCabQty.toLocaleString()} total cabinet pieces`
-  ws.getCell(r, 1).font = boldFont(10)
-  ws.getCell(r, 1).fill = fill(COLORS.subtotalRow)
+  fillLabel(ws, r, 1, 8, `TOTAL CABINETS  —  ${totalCabUnique} unique SKUs  |  ${totalCabQty.toLocaleString()} total cabinet pieces`, COLORS.subtotalRow)
   ws.getCell(r, 8).value = totalCabQty
   ws.getCell(r, 8).font = boldFont(10)
-  ws.getCell(r, 8).fill = fill(COLORS.subtotalRow)
-  ws.getCell(r, 9).value = `Total HW: ${(sheetHWGrand ?? totalHW).toLocaleString()}`
-  ws.getCell(r, 9).font = boldFont(10)
+  ws.getCell(r, 10).value = sheetHWGrand ?? totalHW
+  ws.getCell(r, 10).font = boldFont(10)
+  ws.getCell(r, 10).fill = fill(COLORS.subtotalRow)
+  ws.getCell(r, 9).value = 'Total HW →'
+  ws.getCell(r, 9).font = normalFont(9)
   ws.getCell(r, 9).fill = fill(COLORS.subtotalRow)
   ws.getRow(r).commit()
   r++
 
   // ── Footer: TOTAL FILLERS & MISC ─────────────────────────────────────────
-  ws.mergeCells(r, 1, r, 7)
-  ws.getCell(r, 1).value = `TOTAL FILLERS & MISC  —  ${totalFillerUnique} unique SKUs  |  ${totalFillerQty.toLocaleString()} total pieces`
-  ws.getCell(r, 1).font = boldFont(10)
-  ws.getCell(r, 1).fill = fill(COLORS.subtotalRow)
+  fillLabel(ws, r, 1, 8, `TOTAL FILLERS & MISC  —  ${totalFillerUnique} unique SKUs  |  ${totalFillerQty.toLocaleString()} total pieces`, COLORS.subtotalRow)
   ws.getCell(r, 8).value = totalFillerQty
   ws.getCell(r, 8).font = boldFont(10)
-  ws.getCell(r, 8).fill = fill(COLORS.subtotalRow)
   ws.getCell(r, 9).value = '—'
   ws.getCell(r, 9).fill = fill(COLORS.subtotalRow)
+  ws.getCell(r, 10).value = '—'
+  ws.getCell(r, 10).fill = fill(COLORS.subtotalRow)
   ws.getRow(r).commit()
   r++
 
   // ── Footer: GRAND TOTAL ───────────────────────────────────────────────────
-  ws.mergeCells(r, 1, r, 7)
+  for (let col = 1; col <= 10; col++) ws.getCell(r, col).fill = fill(COLORS.grandTotal)
   ws.getCell(r, 1).value = `GRAND TOTAL — ALL ${totalUnits} UNITS`
   ws.getCell(r, 1).font = boldFont(11)
-  ws.getCell(r, 1).fill = fill(COLORS.grandTotal)
   ws.getCell(r, 8).value = totalCabQty + totalFillerQty
   ws.getCell(r, 8).font = boldFont(11)
-  ws.getCell(r, 8).fill = fill(COLORS.grandTotal)
-  ws.getCell(r, 9).value = `Total HW: ${(sheetHWGrand ?? totalHW).toLocaleString()}`
-  ws.getCell(r, 9).font = boldFont(11)
-  ws.getCell(r, 9).fill = fill(COLORS.grandTotal)
+  ws.getCell(r, 9).value = 'Total HW →'
+  ws.getCell(r, 9).font = normalFont(9)
+  ws.getCell(r, 10).value = sheetHWGrand ?? totalHW
+  ws.getCell(r, 10).font = boldFont(11)
   ws.getRow(r).commit()
+  r++
+
+  // ── Footer: COUNTERTOPS (from source Excel — the sheet is the law) ────────
+  const ctNet    = sheetTotals && typeof sheetTotals.netSF    === 'number' ? sheetTotals.netSF    : null
+  const ctSplash = sheetTotals && typeof sheetTotals.splashSF === 'number' ? sheetTotals.splashSF : 0
+  const ctTotal  = sheetTotals && typeof sheetTotals.totalSF  === 'number' ? sheetTotals.totalSF
+                 : (ctNet !== null ? ctNet + ctSplash : null)
+  if (ctNet !== null || ctTotal !== null) {
+    r++ // blank gap
+    fillLabel(ws, r, 1, 8, `COUNTERTOPS  —  Net: ${ctNet !== null ? ctNet.toFixed(2) : '—'} SF  |  Splash: ${ctSplash.toFixed(2)} SF`, COLORS.subtotalRow)
+    ws.getCell(r, 9).value = 'ORDER SF'
+    ws.getCell(r, 9).font = boldFont(10)
+    ws.getCell(r, 9).fill = fill(COLORS.subtotalRow)
+    ws.getCell(r, 10).value = ctTotal !== null ? Number(ctTotal.toFixed(2)) : '—'
+    ws.getCell(r, 10).font = boldFont(11)
+    ws.getCell(r, 10).fill = fill(COLORS.grandTotal)
+    ws.getRow(r).commit()
+    r++
+  }
 
   return ws
 }
@@ -814,7 +846,7 @@ export async function POST(request) {
     wb.modified = new Date()
 
     // Build tabs — Leedo format + UKON quote request
-    buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits)
+    buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits, takeoffData.sheet_totals || null)
     unitTypes.forEach(ut => buildUnitTab(wb, ut, projectName, supplierName, catalogRef))
     buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef)
     buildUkonQuoteTab(wb, unitTypes, projectName, printDate)

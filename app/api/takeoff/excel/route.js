@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 
-const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|SMC|OCM|BEP|REP|TREP|VEP|DWEP|EPT|PLYS)/i  // SMC=SCM typo; REP/TREP/VEP = end panels
+const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|SMC|OCM|BEP|REP|TREP|VEP|TEP|DWEP|EPT|PLYS)/i  // SMC=SCM typo; REP/TREP/VEP/TEP = end panels
 // DW followed by 4 digits (DW2430R) = Diagonal Wall corner CABINET, not a dishwasher
 const APPLIANCE_RE = /^(DISH|DW(?!\d{4})|DISW|RANGE|REF|MICRO|OTR|WASH|DRYER|OVEN|HOOD|VENT)/i
 const BASE_RE      = /^(B[^WF]|SB|DB|BMC|BB|HC)/i   // base cabinets (not BW blind wall, not BF3 filler)
@@ -199,7 +199,7 @@ function parseSheet(sheet) {
     // This is the spreadsheet's OWN computed total for the unit just finished —
     // trust it over our own row-by-row sum since it's the source of truth
     // the project is built and quoted from.
-    if (aIsNum && !bStr && cIsNum && current && typeof kCell === 'number') {
+    if (aIsNum && a > 0 && !bStr && cIsNum && cCell > 0 && current && typeof kCell === 'number') {
       current.excelSubtotalSF = kCell
       // Col E on the subtotal row = the sheet's own hardware-per-unit total.
       // Capture it as authoritative, same as SF — the sheet is the law.
