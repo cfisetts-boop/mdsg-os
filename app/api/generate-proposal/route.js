@@ -240,7 +240,34 @@ export async function POST(request) {
     dt('Mfr Price',  ML + 408, uy + 3, { size: 7, bold: true, color: gray })
     uy -= 12
 
-    const sortedUnits  = (job.unit_types || []).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    // ── Merge duplicate unit_type rows (pipeline save + mfr quote upload can
+    //    both write rows for the same unit). Group by name; prefer the row
+    //    carrying a manufacturer price; normalize total-vs-per-unit cabinet counts.
+    const groups = {}
+    ;(job.unit_types || []).forEach(ut => {
+      const key = (ut.unit_type_name || '').trim().toUpperCase()
+      if (!groups[key]) groups[key] = []
+      groups[key].push(ut)
+    })
+    const perUnitCabs = (ut) => {
+      const qty = ut.unit_quantity || 1
+      const cnt = ut.cabinet_count || 0
+      // Mfr-quote rows sometimes store TOTAL cabinets — normalize to per-unit
+      if (qty > 1 && cnt > 0 && cnt % qty === 0 && cnt / qty <= 60) return cnt / qty
+      return cnt
+    }
+    const mergedUnits = Object.values(groups).map(rows => {
+      const priced = rows.find(r => (r.manufacturer_price || 0) > 0)
+      const base   = priced || rows[0]
+      return {
+        unit_type_name:     base.unit_type_name,
+        unit_quantity:      Math.max(...rows.map(r => r.unit_quantity || 1)),
+        cabinet_count:      perUnitCabs(base),
+        manufacturer_price: Math.max(...rows.map(r => r.manufacturer_price || 0)),
+        sort_order:         Math.min(...rows.map(r => r.sort_order ?? 999)),
+      }
+    })
+    const sortedUnits  = mergedUnits.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
     const displayUnits = sortedUnits.slice(0, 13)
     displayUnits.forEach((ut, i) => {
       if (i % 2 === 0) drect(ML, uy, PW, 11, mintBg)
