@@ -43,10 +43,41 @@ export async function POST(request) {
       .from('jobs').select('*, unit_types(*)').eq('id', jobId).single()
     if (jobError || !job) return Response.json({ error: 'Job not found' }, { status: 404 })
 
+    // ── Merge duplicate unit_type rows (pipeline save + mfr quote upload can
+    //    both write rows for the same unit). Group by name; prefer the row
+    //    carrying a manufacturer price; normalize total-vs-per-unit cabinet counts.
+    const groups = {}
+    ;(job.unit_types || []).forEach(ut => {
+      const key = (ut.unit_type_name || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // CAFÉ == CAFE
+      if (!groups[key]) groups[key] = []
+      groups[key].push(ut)
+    })
+    const perUnitCabs = (ut) => {
+      const qty = ut.unit_quantity || 1
+      const cnt = ut.cabinet_count || 0
+      // Mfr-quote rows sometimes store TOTAL cabinets — normalize to per-unit
+      if (qty > 1 && cnt > 0 && cnt % qty === 0 && cnt / qty <= 60) return cnt / qty
+      return cnt
+    }
+    const mergedUnits = Object.values(groups).map(rows => {
+      const priced = rows.find(r => (r.manufacturer_price || 0) > 0)
+      const base   = priced || rows[0]
+      return {
+        unit_type_name:     base.unit_type_name,
+        unit_quantity:      Math.max(...rows.map(r => r.unit_quantity || 1)),
+        cabinet_count:      perUnitCabs(base),
+        manufacturer_price: Math.max(...rows.map(r => r.manufacturer_price || 0)),
+        sort_order:         Math.min(...rows.map(r => r.sort_order ?? 999)),
+      }
+    })
+    const sortedUnits  = mergedUnits.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+    const displayUnits = sortedUnits.slice(0, 13)
+    const unitPriceSum = mergedUnits.reduce((s, u) => s + (u.manufacturer_price || 0), 0)
+
     const senderInfo   = SENDERS[sender] || SENDERS.Cole
     const hardware     = job.hardware_allowance || 0
     const discount     = job.dealer_discount_pct || 0.05
-    const grossCost    = job.manufacturer_gross_cost || 0
+    const grossCost    = job.manufacturer_gross_cost || unitPriceSum   // fall back to Σ unit mfr prices when job-level gross not set
     const freight      = job.freight_cost || 0
     const markup       = markupMultiplier || job.markup_multiplier || 1.34
     const netCost      = (grossCost * (1 - discount)) + freight
@@ -240,35 +271,6 @@ export async function POST(request) {
     dt('Mfr Price',  ML + 408, uy + 3, { size: 7, bold: true, color: gray })
     uy -= 12
 
-    // ── Merge duplicate unit_type rows (pipeline save + mfr quote upload can
-    //    both write rows for the same unit). Group by name; prefer the row
-    //    carrying a manufacturer price; normalize total-vs-per-unit cabinet counts.
-    const groups = {}
-    ;(job.unit_types || []).forEach(ut => {
-      const key = (ut.unit_type_name || '').trim().toUpperCase()
-      if (!groups[key]) groups[key] = []
-      groups[key].push(ut)
-    })
-    const perUnitCabs = (ut) => {
-      const qty = ut.unit_quantity || 1
-      const cnt = ut.cabinet_count || 0
-      // Mfr-quote rows sometimes store TOTAL cabinets — normalize to per-unit
-      if (qty > 1 && cnt > 0 && cnt % qty === 0 && cnt / qty <= 60) return cnt / qty
-      return cnt
-    }
-    const mergedUnits = Object.values(groups).map(rows => {
-      const priced = rows.find(r => (r.manufacturer_price || 0) > 0)
-      const base   = priced || rows[0]
-      return {
-        unit_type_name:     base.unit_type_name,
-        unit_quantity:      Math.max(...rows.map(r => r.unit_quantity || 1)),
-        cabinet_count:      perUnitCabs(base),
-        manufacturer_price: Math.max(...rows.map(r => r.manufacturer_price || 0)),
-        sort_order:         Math.min(...rows.map(r => r.sort_order ?? 999)),
-      }
-    })
-    const sortedUnits  = mergedUnits.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-    const displayUnits = sortedUnits.slice(0, 13)
     displayUnits.forEach((ut, i) => {
       if (i % 2 === 0) drect(ML, uy, PW, 11, mintBg)
       dt(ut.unit_type_name, ML + 6,   uy + 2, { size: 7, maxWidth: 265 })
@@ -277,6 +279,14 @@ export async function POST(request) {
       dt(ut.manufacturer_price ? fmtMoney(ut.manufacturer_price) : '—', ML + 411, uy + 2, { size: 7 })
       uy -= 11
     })
+    // TOTALS row
+    drect(ML, uy, PW, 12, rgb(0.88, 0.95, 0.90))
+    dt('TOTALS', ML + 6, uy + 3, { bold: true, size: 7 })
+    dt(String(sortedUnits.reduce((s, u) => s + (u.unit_quantity || 1), 0)), ML + 283, uy + 3, { bold: true, size: 7 })
+    dt(String(sortedUnits.reduce((s, u) => s + (u.cabinet_count || 0) * (u.unit_quantity || 1), 0).toLocaleString()), ML + 333, uy + 3, { bold: true, size: 7 })
+    dt(unitPriceSum > 0 ? fmtMoney(unitPriceSum) : '—', ML + 411, uy + 3, { bold: true, size: 7 })
+    uy -= 12
+
     if (sortedUnits.length > 13) {
       dt(`+ ${sortedUnits.length - 13} more unit types — see attached cabinet schedule`, ML + 6, uy + 2, { size: 7, color: gray })
       uy -= 11
