@@ -56,8 +56,10 @@ export default function Home() {
   const [bidSections, setBidSections] = useState(DEFAULT_BID_SECTIONS)
   useEffect(() => {
     setBidSections(selectedJob?.proposal_sections ? { ...DEFAULT_BID_SECTIONS, ...selectedJob.proposal_sections } : DEFAULT_BID_SECTIONS)
+    setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
   }, [selectedJob?.id])
-  const [proposalMarkup, setProposalMarkup] = useState(1.34)
+  const [proposalMargin, setProposalMargin] = useState(20)
+  const [proposalGross,  setProposalGross]  = useState('')
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -352,7 +354,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, markupMultiplier: Number(proposalMarkup), salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -402,7 +404,7 @@ export default function Home() {
   const awardedValue = jobs.filter(j => !['Bid', 'Lost'].includes(j.stage)).reduce((s, j) => s + (j.bid_value || 0), 0)
   const avgMargin = jobs.filter(j => j.gross_margin_pct > 0).reduce((s, j, _, arr) => s + j.gross_margin_pct / arr.length, 0)
   const overdueReminders = reminders.filter(r => r.due_date <= new Date().toISOString().split('T')[0])
-  const markupMarginPreview = proposalMarkup > 1 ? ((1 - 1 / Number(proposalMarkup)) * 100).toFixed(1) : '0.0'
+  const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
   const inTransitCount = allActiveShipments.filter(s => s.status === 'In Transit').length
   const delayedCount = allActiveShipments.filter(s => s.status === 'Delayed').length
 
@@ -860,13 +862,15 @@ export default function Home() {
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 14 }}>Generate Proposal PDF</div>
                     <div style={{ marginBottom: 14 }}>
-                      <label style={lbl}>Markup Multiplier</label>
+                      <label style={lbl}>Manufacturer Gross Cost ($ — from Leedo printable summary)</label>
+                      <input type="number" min="0" value={proposalGross} placeholder="e.g. 140000" onChange={e => setProposalGross(e.target.value)} style={{ width: 160, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13, marginBottom: 10 }} />
+                      <label style={lbl}>Gross Margin %</label>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                        <input type="number" step="0.01" min="1.00" max="2.00" value={proposalMarkup} onChange={e => setProposalMarkup(e.target.value)} style={{ width: 80, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
-                        <span style={{ fontSize: 12, color: '#3B6D11', fontWeight: 500 }}>= {markupMarginPreview}% margin</span>
+                        <input type="number" step="1" min="0" max="60" value={proposalMargin} onChange={e => setProposalMargin(e.target.value)} style={{ width: 80, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
+                        {marginPricePreview && <span style={{ fontSize: 12, color: '#3B6D11', fontWeight: 500 }}>→ sell price ≈ {marginPricePreview} (before freight/discount/tax)</span>}
                       </div>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        {[1.25, 1.30, 1.34, 1.40, 1.50].map(m => (<button key={m} onClick={() => setProposalMarkup(m)} style={{ padding: '4px 9px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: Number(proposalMarkup) === m ? '#3C3489' : '#f5f5f3', color: Number(proposalMarkup) === m ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{m}×</button>))}
+                        {[15, 20, 25, 30, 35].map(m => (<button key={m} onClick={() => setProposalMargin(m)} style={{ padding: '4px 9px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: Number(proposalMargin) === m ? '#3C3489' : '#f5f5f3', color: Number(proposalMargin) === m ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{m}%</button>))}
                       </div>
                     </div>
                     <div style={{ marginBottom: 14 }}>
