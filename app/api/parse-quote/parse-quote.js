@@ -11,43 +11,18 @@ export async function POST(request) {
     )
     const jobId = request.headers.get('x-job-id')
     const fileName = request.headers.get('x-file-name') || 'quote.pdf'
-    const isExcel = /\.(xlsx|xlsm)$/i.test(fileName)
     const pdfBuffer = await request.arrayBuffer()
     if (!pdfBuffer || pdfBuffer.byteLength === 0) {
       return Response.json({ error: 'No PDF data received' }, { status: 400 })
     }
-    let docBlock
-    if (isExcel) {
-      // Excel quote: flatten every sheet to text and let Opus read that —
-      // works for any manufacturer's spreadsheet layout without assumptions.
-      const ExcelJS = (await import('exceljs')).default
-      const wbIn = new ExcelJS.Workbook()
-      await wbIn.xlsx.load(Buffer.from(pdfBuffer))
-      let text = ''
-      wbIn.worksheets.forEach(ws => {
-        text += `\n=== SHEET: ${ws.name} ===\n`
-        ws.eachRow((row, n) => {
-          const cells = []
-          row.eachCell({ includeEmpty: false }, cell => {
-            const v = cell.value
-            cells.push(typeof v === 'object' && v?.result !== undefined ? v.result : v)
-          })
-          if (cells.length) text += cells.join(' | ') + '\n'
-        })
-      })
-      if (text.length > 150000) text = text.substring(0, 150000) + '\n[TRUNCATED]'
-      docBlock = { type: 'text', text: `MANUFACTURER QUOTE SPREADSHEET CONTENT:\n${text}` }
-    } else {
-      const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
-      docBlock = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } }
-    }
+    const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
     const extraction = await anthropic.messages.create({
       model: 'claude-opus-4-5',
       max_tokens: 8000,
       messages: [{
         role: 'user',
         content: [
-          docBlock,
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
           { type: 'text', text: `Parse this cabinet manufacturer quote PDF and return ONLY a JSON object, no markdown, no explanation. Use this structure:
 {"manufacturer":"Leedo","quote_number":"","rep_name":"","quote_date":null,"expiry_date":null,"project_name":"","totals":{"gross_amount":0,"freight_amount":0,"tax_amount":0,"grand_total":0,"freight_load_count":0},"unit_types":[{"unit_type_name":"","unit_quantity":1,"cabinet_count":0,"total_cubes":0,"gross_price":0,"line_items":[{"sku":"","description":"","door_style":"","finish":"","hinge_side":"","quantity":0,"extended_price":0}]}]}` }
         ]
@@ -76,39 +51,17 @@ console.log('RAW CLAUDE RESPONSE:', rawText.substring(0, 1000))
         total_cabinets: parsedQuote.unit_types?.reduce((s,u)=>s+(u.cabinet_count||0),0)||0,
         file_name: fileName, parsed_at: new Date().toISOString(),
       })
-      // ── UPSERT unit types: match existing rows (from the takeoff save) by
-      //    normalized name and add pricing to them; only INSERT rows that
-      //    don't exist yet. Never blind-append — that created duplicate rows.
-      const norm = (s) => (s || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      const { data: existingUts } = await supabase.from('unit_types').select('id, unit_type_name').eq('job_id', jobId)
-      const existingByName = {}
-      ;(existingUts || []).forEach(row => { existingByName[norm(row.unit_type_name)] = row })
-
       for (let i = 0; i < (parsedQuote.unit_types||[]).length; i++) {
         const ut = parsedQuote.unit_types[i]
-        const match = existingByName[norm(ut.unit_type_name)]
-        let utId = null
-        if (match) {
-          // Existing takeoff row — attach pricing, keep the takeoff's cabinet data
-          await supabase.from('unit_types').update({
-            manufacturer_price: ut.gross_price || 0,
-            total_cubes: ut.total_cubes || 0,
-          }).eq('id', match.id)
-          utId = match.id
-          // Replace this unit's mfr line items so re-uploads don't stack
-          await supabase.from('cabinet_line_items').delete().eq('unit_type_id', match.id)
-        } else {
-          const { data: utData } = await supabase.from('unit_types').insert({
-            job_id: jobId, unit_type_name: ut.unit_type_name,
-            unit_quantity: ut.unit_quantity||1, cabinet_count: ut.cabinet_count||0,
-            total_cubes: ut.total_cubes||0, manufacturer_price: ut.gross_price||0, sort_order: 100 + i,
-          }).select().single()
-          utId = utData?.id || null
-        }
-        if (utId && ut.line_items?.length > 0) {
+        const { data: utData } = await supabase.from('unit_types').insert({
+          job_id: jobId, unit_type_name: ut.unit_type_name,
+          unit_quantity: ut.unit_quantity||1, cabinet_count: ut.cabinet_count||0,
+          total_cubes: ut.total_cubes||0, manufacturer_price: ut.gross_price||0, sort_order: i,
+        }).select().single()
+        if (utData && ut.line_items?.length > 0) {
           await supabase.from('cabinet_line_items').insert(
             ut.line_items.map((item,j)=>({
-              unit_type_id: utId, job_id: jobId, sku: item.sku,
+              unit_type_id: utData.id, job_id: jobId, sku: item.sku,
               description: item.description, door_style: item.door_style,
               finish: item.finish, hinge_side: item.hinge_side,
               quantity: item.quantity||1, extended_price: item.extended_price||0, sort_order: j,

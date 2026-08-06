@@ -266,7 +266,7 @@ export default function Home() {
     const arrayBuffer = await file.arrayBuffer()
     const response = await fetch('/api/parse-quote', {
       method: 'POST',
-      headers: { 'x-job-id': selectedJob.id, 'x-file-name': file.name, 'Content-Type': 'application/pdf' },
+      headers: { 'x-job-id': selectedJob.id, 'x-file-name': file.name, 'Content-Type': 'application/octet-stream' },
       body: arrayBuffer,
     })
     const result = await response.json()
@@ -848,7 +848,7 @@ export default function Home() {
                     <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
                       <div style={{ color: '#555', fontSize: 13 }}>{quoteUploading ? 'Parsing with AI...' : 'Click to upload PDF quote'}</div>
                       <div style={{ color: '#999', fontSize: 11, marginTop: 4 }}>Leedo · Skyline · SMART · Ukon</div>
-                      <input type="file" accept=".pdf" onChange={handleQuoteUpload} style={{ display: 'none' }} disabled={quoteUploading} />
+                      <input type="file" accept=".pdf,.xlsx,.xlsm" onChange={handleQuoteUpload} style={{ display: 'none' }} disabled={quoteUploading} />
                     </label>
                     {quoteResult && (
                       <div style={{ marginTop: 12, padding: 12, background: '#EAF3DE', borderRadius: 8, fontSize: 12 }}>
@@ -1108,7 +1108,7 @@ export default function Home() {
                 <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 32, cursor: 'pointer', background: '#fafaf8' }}>
                   <div style={{ fontSize: 13, color: '#555' }}>{quoteUploading ? 'AI is parsing your quote...' : 'Drop PDF here or click to upload'}</div>
                   <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>Leedo · Skyline · SMART · Ukon</div>
-                  <input type="file" accept=".pdf" onChange={handleQuoteUpload} style={{ display: 'none' }} disabled={quoteUploading} />
+                  <input type="file" accept=".pdf,.xlsx,.xlsm" onChange={handleQuoteUpload} style={{ display: 'none' }} disabled={quoteUploading} />
                 </label>
               )}
             </div>
