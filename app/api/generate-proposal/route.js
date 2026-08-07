@@ -46,9 +46,18 @@ export async function POST(request) {
     // ── Merge duplicate unit_type rows (pipeline save + mfr quote upload can
     //    both write rows for the same unit). Group by name; prefer the row
     //    carrying a manufacturer price; normalize total-vs-per-unit cabinet counts.
+    // Optional per-job alias map: lines of "QUOTE NAME=TAKEOFF NAME" stored in
+    // proposal_sections.aliases — lets a mfr's naming merge into the takeoff's.
+    const aliasMap = {}
+    const aliasSrc = (bidSections.aliases ?? job.proposal_sections?.aliases ?? '')
+    String(aliasSrc).split('\n').forEach(line => {
+      const [from, to] = line.split('=').map(s => (s || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))
+      if (from && to) aliasMap[from] = to
+    })
     const groups = {}
     ;(job.unit_types || []).forEach(ut => {
-      const key = (ut.unit_type_name || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // CAFÉ == CAFE
+      let key = (ut.unit_type_name || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // CAFÉ == CAFE
+      if (aliasMap[key]) key = aliasMap[key]
       if (!groups[key]) groups[key] = []
       groups[key].push(ut)
     })

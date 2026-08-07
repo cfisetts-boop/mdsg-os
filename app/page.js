@@ -52,6 +52,7 @@ export default function Home() {
     assembly: 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
     notIncluded: 'Installation — under separate contract with Greenworks Renovations\nAttic stock, locks, labor, shims, screws, supports, grommets, castors, blocking or backing\nCrown molding, scribe or base shoe unless included in writing\nRecessed linen cabinets, desks, entry benches, floating shelves or undercabinet lighting unless included in writing\nModel unit "Out of Phase" delivery',
     bottomNotes: 'Final price subject to approved shop drawings. The first red-line revision is free — subsequent revisions subject to additional fees.',
+    aliases: '',
   }
   const [bidSections, setBidSections] = useState(DEFAULT_BID_SECTIONS)
   useEffect(() => {
@@ -894,6 +895,7 @@ export default function Home() {
                       ['assembly', 'Assembly, Staging & Installation', 48],
                       ['notIncluded', 'Not Included in Bid (one bullet per line)', 90],
                       ['bottomNotes', 'Proposal Notes (bottom of PDF)', 48],
+                      ['aliases', 'Unit Name Aliases — merge quote names into takeoff names (QUOTE NAME=TAKEOFF NAME, one per line, e.g. UNIT B=UNIT X-B)', 40],
                     ].map(([key, label, h]) => (
                       <div key={key} style={{ marginBottom: 12 }}>
                         <label style={lbl}>{label}</label>
