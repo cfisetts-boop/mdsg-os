@@ -47,6 +47,15 @@ export default function Home() {
   const [reminders, setReminders] = useState([])
   const [proposalSender, setProposalSender] = useState('Cole')
   const [proposalNotes, setProposalNotes] = useState('')
+  const DEFAULT_CT_BID_SECTIONS = {
+    includedInBid: 'Sales Tax  |  Delivery to Job Site  |  Sink cutouts per sink specifications',
+    assembly: 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
+    notIncluded: 'Installation — under separate contract with Greenworks Renovations\nPlumbing connections, faucets, undermount sink brackets\nTile backsplash installation or materials\nModel unit "Out of Phase" delivery',
+    bottomNotes: 'Final price subject to approved shop drawings. All quantities are estimated — field measurements and approved shop drawings will prevail.',
+  }
+  const [ctSender,      setCtSender]      = useState('Cole')
+  const [ctWastePct,    setCtWastePct]    = useState(10)
+  const [ctBidSections, setCtBidSections] = useState(DEFAULT_CT_BID_SECTIONS)
   const DEFAULT_BID_SECTIONS = {
     includedInBid: 'Sales Tax  |  Delivery to Job Site',
     assembly: 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
@@ -335,7 +344,7 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: 10, propConfig }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
@@ -780,6 +789,36 @@ export default function Home() {
                     ) : (
                       <div style={{ color: '#aaa', fontSize: 12 }}>No cabinet data saved yet — use the <span style={{ color: '#3C3489', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setView('agent-pipeline')}>⚡ Agent Pipeline</span> to extract and save</div>
                     )}
+                  </div>
+
+                  {/* ── Countertop Proposal Configuration ─────────────────────── */}
+                  <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
+                    <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}>Generate Countertop Proposal</div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={lbl}>Sender</label>
+                      <select value={ctSender} onChange={e=>setCtSender(e.target.value)} style={{ ...inp, width: 180, marginBottom: 12 }}>
+                        <option value="Cole">Cole Isetts — Sales Representative</option>
+                        <option value="Pam">Pamela Isetts — President</option>
+                        <option value="MDSG">MDSG Team</option>
+                      </select>
+                      <label style={lbl}>Waste Factor %</label>
+                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:12 }}>
+                        <input type="number" min="0" max="30" value={ctWastePct} onChange={e=>setCtWastePct(Number(e.target.value))} style={{ ...inp, width:70 }}/>
+                        <span style={{ fontSize:11, color:'#2D7A3A' }}>{ctWastePct}% added to net SF for order quantity</span>
+                      </div>
+                    </div>
+                    {[
+                      ['includedInBid', 'Included in Bid', 38],
+                      ['assembly', 'Assembly, Staging & Installation', 44],
+                      ['notIncluded', 'Not Included in Bid (one bullet per line)', 80],
+                      ['bottomNotes', 'Proposal Notes', 44],
+                    ].map(([key, label, h]) => (
+                      <div key={key} style={{ marginBottom: 10 }}>
+                        <label style={lbl}>{label}</label>
+                        <textarea value={ctBidSections[key]} onChange={e=>setCtBidSections(p=>({...p,[key]:e.target.value}))} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:h, resize:'vertical', fontFamily:'inherit' }}/>
+                      </div>
+                    ))}
+                    <button onClick={()=>setCtBidSections(DEFAULT_CT_BID_SECTIONS)} style={{ marginBottom:10, padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd' }}>↺ Reset to defaults</button>
                   </div>
 
                   <div style={{ ...card, borderColor: ctSavedData ? '#2D7A3A' : '#e5e5e0' }}>

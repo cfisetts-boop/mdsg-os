@@ -28,7 +28,26 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, unitTypes = [], totals, wastePct = 10, propConfig = {} } = await request.json()
+    const { jobId, unitTypes = [], totals, wastePct = 10, propConfig = {}, sender = 'Cole', bidSections = {} } = await request.json()
+
+    const DEFAULT_CT_SECTIONS = {
+      includedInBid: 'Sales Tax  |  Delivery to Job Site  |  Sink cutouts per sink specifications',
+      assembly: 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
+      notIncluded: 'Installation — under separate contract with Greenworks Renovations\nPlumbing connections, faucets, undermount sink brackets\nTile backsplash installation or materials\nModel unit "Out of Phase" delivery',
+      bottomNotes: 'Final price subject to approved shop drawings. All quantities are estimated — field measurements and approved shop drawings will prevail.',
+    }
+    const SEC = {
+      includedInBid: bidSections.includedInBid ?? DEFAULT_CT_SECTIONS.includedInBid,
+      assembly:      bidSections.assembly      ?? DEFAULT_CT_SECTIONS.assembly,
+      notIncluded:   bidSections.notIncluded   ?? DEFAULT_CT_SECTIONS.notIncluded,
+      bottomNotes:   bidSections.bottomNotes   ?? DEFAULT_CT_SECTIONS.bottomNotes,
+    }
+    const SENDERS = {
+      Cole:  { name: 'Cole Isetts',   title: 'Sales Representative', tel: '651-301-1068', email: 'cole@mdsgcabinets.com' },
+      Pam:   { name: 'Pamela Isetts', title: 'President',            tel: '651-301-1063', email: 'pam@mdsgcabinets.com' },
+      MDSG:  { name: 'MDSG Team',     title: '',                     tel: '651-301-1063', email: 'info@mdsgcabinets.com' },
+    }
+    const si = SENDERS[sender] || SENDERS.Cole
 
     let job = null
     if (jobId) {
@@ -97,25 +116,39 @@ export async function POST(request) {
 
     pageHeader(dt, drect, p1, `${propConfig.material_type?.toUpperCase()||'COUNTERTOP'} PROPOSAL`, `Proposal No. ${proposalNum}`)
 
-    // Info block
-    dt('DATE / VALID UNTIL', ML, 740, { size:6.5, color:gray, bold:true })
-    dt('CUSTOMER',           MID+14, 740, { size:6.5, color:gray, bold:true })
-    dt(fmtDate(today),       ML, 729, { size:8.5 })
+    // SR. PROJECT MANAGER + CONTACT (left / right matching cabinet proposal)
+    let iy = 740
+    dt('SR. PROJECT MANAGER', ML, iy, { size:6.5, color:gray, bold:true })
+    iy -= 12
+    dt(si.name,  ML, iy, { bold:true, size:9.5 }); iy -= 11
+    if (si.title) { dt(si.title, ML, iy, { size:8, color:gray }); iy -= 11 }
+
+    dt('CONTACT', ML+260, 740, { size:6.5, color:gray, bold:true })
+    dt(`Tel:   ${si.tel}`,   ML+260, 728, { size:8 })
+    dt(`Email: ${si.email}`, ML+260, 717, { size:8 })
+    dt('CSR:   csr@mdsgcabinets.com', ML+260, 706, { size:8 })
+    dline(698)
+
+    // CUSTOMER block
+    let cy = 690
+    dt('CUSTOMER', ML, cy, { size:6.5, color:gray, bold:true }); cy -= 12
     if (job) {
-      dt(job.gc_name||'—',   MID+14, 729, { size:9, bold:true, maxWidth:MR-MID-14 })
-      dt(job.name,           MID+14, 718, { size:8, maxWidth:MR-MID-14 })
-      const addr = [job.address,job.city,job.state,job.zip].filter(Boolean).join(', ')
-      if (addr) dt(addr, MID+14, 707, { size:7.5, color:gray, maxWidth:MR-MID-14 })
+      dt(job.gc_name || '—', ML, cy, { bold:true, size:9.5 }); cy -= 11
+      dt(job.name, ML, cy, { size:8 }); cy -= 11
+      const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(', ')
+      if (addr) { dt(addr, ML, cy, { size:7.5, color:gray }); cy -= 11 }
     }
-    dt('Valid until: '+fmtDate(validUntil), ML, 718, { size:7.5, color:gray })
-    dline(699)
+    dt('DATE:', ML+260, 690, { size:6.5, color:gray, bold:true })
+    dt(fmtDate(today), ML+260, 678, { size:8 })
+    dt('Valid until: ' + fmtDate(validUntil), ML+260, 667, { size:7.5, color:gray })
+    dline(Math.min(cy, 660))
 
     // Specs
     const totalUnitsAll = unitTypes.reduce((s,u)=>s+(u.unit_quantity||1),0)
     const specL = [['MATERIAL TYPE:', propConfig.material_type||'—'], ['FABRICATOR:', propConfig.fabricator||'—'], ['COLOR / PATTERN:', propConfig.color||'TBD'], ['THICKNESS:', propConfig.thickness||'3CM'], ['EDGE PROFILE:', propConfig.edge||'Eased Edge']]
     const specR = [['NO. OF UNITS:', String(job?.total_residential_units||totalUnitsAll)], ['UNIT TYPES:', String(unitTypes.length)], ['SINK CUTOUTS:', String(totals.cuts||0)]]
-    let sy = 689
-    dt('SPECIFICATIONS', ML, 695, { bold:true, size:9, color:darkGreen }); sy = 683
+    let sy = Math.min(cy, 660) - 14
+    dt('SPECIFICATIONS', ML, sy + 6, { bold:true, size:9, color:darkGreen }); sy -= 2
     specL.forEach(([lb,v])=>{ dt(lb,ML,sy,{size:7.5,color:gray}); dt(v,ML+110,sy,{size:7.5}); sy-=11 })
     sy = 683
     specR.forEach(([lb,v])=>{ dt(lb,MID+14,sy,{size:7.5,color:gray}); dt(v,MID+100,sy,{size:7.5}); sy-=11 })
@@ -225,19 +258,16 @@ export async function POST(request) {
     dline(py)
     py -= 10
 
-    // Included / Not Included
+    // Included / Not Included — from editable bidSections (same as cabinet proposal)
     dt('INCLUDED IN BID:', ML, py, { bold:true, size:7.5, color:darkGreen }); py -= 10
-    dt('Sales Tax  |  Delivery to Job Site  |  Sink cutouts per sink specifications', ML+8, py, { size:7, color:gray }); py -= 13
-    dt('INSTALLATION:', ML, py, { bold:true, size:7.5, color:darkGreen }); py -= 10
-    dt('By Greenworks Renovations under separate contract — Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com', ML+8, py, { size:7, color:gray, maxWidth:PW-8 }); py -= 13
+    SEC.includedInBid.split('\n').filter(l=>l.trim()).forEach(l=>{ dt(l.trim(),ML+8,py,{size:7,color:gray,maxWidth:PW-8}); py-=10 }); py-=3
+    dt('ASSEMBLY, STAGING & INSTALLATION:', ML, py, { bold:true, size:7.5, color:darkGreen }); py -= 10
+    SEC.assembly.split('\n').filter(l=>l.trim()).forEach(l=>{ dt(l.trim(),ML+8,py,{size:7,color:gray,maxWidth:PW-8}); py-=10 }); py-=3
     dt('NOT INCLUDED IN BID:', ML, py, { bold:true, size:7.5, color:darkGreen }); py -= 10
-    ;['Installation — under separate contract with Greenworks Renovations', 'Plumbing connections, faucets, undermount sink brackets', 'Tile backsplash installation or materials', 'Model unit "Out of Phase" delivery']
-      .forEach(l=>{ dt(`• ${l}`, ML+8, py, {size:6.5, color:gray, maxWidth:PW-8}); py-=9 })
-
+    SEC.notIncluded.split('\n').filter(l=>l.trim()).forEach(l=>{ dt(`• ${l.trim().replace(/^[•\-]\s*/,'')}`,ML+8,py,{size:6.5,color:gray,maxWidth:PW-8}); py-=9 })
     dline(py-2); py -= 10
     dt('NOTES:', ML, py, { bold:true, size:7, color:darkGreen })
-    dt('Final price subject to approved shop drawings. All quantities are estimated — field measurements prevail.', ML+36, py, { size:6.5, color:gray, maxWidth:PW-36 }); py -= 11
-    dt('Thank you for the opportunity. Unit pricing honored for 90 days from proposal date.', ML, py, { size:6.5, color:gray }); py -= 14
+    dt(SEC.bottomNotes, ML+36, py, { size:6.5, color:gray, maxWidth:PW-36 }); py -= 14
 
     dt('Accepted by:', ML, py, { size:8 })
     p1.drawLine({ start:{x:ML+78,y:py-2}, end:{x:ML+290,y:py-2}, thickness:0.5, color:rgb(0.6,0.6,0.6) })
