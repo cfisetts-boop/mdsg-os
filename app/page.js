@@ -70,6 +70,11 @@ export default function Home() {
   }, [selectedJob?.id])
   const [proposalMargin, setProposalMargin] = useState(20)
   const [proposalGross,  setProposalGross]  = useState('')
+  const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
+  const [jobFiles,       setJobFiles]       = useState([])
+  const [filesLoading,   setFilesLoading]   = useState(false)
+  const [fileUploading,  setFileUploading]  = useState(false)
+  const [fileCategory,   setFileCategory]   = useState('Drawings')
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -311,6 +316,30 @@ export default function Home() {
     }
   }
 
+  async function uploadJobFile(e) {
+    const file = e.target.files?.[0]; if (!file) return
+    setFileUploading(true)
+    const fd = new FormData()
+    fd.append('jobId', selectedJob.id)
+    fd.append('category', fileCategory)
+    fd.append('file', file)
+    try {
+      await fetch('/api/job-files', { method: 'POST', body: fd })
+      const r = await fetch('/api/job-files?jobId=' + selectedJob.id)
+      const d = await r.json(); setJobFiles(d.files || [])
+    } catch {}
+    setFileUploading(false); e.target.value = ''
+  }
+  async function downloadJobFile(path, name) {
+    const r = await fetch('/api/job-files', { method: 'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ path }) })
+    const d = await r.json()
+    if (d.url) { const a = document.createElement('a'); a.href = d.url; a.target='_blank'; a.download = name; a.click() }
+  }
+  async function deleteJobFile(path) {
+    if (!confirm('Delete this file?')) return
+    await fetch('/api/job-files', { method: 'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, path }) })
+    setJobFiles(f => f.filter(x => x.path !== path))
+  }
   async function generateCtProposal() {
     if (!selectedJob || !ctSavedData) return alert('No countertop takeoff data saved for this job yet')
     setCtGenerating(true)
@@ -999,7 +1028,7 @@ export default function Home() {
                             const parts = f.name.split('__')
                             const label = parts.length >= 3 ? parts.slice(2).join('__') : f.name
                             const sizeLabel = f.size > 0 ? (f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB') : ''
-                            const icon = /\.pdf$/i.test(label)?'📄':/\.(doc|docx)$/i.test(label)?'📝':/\.(xls|xlsx|csv)$/i.test(label)?'📊':/\.(jpg|jpeg|png)$/i.test(label)?'🖼️':'📎'
+                            const ext2 = label.split('.').pop().toLowerCase(); const icon = ext2==='pdf'?'📄':['doc','docx'].includes(ext2)?'📝':['xls','xlsx','csv'].includes(ext2)?'📊':['jpg','jpeg','png'].includes(ext2)?'🖼️':'📎'
                             return (
                               <div key={f.path} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:6, background:'#f9f9f9', marginBottom:3 }}>
                                 <span style={{ fontSize:13 }}>{icon}</span>
