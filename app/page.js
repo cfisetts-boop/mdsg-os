@@ -75,6 +75,9 @@ export default function Home() {
   }
   const [ctSender,      setCtSender]      = useState('Cole')
   const [ctWastePct,    setCtWastePct]    = useState(10)
+  const [ctMargin,      setCtMargin]      = useState(20)
+  const [ctGross,       setCtGross]       = useState('')
+  const [ctNotes,       setCtNotes]       = useState('')
   const [ctBidSections, setCtBidSections] = useState(DEFAULT_CT_BID_SECTIONS)
   const DEFAULT_BID_SECTIONS = {
     includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -89,6 +92,8 @@ export default function Home() {
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
   }, [selectedJob?.id])
   const [proposalMargin, setProposalMargin] = useState(20)
+  // Monday-synced fields
+  const SUBMITTAL_STATUSES = ['', 'Not started', 'In progress', 'Awaiting approval', 'Approved', 'In revision (post approval)', 'Revised approved']
   const [proposalGross,  setProposalGross]  = useState('')
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
@@ -162,6 +167,16 @@ export default function Home() {
         box_construction: selectedJob.box_construction || '',
         hardware_allowance: selectedJob.hardware_allowance || 0,
         scope_notes: selectedJob.scope_notes || '',
+      gc_phone:          selectedJob.gc_phone          || '',
+      gc_email:          selectedJob.gc_email          || '',
+      gc_contact:        selectedJob.gc_contact        || '',
+      gross_margin_pct:  selectedJob.gross_margin_pct  || '',
+      tops_included:     selectedJob.tops_included     || false,
+      order_date:        selectedJob.order_date        || '',
+      delivery_date:     selectedJob.delivery_date     || '',
+      change_order_count:selectedJob.change_order_count|| '',
+      submittal_status:  selectedJob.submittal_status  || '',
+      monday_item_id:    selectedJob.monday_item_id    || '',
       })
       setEditUnitTypes(mergeUnitTypes(selectedJob.unit_types || []))
       setAdditionalLineItems([])
@@ -391,7 +406,7 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
@@ -707,7 +722,12 @@ export default function Home() {
                 <div>
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 16 }}>{selectedJob.name}</div>
-                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', selectedJob.bid_due_date], ['Owner', selectedJob.owner]].filter(([, v]) => v).map(([label, value]) => (
+                    {selectedJob.monday_item_id && (
+                      <a href={`https://cfisettss-team.monday.com/boards/${selectedJob.monday_board_id || '18392215392'}/pulses/${selectedJob.monday_item_id}`} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', background:'#f0f4ff', border:'0.5px solid #4169e1', borderRadius:10, fontSize:11, color:'#4169e1', fontWeight:500, textDecoration:'none', marginBottom:12 }}>
+                        <span>📋</span> View in Monday.com
+                      </a>
+                    )}
+                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', selectedJob.bid_due_date], ['Owner', selectedJob.owner], ['GC Contact', selectedJob.gc_contact], ['GC Phone', selectedJob.gc_phone], ['GC Email', selectedJob.gc_email], ['Order Date', selectedJob.order_date], ['Delivery Date', selectedJob.delivery_date], ['Change Orders', selectedJob.change_order_count], ['Submittal Status', selectedJob.submittal_status], ['Tops Included', selectedJob.tops_included ? 'Yes' : null]].filter(([, v]) => v).map(([label, value]) => (
                       <div key={label} style={{ marginBottom: 10 }}>
                         <div style={lbl}>{label}</div>
                         <div style={{ fontSize: 13 }}>{value}</div>
@@ -853,6 +873,18 @@ export default function Home() {
                         <input type="number" min="0" max="30" value={ctWastePct} onChange={e=>setCtWastePct(Number(e.target.value))} style={{ ...inp, width:70 }}/>
                         <span style={{ fontSize:11, color:'#2D7A3A' }}>{ctWastePct}% added to net SF for order quantity</span>
                       </div>
+                      <label style={lbl}>Countertop Material Cost ($ — from supplier quote)</label>
+                      <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:160, marginBottom:10 }}/>
+                      <label style={lbl}>Gross Margin %</label>
+                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:10 }}>
+                        <input type="number" step="1" min="0" max="60" value={ctMargin} onChange={e=>setCtMargin(e.target.value)} style={{ ...inp, width:70 }}/>
+                        {Number(ctGross)>0 && Number(ctMargin)>0 && <span style={{ fontSize:11, color:'#2D7A3A', fontWeight:500 }}>→ sell ≈ ${Math.round(Number(ctGross)/(1-Number(ctMargin)/100)).toLocaleString()}</span>}
+                      </div>
+                      <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+                        {[15,20,25,30,35].map(m=><button key={m} onClick={()=>setCtMargin(m)} style={{ padding:'3px 9px', fontSize:11, borderRadius:6, cursor:'pointer', background:Number(ctMargin)===m?'#2D7A3A':'#f5f5f3', color:Number(ctMargin)===m?'#fff':'#555', border:'0.5px solid #ddd' }}>{m}%</button>)}
+                      </div>
+                      <label style={lbl}>Notes (appears on proposal)</label>
+                      <textarea value={ctNotes} onChange={e=>setCtNotes(e.target.value)} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:52, resize:'vertical', fontFamily:'inherit', marginBottom:4 }}/>
                     </div>
                     {[
                       ['includedInBid', 'Included in Bid', 38],
