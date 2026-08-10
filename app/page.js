@@ -139,7 +139,24 @@ export default function Home() {
         scope_notes: selectedJob.scope_notes || '',
       })
       setEditUnitTypes(
-        (selectedJob.unit_types || []).sort((a, b) => a.sort_order - b.sort_order).map(ut => ({ ...ut }))
+        (() => {
+        // Merge duplicate unit_type rows (same cause as proposal duplicates — mfr quote appends)
+        const norm = s => (s||'').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+        const groups = {}
+        ;(selectedJob.unit_types || []).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).forEach(ut => {
+          const k = norm(ut.unit_type_name)
+          if (!groups[k]) groups[k] = []
+          groups[k].push(ut)
+        })
+        return Object.values(groups).map(rows => {
+          const priced = rows.find(r => (r.manufacturer_price||0) > 0) || rows[0]
+          const maxCabs = Math.max(...rows.map(r => r.cabinet_count||0))
+          // if one row has total cabs (count×qty) normalize back to per-unit
+          const qty = Math.max(...rows.map(r => r.unit_quantity||1))
+          const cabsPerUnit = maxCabs > 0 && maxCabs % qty === 0 && maxCabs/qty <= 60 ? maxCabs/qty : maxCabs
+          return { ...priced, unit_quantity: qty, cabinet_count: cabsPerUnit, manufacturer_price: Math.max(...rows.map(r=>r.manufacturer_price||0)) }
+        })
+      })()
       )
       setAdditionalLineItems([])
       setEditingProposal(false)
@@ -690,10 +707,10 @@ export default function Home() {
                         {editUnitTypes.length > 0 && (
                           <div style={{ marginTop: 10 }}>
                             <div style={lbl}>Unit Types</div>
-                            {editUnitTypes.map(ut => (
-                              <div key={ut.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 12, borderBottom: '0.5px solid #f5f5f3' }}>
+                            {editUnitTypes.map((ut,i) => (
+                              <div key={ut.id||i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 12, borderBottom: '0.5px solid #f5f5f3' }}>
                                 <span>{ut.unit_type_name}</span>
-                                <span style={{ color: '#888' }}>{ut.unit_quantity} units · {ut.cabinet_count} cabs</span>
+                                <span style={{ color: '#888' }}>{ut.unit_quantity} unit{ut.unit_quantity!==1?'s':''} · {ut.cabinet_count} cab{ut.cabinet_count!==1?'s':''}{ut.manufacturer_price>0?' · $'+ut.manufacturer_price.toLocaleString():''}</span>
                               </div>
                             ))}
                           </div>
@@ -971,6 +988,47 @@ export default function Home() {
                       <span style={{ color: '#888' }}>Gross Margin</span>
                       <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
                     </div>
+                  </div>
+
+                  {/* ── Job Files ──────────────────────────────────────── */}
+                  <div style={card}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                      <div style={{ fontWeight:500 }}>Job Files</div>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <select value={fileCategory} onChange={e=>setFileCategory(e.target.value)} style={{ ...inp, width:130, padding:'4px 8px', fontSize:11 }}>
+                          {FILE_CATEGORIES.map(cat=><option key={cat}>{cat}</option>)}
+                        </select>
+                        <label style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', borderRadius:6, cursor:fileUploading?'wait':'pointer', fontWeight:500 }}>
+                          {fileUploading ? 'Uploading...' : '+ Upload'}
+                          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.csv" onChange={uploadJobFile} style={{ display:'none' }} disabled={fileUploading}/>
+                        </label>
+                      </div>
+                    </div>
+                    {filesLoading && <div style={{ fontSize:11, color:'#888' }}>Loading...</div>}
+                    {!filesLoading && jobFiles.length === 0 && <div style={{ fontSize:11, color:'#bbb', padding:'6px 0' }}>No files yet — upload drawings, contracts, quotes, change orders</div>}
+                    {FILE_CATEGORIES.map(cat => {
+                      const catFiles = jobFiles.filter(f => f.category === cat)
+                      if (!catFiles.length) return null
+                      return (
+                        <div key={cat} style={{ marginBottom:10 }}>
+                          <div style={{ fontSize:10, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.4, marginBottom:4 }}>{cat}</div>
+                          {catFiles.map(f => {
+                            const parts = f.name.split('__')
+                            const label = parts.length >= 3 ? parts.slice(2).join('__') : f.name
+                            const sizeLabel = f.size > 0 ? (f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB') : ''
+                            const icon = /\.pdf$/i.test(label)?'📄':/\.(doc|docx)$/i.test(label)?'📝':/\.(xls|xlsx|csv)$/i.test(label)?'📊':/\.(jpg|jpeg|png)$/i.test(label)?'🖼️':'📎'
+                            return (
+                              <div key={f.path} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:6, background:'#f9f9f9', marginBottom:3 }}>
+                                <span style={{ fontSize:13 }}>{icon}</span>
+                                <button onClick={()=>downloadJobFile(f.path, label)} style={{ flex:1, textAlign:'left', background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#3C3489', padding:0, fontWeight:500 }}>{label}</button>
+                                {sizeLabel && <span style={{ fontSize:10, color:'#bbb' }}>{sizeLabel}</span>}
+                                <button onClick={()=>deleteJobFile(f.path)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:13, lineHeight:1, padding:'0 2px' }}>✕</button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )
+                    })}
                   </div>
 
                   <div style={card}>
