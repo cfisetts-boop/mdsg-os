@@ -7,6 +7,26 @@ import CountertopCalc from './components/CountertopCalc'
 import AgentPipeline from './components/AgentPipeline'
 
 
+// Merge duplicate unit_type rows — same name (accent-normalized) collapses into one,
+// preferring the row with a manufacturer price and the highest cabinet count.
+function mergeUnitTypes(rows) {
+  const norm = s => (s || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+  const groups = {}
+  ;[...rows].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).forEach(ut => {
+    const k = norm(ut.unit_type_name)
+    if (!groups[k]) groups[k] = []
+    groups[k].push(ut)
+  })
+  return Object.values(groups).map(g => {
+    const priced   = g.find(r => (r.manufacturer_price || 0) > 0) || g[0]
+    const maxQty   = Math.max(...g.map(r => r.unit_quantity || 1))
+    const maxCabs  = Math.max(...g.map(r => r.cabinet_count || 0))
+    const perUnit  = maxCabs > 0 && maxQty > 1 && maxCabs % maxQty === 0 && maxCabs / maxQty <= 60 ? maxCabs / maxQty : maxCabs
+    const maxPrice = Math.max(...g.map(r => r.manufacturer_price || 0))
+    return { ...priced, unit_quantity: maxQty, cabinet_count: perUnit, manufacturer_price: maxPrice }
+  })
+}
+
 const STAGE_COLORS = {
   'Bid':           { bg: '#EEEDFE', text: '#3C3489' },
   'Awarded':       { bg: '#EAF3DE', text: '#3B6D11' },
@@ -143,9 +163,7 @@ export default function Home() {
         hardware_allowance: selectedJob.hardware_allowance || 0,
         scope_notes: selectedJob.scope_notes || '',
       })
-      setEditUnitTypes(
-  (selectedJob.unit_types || []).sort((a, b) => (a.sort_order||0) - (b.sort_order||0)).map(ut => ({ ...ut }))
-      )
+      setEditUnitTypes(mergeUnitTypes(selectedJob.unit_types || []))
       setAdditionalLineItems([])
       setEditingProposal(false)
       setConfirmDelete(false)
