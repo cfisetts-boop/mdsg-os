@@ -139,24 +139,7 @@ export default function Home() {
         scope_notes: selectedJob.scope_notes || '',
       })
       setEditUnitTypes(
-        (() => {
-        // Merge duplicate unit_type rows (same cause as proposal duplicates — mfr quote appends)
-        const norm = s => (s||'').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
-        const groups = {}
-        ;(selectedJob.unit_types || []).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)).forEach(ut => {
-          const k = norm(ut.unit_type_name)
-          if (!groups[k]) groups[k] = []
-          groups[k].push(ut)
-        })
-        return Object.values(groups).map(rows => {
-          const priced = rows.find(r => (r.manufacturer_price||0) > 0) || rows[0]
-          const maxCabs = Math.max(...rows.map(r => r.cabinet_count||0))
-          // if one row has total cabs (count×qty) normalize back to per-unit
-          const qty = Math.max(...rows.map(r => r.unit_quantity||1))
-          const cabsPerUnit = maxCabs > 0 && maxCabs % qty === 0 && maxCabs/qty <= 60 ? maxCabs/qty : maxCabs
-          return { ...priced, unit_quantity: qty, cabinet_count: cabsPerUnit, manufacturer_price: Math.max(...rows.map(r=>r.manufacturer_price||0)) }
-        })
-      })()
+  (selectedJob.unit_types || []).sort((a, b) => (a.sort_order||0) - (b.sort_order||0)).map(ut => ({ ...ut }))
       )
       setAdditionalLineItems([])
       setEditingProposal(false)
