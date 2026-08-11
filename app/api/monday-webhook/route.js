@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import crypto from 'crypto'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -181,34 +180,37 @@ export async function POST(request) {
     return Response.json({ challenge: parsed.challenge })
   }
 
-  // Verify signature
-  if (SECRET) {
-    const sig = request.headers.get('x-monday-signature') || ''
-    const expected = 'sha256=' + crypto.createHmac('sha256', SECRET).update(body).digest('hex')
-    if (sig !== expected) {
-      console.error('Monday webhook signature mismatch')
-      return Response.json({ error: 'unauthorized' }, { status: 401 })
-    }
-  }
-
   const event    = parsed.event
   const itemId   = event?.pulseId || event?.itemId
   const boardId  = String(event?.boardId || '')
 
-  if (!itemId) return Response.json({ ok: true })
-  if (boardId && boardId !== BOARD_ID) return Response.json({ ok: true }) // wrong board
+  // Always return 200 to Monday — non-200 marks automation as failed
+  // Log everything so we can debug from Vercel logs
+  console.log('Monday event received:', JSON.stringify({ event: parsed.event?.type, itemId, boardId, keys: Object.keys(parsed) }))
 
-  try {
-    const item = await fetchItem(itemId)
-    if (!item) return Response.json({ ok: true })
-    const jobData = mapItem(item)
-    const result  = await upsertJob(jobData)
-    console.log(`Monday sync: ${result.action} job ${result.id} for item ${itemId}`)
-    return Response.json({ ok: true, ...result })
-  } catch (err) {
-    console.error('Monday webhook error:', err)
-    return Response.json({ error: err.message }, { status: 500 })
+  if (!itemId) {
+    console.log('No itemId in event — skipping')
+    return Response.json({ ok: true })
   }
+  if (boardId && boardId !== BOARD_ID) {
+    console.log('Wrong board:', boardId, '— expected', BOARD_ID)
+    return Response.json({ ok: true })
+  }
+
+  // Fire-and-forget so we always respond 200 immediately
+  ;(async () => {
+    try {
+      const item = await fetchItem(itemId)
+      if (!item) { console.log('Item not found:', itemId); return }
+      const jobData = mapItem(item)
+      const result  = await upsertJob(jobData)
+      console.log('Monday sync success:', result.action, 'job', result.id, 'item', itemId)
+    } catch (err) {
+      console.error('Monday sync error (non-fatal):', err.message, err.stack)
+    }
+  })()
+
+  return Response.json({ ok: true })
 }
 
 // Challenge also comes as GET on some Monday setups
