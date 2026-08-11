@@ -9,6 +9,9 @@ const BOARD_ID  = '18392215392'
 const API_TOKEN = process.env.MONDAY_API_KEY
 const SECRET    = process.env.MONDAY_WEBHOOK_SECRET
 
+// Log env var presence at module load (not values — just whether they exist)
+console.log('Monday webhook init — API_TOKEN present:', !!API_TOKEN, '| length:', API_TOKEN?.length || 0)
+
 // ── Monday API helper ────────────────────────────────────────────────────────
 async function mondayQuery(query, variables = {}) {
   const res = await fetch('https://api.monday.com/v2', {
@@ -81,61 +84,67 @@ async function fetchItem(itemId) {
   return data?.items?.[0]
 }
 
+// ── Exact column ID → OS field mapping (from your board's real IDs) ─────────
+const COLUMN_FIELD_MAP = {
+  'text_mkyn4fgr':  'gc_name',
+  'color_mkywb1z7': '__status',               // special: needs STATUS_MAP
+  'text_mkyns5k1':  'scope_notes',
+  'text_mkyny685':  'address',
+  'date_mkynm6s6':  'bid_due_date',
+  'text_mkyntx29':  'gc_contact',
+  'text_mkynxhmm':  'gc_phone',
+  'email_mkynvzvp': 'gc_email',
+  'text_mkynge5g':  'manufacturer',
+  'text_mkynyvvh':  'box_construction',
+  'text_mkynnz07':  'door_style',
+  'text_mkynvfz2':  '__cost',                 // special: parse as number
+  'text_mkynshx0':  '__bid_value',            // special: parse as number
+  'text_mkynvsse':  '__gp',                   // special: parse as number
+  'text_mkynhpgb':  '__tops',                 // special: "yes"/"no"/checkbox
+  'color_mkywg1wh': '__submittal_status',     // special: second status col
+  'text_mkyngg0v':  'order_date',
+  'text_mkyn1ghz':  'delivery_date',
+  'text_mkyndmak':  '__change_orders',        // special: parse as int
+}
+
 // ── Map a Monday item to an OS job object ────────────────────────────────────
 function mapItem(item) {
   const job = {
-    name:             item.name,
-    monday_item_id:   String(item.id),
-    monday_board_id:  String(item.board?.id || BOARD_ID),
+    name:            item.name,
+    monday_item_id:  String(item.id),
+    monday_board_id: String(item.board?.id || BOARD_ID),
+    stage:           'Bid',  // default
   }
 
   for (const col of (item.column_values || [])) {
-    const val = col.text || ''
-    const id  = col.id
+    const field = COLUMN_FIELD_MAP[col.id]
+    if (!field) continue
 
-    // Status → stage
-    if (col.type === 'color' || col.type === 'status') {
-      const key = (col.label || val || '').toLowerCase().trim()
-      job.stage = STATUS_MAP[key] || 'Bid'
-      continue
-    }
+    const val = (col.text || '').trim()
+    const label = (col.label || val || '').toLowerCase().trim()
 
-    // Map by column ID patterns (Monday generates these — we match by position)
-    // We discover real IDs on first run via logs, but common patterns:
-    if (id.startsWith('name'))      { /* item.name already set */ continue }
-    if (col.type === 'text' && !job.gc_name && val)          job.gc_name = val
-    else if (col.type === 'text' && !job.address && val && /\d/.test(val)) job.address = val
-
-    if (col.type === 'date' && !job.bid_due_date && val)     job.bid_due_date = val
-    if (col.type === 'phone' && val)                         job.gc_phone = val
-    if (col.type === 'email' && val)                         job.gc_email = val
-    if (col.type === 'long-text' && val)                     job.scope_notes = val
-    if (col.type === 'dropdown' && val)                      job.submittal_status = val
-    if (col.type === 'checkbox')                             {
-      if (!('tops_included' in job)) job.tops_included = col.checked === true
-    }
-
-    // Numbers: COST, TOTAL, GP%
-    if (col.type === 'numbers') {
-      const n = parseFloat(val) || 0
-      if (n > 0) {
-        if (!job.manufacturer_gross_cost)      job.manufacturer_gross_cost = n
-        else if (!job.bid_value)               job.bid_value = n
-        else if (!job.gross_margin_pct && n < 100) job.gross_margin_pct = n
-      }
-    }
-
-    // Dates: ORDER DATE, Delivery
-    if (col.type === 'date') {
-      if (!job.order_date)        job.order_date = val || null
-      else if (!job.delivery_date) job.delivery_date = val || null
+    if (field === '__status') {
+      job.stage = STATUS_MAP[label] || 'Bid'
+    } else if (field === '__submittal_status') {
+      job.submittal_status = col.label || val || null
+    } else if (field === '__cost') {
+      const n = parseFloat(val.replace(/[$,]/g, ''))
+      if (n > 0) job.manufacturer_gross_cost = n
+    } else if (field === '__bid_value') {
+      const n = parseFloat(val.replace(/[$,]/g, ''))
+      if (n > 0) job.bid_value = n
+    } else if (field === '__gp') {
+      const n = parseFloat(val.replace(/[%,]/g, ''))
+      if (n > 0) job.gross_margin_pct = n
+    } else if (field === '__tops') {
+      job.tops_included = /yes|true|1/i.test(val)
+    } else if (field === '__change_orders') {
+      const n = parseInt(val)
+      if (!isNaN(n)) job.change_order_count = n
+    } else if (val) {
+      job[field] = val
     }
   }
-
-  // Log column IDs for first-run calibration
-  console.log('Monday columns:', JSON.stringify(item.column_values?.map(c => ({
-    id: c.id, type: c.type, text: c.text?.substring(0,30)
-  }))))
 
   return job
 }
@@ -203,13 +212,17 @@ export async function POST(request) {
   // Fire-and-forget so we always respond 200 immediately
   ;(async () => {
     try {
+      console.log('Fetching Monday item:', itemId)
       const item = await fetchItem(itemId)
+      console.log('Item fetched:', item ? item.name : 'NOT FOUND')
       if (!item) { console.log('Item not found:', itemId); return }
       const jobData = mapItem(item)
+      console.log('Job data mapped:', JSON.stringify(Object.keys(jobData)))
       const result  = await upsertJob(jobData)
-      console.log('Monday sync success:', result.action, 'job', result.id, 'item', itemId)
+      console.log('Monday sync SUCCESS:', result.action, 'job', result.id, 'item', itemId)
     } catch (err) {
-      console.error('Monday sync error (non-fatal):', err.message, err.stack)
+      console.error('Monday sync FAILED:', err.message)
+      console.error('Stack:', err.stack)
     }
   })()
 
