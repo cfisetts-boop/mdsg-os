@@ -177,7 +177,10 @@ export async function POST(request) {
   try { parsed = JSON.parse(body) } catch { return Response.json({ error: 'bad json' }, { status: 400 }) }
 
   if (parsed.challenge) {
-    return Response.json({ challenge: parsed.challenge })
+    return new Response(JSON.stringify({ challenge: parsed.challenge }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
   }
 
   const event    = parsed.event
@@ -213,10 +216,19 @@ export async function POST(request) {
   return Response.json({ ok: true })
 }
 
-// Challenge also comes as GET on some Monday setups
+// Monday verification: GET with challenge param must echo it back
+// Without a challenge, return 200 so Monday knows endpoint is alive
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const challenge = searchParams.get('challenge')
-  if (challenge) return Response.json({ challenge })
-  return Response.json({ ok: true, message: 'Monday webhook endpoint active' })
+  if (challenge) {
+    return new Response(JSON.stringify({ challenge }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' }
+  })
 }
