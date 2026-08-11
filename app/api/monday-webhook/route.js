@@ -15,6 +15,8 @@ console.log('Monday webhook init — API_TOKEN present:', !!API_TOKEN, '| length
 // ── Monday API helper ────────────────────────────────────────────────────────
 async function mondayQuery(query, variables = {}) {
   console.log('Monday API call — token length:', API_TOKEN?.length, 'starts with:', API_TOKEN?.substring(0,8))
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 8000)
   const res = await fetch('https://api.monday.com/v2', {
     method: 'POST',
     headers: {
@@ -23,7 +25,9 @@ async function mondayQuery(query, variables = {}) {
       'API-Version': '2024-01',
     },
     body: JSON.stringify({ query, variables }),
+    signal: controller.signal,
   })
+  clearTimeout(timeout)
   console.log('Monday API response status:', res.status)
   const text = await res.text()
   console.log('Monday API response:', text.substring(0, 300))
@@ -71,24 +75,20 @@ const STATUS_MAP = {
 // ── Fetch full item from Monday API ─────────────────────────────────────────
 async function fetchItem(itemId) {
   const data = await mondayQuery(`
-    query($ids: [ID!]!) {
-      items(ids: $ids) {
-        id name board { id }
+    query {
+      items (ids: ${itemId}) {
+        id
+        name
+        board { id }
         column_values {
-          id type text
-          ... on StatusValue { label }
-          ... on NumbersValue { number }
-          ... on DateValue { date }
-          ... on CheckboxValue { checked }
-          ... on DropdownValue { text }
-          ... on TextValue { text }
-          ... on LongTextValue { text }
-          ... on PhoneValue { phone }
-          ... on EmailValue { email }
+          id
+          type
+          text
+          value
         }
       }
     }
-  `, { ids: [String(itemId)] })
+  `)
   return data?.items?.[0]
 }
 
@@ -129,7 +129,12 @@ function mapItem(item) {
     if (!field) continue
 
     const val = (col.text || '').trim()
-    const label = (col.label || val || '').toLowerCase().trim()
+    // Parse value JSON for status columns which store label in value
+    let label = val.toLowerCase().trim()
+    try {
+      const parsed = JSON.parse(col.value || '{}')
+      if (parsed.label) label = parsed.label.toLowerCase().trim()
+    } catch {}
 
     if (field === '__status') {
       job.stage = STATUS_MAP[label] || 'Bid'
