@@ -11,7 +11,7 @@ export async function GET(request) {
   const results = []
 
   // Register webhook for both events
-  for (const event of ['create_pulse', 'change_column_value']) {
+  for (const event of ['create_item', 'change_column_value']) {
     try {
       const res = await fetch('https://api.monday.com/v2', {
         method: 'POST',
