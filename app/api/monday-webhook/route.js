@@ -14,12 +14,20 @@ console.log('Monday webhook init — API_TOKEN present:', !!API_TOKEN, '| length
 
 // ── Monday API helper ────────────────────────────────────────────────────────
 async function mondayQuery(query, variables = {}) {
+  console.log('Monday API call — token length:', API_TOKEN?.length, 'starts with:', API_TOKEN?.substring(0,8))
   const res = await fetch('https://api.monday.com/v2', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: API_TOKEN },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': API_TOKEN,
+      'API-Version': '2024-01',
+    },
     body: JSON.stringify({ query, variables }),
   })
-  const json = await res.json()
+  console.log('Monday API response status:', res.status)
+  const text = await res.text()
+  console.log('Monday API response:', text.substring(0, 300))
+  const json = JSON.parse(text)
   if (json.errors) throw new Error(json.errors[0].message)
   return json.data
 }
