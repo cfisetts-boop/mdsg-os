@@ -222,60 +222,58 @@ export async function POST(request) {
     return Response.json({ ok: true })
   }
 
-  // Build job from webhook payload directly — no secondary API call needed
-  // Monday sends enough data in the event to create/update the job
-  ;(async () => {
-    try {
-      const eventData = parsed.event || {}
-      const pulseName = eventData.pulseName || eventData.itemName || 'New Monday Job'
-      const columnId  = eventData.columnId
-      const colValue  = eventData.value
+  // Build job from webhook payload directly — no secondary API call needed.
+  // IMPORTANT: must AWAIT everything before returning — Vercel freezes the
+  // function as soon as the response is sent, so fire-and-forget never runs.
+  try {
+    const eventData = parsed.event || {}
+    const pulseName = eventData.pulseName || eventData.itemName || 'New Monday Job'
+    const columnId  = eventData.columnId
+    const colValue  = eventData.value
 
-      // Build minimal job from webhook payload
-      const jobData = {
-        name:            pulseName,
-        monday_item_id:  String(itemId),
-        monday_board_id: String(boardId || BOARD_ID),
-        stage:           'Bid',
-      }
-
-      // If this is a column change event, update that specific field
-      if (columnId && colValue) {
-        const field = COLUMN_FIELD_MAP[columnId]
-        if (field && !field.startsWith('__')) {
-          jobData[field] = colValue.label || colValue.text || String(colValue)
-        } else if (field === '__status') {
-          const label = (colValue.label || '').toLowerCase().trim()
-          jobData.stage = STATUS_MAP[label] || undefined
-          delete jobData.stage  // don't overwrite stage on column updates unless it's status
-          if (field === '__status') jobData.stage = STATUS_MAP[label] || 'Bid'
-        }
-      }
-
-      console.log('Upserting job from webhook payload:', JSON.stringify(jobData))
-      const result = await upsertJob(jobData)
-      console.log('Monday sync SUCCESS:', result.action, 'job', result.id, 'item', itemId)
-
-      // Now try to enrich with full item data in background (best effort)
-      try {
-        const item = await fetchItem(itemId)
-        if (item) {
-          const fullData = mapItem(item)
-          const { data: existing } = await supabase.from('jobs').select('id').eq('monday_item_id', String(itemId)).maybeSingle()
-          if (existing) {
-            await supabase.from('jobs').update(fullData).eq('id', existing.id)
-            console.log('Enriched with full Monday data')
-          }
-        }
-      } catch (enrichErr) {
-        console.log('Enrichment failed (non-fatal):', enrichErr.message)
-      }
-
-    } catch (err) {
-      console.error('Monday sync FAILED:', err.message)
-      console.error('Stack:', err.stack)
+    const jobData = {
+      name:            pulseName,
+      monday_item_id:  String(itemId),
+      monday_board_id: String(boardId || BOARD_ID),
     }
-  })()
+    if (parsed.event?.type === 'create_pulse' || parsed.event?.type === 'create_item') {
+      jobData.stage = 'Bid'
+    }
+
+    // Column-change events: map the single changed column
+    if (columnId) {
+      const field = COLUMN_FIELD_MAP[columnId]
+      // Monday's value.label can be an object ({text, index}) or a string
+      const rawLabel = colValue && typeof colValue.label === 'object'
+        ? colValue.label?.text
+        : colValue?.label
+      const textVal = String(rawLabel ?? colValue?.text ?? colValue?.value ?? '').trim()
+
+      if (field === '__status') {
+        jobData.stage = STATUS_MAP[textVal.toLowerCase()] || 'Bid'
+      } else if (field === '__submittal_status') {
+        jobData.submittal_status = textVal || null
+      } else if (field === '__cost') {
+        const n = parseFloat(textVal.replace(/[$,]/g, '')); if (n > 0) jobData.manufacturer_gross_cost = n
+      } else if (field === '__bid_value') {
+        const n = parseFloat(textVal.replace(/[$,]/g, '')); if (n > 0) jobData.bid_value = n
+      } else if (field === '__gp') {
+        const n = parseFloat(textVal.replace(/[%,]/g, '')); if (n > 0) jobData.gross_margin_pct = n
+      } else if (field === '__tops') {
+        jobData.tops_included = /yes|true|1|v/i.test(textVal)
+      } else if (field === '__change_orders') {
+        const n = parseInt(textVal); if (!isNaN(n)) jobData.change_order_count = n
+      } else if (field && textVal) {
+        jobData[field] = textVal
+      }
+    }
+
+    console.log('Upserting job from webhook payload:', JSON.stringify(jobData))
+    const result = await upsertJob(jobData)
+    console.log('Monday sync SUCCESS:', result.action, 'job', result.id, 'item', itemId)
+  } catch (err) {
+    console.error('Monday sync FAILED:', err.message)
+  }
 
   return Response.json({ ok: true })
 }
