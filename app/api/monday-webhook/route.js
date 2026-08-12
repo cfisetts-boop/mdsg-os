@@ -222,17 +222,55 @@ export async function POST(request) {
     return Response.json({ ok: true })
   }
 
-  // Fire-and-forget so we always respond 200 immediately
+  // Build job from webhook payload directly — no secondary API call needed
+  // Monday sends enough data in the event to create/update the job
   ;(async () => {
     try {
-      console.log('Fetching Monday item:', itemId)
-      const item = await fetchItem(itemId)
-      console.log('Item fetched:', item ? item.name : 'NOT FOUND')
-      if (!item) { console.log('Item not found:', itemId); return }
-      const jobData = mapItem(item)
-      console.log('Job data mapped:', JSON.stringify(Object.keys(jobData)))
-      const result  = await upsertJob(jobData)
+      const eventData = parsed.event || {}
+      const pulseName = eventData.pulseName || eventData.itemName || 'New Monday Job'
+      const columnId  = eventData.columnId
+      const colValue  = eventData.value
+
+      // Build minimal job from webhook payload
+      const jobData = {
+        name:            pulseName,
+        monday_item_id:  String(itemId),
+        monday_board_id: String(boardId || BOARD_ID),
+        stage:           'Bid',
+      }
+
+      // If this is a column change event, update that specific field
+      if (columnId && colValue) {
+        const field = COLUMN_FIELD_MAP[columnId]
+        if (field && !field.startsWith('__')) {
+          jobData[field] = colValue.label || colValue.text || String(colValue)
+        } else if (field === '__status') {
+          const label = (colValue.label || '').toLowerCase().trim()
+          jobData.stage = STATUS_MAP[label] || undefined
+          delete jobData.stage  // don't overwrite stage on column updates unless it's status
+          if (field === '__status') jobData.stage = STATUS_MAP[label] || 'Bid'
+        }
+      }
+
+      console.log('Upserting job from webhook payload:', JSON.stringify(jobData))
+      const result = await upsertJob(jobData)
       console.log('Monday sync SUCCESS:', result.action, 'job', result.id, 'item', itemId)
+
+      // Now try to enrich with full item data in background (best effort)
+      try {
+        const item = await fetchItem(itemId)
+        if (item) {
+          const fullData = mapItem(item)
+          const { data: existing } = await supabase.from('jobs').select('id').eq('monday_item_id', String(itemId)).maybeSingle()
+          if (existing) {
+            await supabase.from('jobs').update(fullData).eq('id', existing.id)
+            console.log('Enriched with full Monday data')
+          }
+        }
+      } catch (enrichErr) {
+        console.log('Enrichment failed (non-fatal):', enrichErr.message)
+      }
+
     } catch (err) {
       console.error('Monday sync FAILED:', err.message)
       console.error('Stack:', err.stack)
