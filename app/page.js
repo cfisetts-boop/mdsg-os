@@ -627,7 +627,7 @@ export default function Home() {
               )}
 
               <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13 }}>Job Pipeline</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length},1fr)`, gap: 8, overflowX: 'auto' }}>
                 {STAGES.map(stage => (
                   <div key={stage} style={{ background: '#f5f5f3', borderRadius: 8, padding: 10, minHeight: 80 }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
