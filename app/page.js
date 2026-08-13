@@ -391,12 +391,9 @@ export default function Home() {
     const file = e.target.files?.[0]; if (!file) return
     setCabSeeding(true)
     try {
-      const buf = await file.arrayBuffer()
-      const res = await fetch('/api/takeoff/excel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream', 'x-file-name': file.name },
-        body: buf,
-      })
+      const fd = new FormData()
+      fd.append('files', file)
+      const res = await fetch('/api/takeoff/excel', { method: 'POST', body: fd })
       const result = await res.json()
       if (result.success && result.data) {
         await saveCabList(result.data, 'seeded from Excel')
