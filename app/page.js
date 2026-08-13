@@ -99,6 +99,18 @@ export default function Home() {
   useEffect(() => {
     setBidSections(selectedJob?.proposal_sections ? { ...DEFAULT_BID_SECTIONS, ...selectedJob.proposal_sections } : DEFAULT_BID_SECTIONS)
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
+    setJobFiles([])
+    setCabList(null)
+    if (selectedJob?.id) {
+      setFilesLoading(true)
+      fetch('/api/job-files?jobId=' + selectedJob.id)
+        .then(r => r.json()).then(d => { setJobFiles(d.files || []); setFilesLoading(false) })
+        .catch(() => setFilesLoading(false))
+      setCabListLoading(true)
+      fetch('/api/cab-list?jobId=' + selectedJob.id)
+        .then(r => r.json()).then(d => { setCabList(d.cabList || null); setCabListLoading(false) })
+        .catch(() => setCabListLoading(false))
+    }
   }, [selectedJob?.id])
   const [proposalMargin, setProposalMargin] = useState(20)
   const [proposalGross,  setProposalGross]  = useState('')
@@ -107,6 +119,10 @@ export default function Home() {
   const [filesLoading,   setFilesLoading]   = useState(false)
   const [fileUploading,  setFileUploading]  = useState(false)
   const [fileCategory,   setFileCategory]   = useState('Drawings')
+  const CAB_CATEGORIES = ['BASES', 'VANITIES', 'WALLS', 'TALLS', 'ACCESSORIES', 'TRIM', 'HARDWARE ALLOWANCES']
+  const [cabList,        setCabList]        = useState(null)
+  const [cabListLoading, setCabListLoading] = useState(false)
+  const [cabSeeding,     setCabSeeding]     = useState(false)
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -364,6 +380,35 @@ export default function Home() {
     } else {
       alert('Error parsing quote: ' + (result.error || 'Unknown error'))
     }
+  }
+
+  async function saveCabList(list, source) {
+    await fetch('/api/cab-list', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jobId: selectedJob.id, cabList: list, source }) })
+    setCabList(list)
+  }
+
+  async function seedCabListFromExcel(e) {
+    const file = e.target.files?.[0]; if (!file) return
+    setCabSeeding(true)
+    try {
+      const buf = await file.arrayBuffer()
+      const res = await fetch('/api/takeoff/excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'x-file-name': file.name },
+        body: buf,
+      })
+      const result = await res.json()
+      if (result.success && result.data) {
+        await saveCabList(result.data, 'seeded from Excel')
+      } else {
+        alert('Could not parse that file: ' + (result.error || 'unknown error'))
+      }
+    } catch (err) { alert('Seed failed: ' + err.message) }
+    setCabSeeding(false); e.target.value = ''
+  }
+
+  async function startBlankCabList() {
+    await saveCabList({ project_name: selectedJob.name, unit_types: [], sheet_totals: null }, 'started blank')
   }
 
   async function uploadJobFile(e) {
@@ -1078,6 +1123,65 @@ export default function Home() {
                       <span style={{ color: '#888' }}>Gross Margin</span>
                       <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
                     </div>
+                  </div>
+
+                  {/* ── Cab List ───────────────────────────────────────── */}
+                  <div style={card}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                      <div style={{ fontWeight:500 }}>Cabinet List</div>
+                      {cabList && (
+                        <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
+                          {cabSeeding ? 'Importing...' : 'Re-import from Excel'}
+                          <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
+                        </label>
+                      )}
+                    </div>
+                    {cabListLoading && <div style={{ fontSize:11, color:'#888' }}>Loading...</div>}
+                    {!cabListLoading && !cabList && (
+                      <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                        <label style={{ padding:'8px 16px', fontSize:12, background:'#3C3489', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
+                          {cabSeeding ? 'Importing...' : '⬆ Seed from Excel'}
+                          <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
+                        </label>
+                        <button onClick={startBlankCabList} style={{ padding:'8px 16px', fontSize:12, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Start Blank</button>
+                        <span style={{ fontSize:11, color:'#bbb' }}>The editable cabinet list for this job lives here</span>
+                      </div>
+                    )}
+                    {!cabListLoading && cabList && (
+                      <div>
+                        <div style={{ fontSize:11, color:'#888', marginBottom:10 }}>
+                          {(cabList.unit_types || []).length} unit types · {(cabList.unit_types || []).reduce((s,u)=>s+(u.unit_quantity||1),0)} total units · {(cabList.unit_types || []).reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(r.quantity_per_unit||0),0)*(u.unit_quantity||1),0).toLocaleString()} cabinets
+                          {cabList.sheet_totals?.totalSF ? ` · ${cabList.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
+                        </div>
+                        <div style={{ maxHeight:420, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
+                          {(cabList.unit_types || []).map((ut, ui) => (
+                            <div key={ui} style={{ borderBottom:'0.5px solid #eee' }}>
+                              <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 12px', background:'#EEEDFE', fontSize:12, fontWeight:600, position:'sticky', top:0 }}>
+                                <span>{ut.unit_type_name}</span>
+                                <span style={{ color:'#3C3489' }}>{ut.unit_quantity} unit{ut.unit_quantity!==1?'s':''} · {(ut.skus||[]).reduce((s,r)=>s+(r.quantity_per_unit||0),0)} cabs/unit{typeof ut.excelSubtotalSF==='number' ? ` · ${ut.excelSubtotalSF.toFixed(2)} SF` : ''}</span>
+                              </div>
+                              {[...CAB_CATEGORIES, ...[...new Set([...(ut.skus||[]),...(ut.fillers||[])].map(r=>r.category).filter(cat=>cat&&!CAB_CATEGORIES.includes(cat)))]].map(cat => {
+                                const rows = [...(ut.skus||[]).map(r=>({...r,__f:false})), ...(ut.fillers||[]).map(r=>({...r,__f:true}))].filter(r => (r.category||'BASES') === cat)
+                                if (!rows.length) return null
+                                return (
+                                  <div key={cat}>
+                                    <div style={{ padding:'3px 12px', fontSize:10, color:'#888', fontWeight:600, letterSpacing:0.4, background:'#fafaf8' }}>{cat}</div>
+                                    {rows.map((r, ri) => (
+                                      <div key={ri} style={{ display:'flex', gap:10, padding:'3px 12px', fontSize:12, borderTop:'0.5px dotted #f0f0ec' }}>
+                                        <span style={{ width:28, textAlign:'right', color:'#888' }}>{r.quantity_per_unit}</span>
+                                        <span style={{ fontWeight:500, color:r.__f?'#888':'#222' }}>{r.sku}</span>
+                                        {!r.__f && r.hardware_count > 0 && <span style={{ marginLeft:'auto', fontSize:10, color:'#bbb' }}>HW {r.hardware_count}</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ))}
+                          {(cabList.unit_types || []).length === 0 && <div style={{ padding:16, fontSize:12, color:'#bbb' }}>Blank list — unit editing arrives in the next build</div>}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Job Files ──────────────────────────────────────── */}
