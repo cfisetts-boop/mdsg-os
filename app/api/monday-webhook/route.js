@@ -231,8 +231,13 @@ export async function POST(request) {
     const columnId  = eventData.columnId
     const colValue  = eventData.value
 
+    // change_name events carry the NEW name in event.value.name
+    const newName = parsed.event?.type === 'change_name'
+      ? (eventData.value?.name || pulseName)
+      : pulseName
+
     const jobData = {
-      name:            pulseName,
+      name:            newName,
       monday_item_id:  String(itemId),
       monday_board_id: String(boardId || BOARD_ID),
     }
