@@ -28,13 +28,22 @@ function mergeUnitTypes(rows) {
 }
 
 const STAGE_COLORS = {
-  'Bid':           { bg: '#EEEDFE', text: '#3C3489' },
-  'Awarded':       { bg: '#EAF3DE', text: '#3B6D11' },
-  'Shop Drawings': { bg: '#FAEEDA', text: '#633806' },
-  'Ordered':       { bg: '#E6F1FB', text: '#0C447C' },
-  'Delivered':     { bg: '#E1F5EE', text: '#085041' },
-  'Installed':     { bg: '#EAF3DE', text: '#27500A' },
-  'Lost':          { bg: '#FCEBEB', text: '#A32D2D' },
+  'RFQ':            { bg: '#EEEDFE', text: '#3C3489' },
+  'Open Proposals': { bg: '#E6F1FB', text: '#0C447C' },
+  'On Hold':        { bg: '#FAF3DA', text: '#7A6206' },
+  'Awarded':        { bg: '#EAF3DE', text: '#3B6D11' },
+  'Shop Drawings':  { bg: '#FAEEDA', text: '#633806' },
+  'Ordered':        { bg: '#E6F1FB', text: '#0C447C' },
+  'Delivered':      { bg: '#E1F5EE', text: '#085041' },
+  'Closeout':       { bg: '#EAF3DE', text: '#27500A' },
+  'Lost':           { bg: '#FCEBEB', text: '#A32D2D' },
+  // Legacy stage names still render (existing jobs keep working until re-staged)
+  'Bid':            { bg: '#EEEDFE', text: '#3C3489' },
+  'Pricing':        { bg: '#E6F1FB', text: '#0C447C' },
+  'Proposal Sent':  { bg: '#E6F1FB', text: '#0C447C' },
+  'Active':         { bg: '#EEEDFE', text: '#3C3489' },
+  'Rebid':          { bg: '#FAF3DA', text: '#7A6206' },
+  'Installed':      { bg: '#EAF3DE', text: '#27500A' },
 }
 
 const SHIPMENT_STATUS_COLORS = {
@@ -44,7 +53,7 @@ const SHIPMENT_STATUS_COLORS = {
   'Delayed':    { bg: '#FCEBEB', text: '#A32D2D' },
 }
 
-const STAGES = ['Bid', 'Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Installed']
+const STAGES = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout', 'Lost']
 const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics', 'Estes Express', 'R+L Carriers', 'Other']
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
 const fmtPct = (n) => n ? (n * 100).toFixed(1) + '%' : '—'
@@ -92,8 +101,6 @@ export default function Home() {
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
   }, [selectedJob?.id])
   const [proposalMargin, setProposalMargin] = useState(20)
-  // Monday-synced fields
-  const SUBMITTAL_STATUSES = ['', 'Not started', 'In progress', 'Awaiting approval', 'Approved', 'In revision (post approval)', 'Revised approved']
   const [proposalGross,  setProposalGross]  = useState('')
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
@@ -167,16 +174,16 @@ export default function Home() {
         box_construction: selectedJob.box_construction || '',
         hardware_allowance: selectedJob.hardware_allowance || 0,
         scope_notes: selectedJob.scope_notes || '',
-      gc_phone:          selectedJob.gc_phone          || '',
-      gc_email:          selectedJob.gc_email          || '',
-      gc_contact:        selectedJob.gc_contact        || '',
-      gross_margin_pct:  selectedJob.gross_margin_pct  || '',
-      tops_included:     selectedJob.tops_included     || false,
-      order_date:        selectedJob.order_date        || '',
-      delivery_date:     selectedJob.delivery_date     || '',
-      change_order_count:selectedJob.change_order_count|| '',
-      submittal_status:  selectedJob.submittal_status  || '',
-      monday_item_id:    selectedJob.monday_item_id    || '',
+        gc_name:      selectedJob.gc_name      || '',
+        address:      selectedJob.address      || '',
+        city:         selectedJob.city         || '',
+        state:        selectedJob.state        || '',
+        zip:          selectedJob.zip          || '',
+        manufacturer: selectedJob.manufacturer || '',
+        bid_due_date: selectedJob.bid_due_date || '',
+        gc_contact:   selectedJob.gc_contact   || '',
+        gc_phone:     selectedJob.gc_phone     || '',
+        gc_email:     selectedJob.gc_email     || '',
       })
       setEditUnitTypes(mergeUnitTypes(selectedJob.unit_types || []))
       setAdditionalLineItems([])
@@ -210,6 +217,16 @@ export default function Home() {
       box_construction: editFields.box_construction,
       hardware_allowance: Number(editFields.hardware_allowance) || 0,
       scope_notes: editFields.scope_notes,
+      gc_name:      editFields.gc_name,
+      address:      editFields.address,
+      city:         editFields.city,
+      state:        editFields.state,
+      zip:          editFields.zip,
+      manufacturer: editFields.manufacturer,
+      bid_due_date: editFields.bid_due_date || null,
+      gc_contact:   editFields.gc_contact,
+      gc_phone:     editFields.gc_phone,
+      gc_email:     editFields.gc_email,
     }).eq('id', selectedJob.id)
     for (const ut of editUnitTypes) {
       await supabase.from('unit_types').update({ unit_quantity: ut.unit_quantity }).eq('id', ut.id)
@@ -472,8 +489,8 @@ export default function Home() {
   }
 
   const pipelineValue = jobs.reduce((s, j) => s + (j.bid_value || 0), 0)
-  const activeBids = jobs.filter(j => j.stage === 'Bid').length
-  const awardedValue = jobs.filter(j => !['Bid', 'Lost'].includes(j.stage)).reduce((s, j) => s + (j.bid_value || 0), 0)
+  const activeBids = jobs.filter(j => ['RFQ', 'Open Proposals', 'Bid', 'Pricing', 'Proposal Sent'].includes(j.stage)).length
+  const awardedValue = jobs.filter(j => !['RFQ', 'Open Proposals', 'Bid', 'Pricing', 'Proposal Sent', 'Lost', 'On Hold'].includes(j.stage)).reduce((s, j) => s + (j.bid_value || 0), 0)
   const avgMargin = jobs.filter(j => j.gross_margin_pct > 0).reduce((s, j, _, arr) => s + j.gross_margin_pct / arr.length, 0)
   const overdueReminders = reminders.filter(r => r.due_date <= new Date().toISOString().split('T')[0])
   const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
@@ -722,12 +739,7 @@ export default function Home() {
                 <div>
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 16 }}>{selectedJob.name}</div>
-                    {selectedJob.monday_item_id && (
-                      <a href={`https://cfisettss-team.monday.com/boards/${selectedJob.monday_board_id || '18392215392'}/pulses/${selectedJob.monday_item_id}`} target="_blank" rel="noopener noreferrer" style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', background:'#f0f4ff', border:'0.5px solid #4169e1', borderRadius:10, fontSize:11, color:'#4169e1', fontWeight:500, textDecoration:'none', marginBottom:12 }}>
-                        <span>📋</span> View in Monday.com
-                      </a>
-                    )}
-                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', selectedJob.bid_due_date], ['Owner', selectedJob.owner], ['GC Contact', selectedJob.gc_contact], ['GC Phone', selectedJob.gc_phone], ['GC Email', selectedJob.gc_email], ['Order Date', selectedJob.order_date], ['Delivery Date', selectedJob.delivery_date], ['Change Orders', selectedJob.change_order_count], ['Submittal Status', selectedJob.submittal_status], ['Tops Included', selectedJob.tops_included ? 'Yes' : null]].filter(([, v]) => v).map(([label, value]) => (
+                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', selectedJob.bid_due_date], ['Owner', selectedJob.owner]].filter(([, v]) => v).map(([label, value]) => (
                       <div key={label} style={{ marginBottom: 10 }}>
                         <div style={lbl}>{label}</div>
                         <div style={{ fontSize: 13 }}>{value}</div>
@@ -768,6 +780,22 @@ export default function Home() {
                       </div>
                     ) : (
                       <div>
+                        <div style={{ fontSize:11, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.4, marginBottom:8 }}>Job Info</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                          <div><label style={lbl}>General Contractor</label><input value={editFields.gc_name} onChange={e => setEditFields(p => ({ ...p, gc_name: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Manufacturer</label><input value={editFields.manufacturer} onChange={e => setEditFields(p => ({ ...p, manufacturer: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Address</label><input value={editFields.address} onChange={e => setEditFields(p => ({ ...p, address: e.target.value }))} style={inp} /></div>
+                          <div style={{ display:'flex', gap:6 }}>
+                            <div style={{ flex:2 }}><label style={lbl}>City</label><input value={editFields.city} onChange={e => setEditFields(p => ({ ...p, city: e.target.value }))} style={inp} /></div>
+                            <div style={{ flex:1 }}><label style={lbl}>State</label><input value={editFields.state} onChange={e => setEditFields(p => ({ ...p, state: e.target.value }))} style={inp} /></div>
+                            <div style={{ flex:1 }}><label style={lbl}>Zip</label><input value={editFields.zip} onChange={e => setEditFields(p => ({ ...p, zip: e.target.value }))} style={inp} /></div>
+                          </div>
+                          <div><label style={lbl}>GC Contact</label><input value={editFields.gc_contact} onChange={e => setEditFields(p => ({ ...p, gc_contact: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>GC Phone</label><input value={editFields.gc_phone} onChange={e => setEditFields(p => ({ ...p, gc_phone: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>GC Email</label><input value={editFields.gc_email} onChange={e => setEditFields(p => ({ ...p, gc_email: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Bid Due Date</label><input type="date" value={editFields.bid_due_date} onChange={e => setEditFields(p => ({ ...p, bid_due_date: e.target.value }))} style={inp} /></div>
+                        </div>
+                        <div style={{ fontSize:11, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.4, marginBottom:8, marginTop:4 }}>Cabinet Specs</div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                           <div><label style={lbl}>Door Style</label><input value={editFields.door_style} onChange={e => setEditFields(p => ({ ...p, door_style: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Finish / Color</label><input value={editFields.finish_color} onChange={e => setEditFields(p => ({ ...p, finish_color: e.target.value }))} style={inp} /></div>

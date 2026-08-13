@@ -62,14 +62,17 @@ const COL_MAP = {
   dropdown:        'submittal_status',// Submittal Status
 }
 
+// Monday STATUS column values → OS stage buckets (aligned to board groups)
 const STATUS_MAP = {
-  'working on':           'Active',
-  'rebidding':            'Rebid',
-  'rta pricing needed':   'Pricing',
-  'sent out for pricing': 'Pricing',
-  'proposal sent to gc':  'Proposal Sent',
+  'working on':           'RFQ',
+  'rebidding':            'RFQ',
+  'rta pricing needed':   'RFQ',
+  'sent out for pricing': 'RFQ',
+  'proposal sent to gc':  'Open Proposals',
   'project on hold':      'On Hold',
-  'rfq':                  'Bid',
+  'rfq':                  'RFQ',
+  'awarded':              'Awarded',
+  'lost':                 'Lost',
 }
 
 // ── Fetch full item from Monday API ─────────────────────────────────────────
@@ -244,7 +247,7 @@ export async function POST(request) {
       monday_board_id: String(boardId || BOARD_ID),
     }
     if (parsed.event?.type === 'create_pulse' || parsed.event?.type === 'create_item') {
-      jobData.stage = 'Bid'
+      jobData.stage = 'RFQ'
     }
 
     // Column-change events: map the single changed column
@@ -257,7 +260,7 @@ export async function POST(request) {
       const textVal = String(rawLabel ?? colValue?.text ?? colValue?.value ?? '').trim()
 
       if (field === '__status') {
-        jobData.stage = STATUS_MAP[textVal.toLowerCase()] || 'Bid'
+        jobData.stage = STATUS_MAP[textVal.toLowerCase()] || 'RFQ'
       } else if (field === '__submittal_status') {
         jobData.submittal_status = textVal || null
       } else if (field === '__cost') {
