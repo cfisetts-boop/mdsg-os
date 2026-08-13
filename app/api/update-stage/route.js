@@ -13,7 +13,7 @@ export async function POST(request) {
       return Response.json({ error: 'Job ID and stage required' }, { status: 400 })
     }
 
-    const validStages = ['Bid', 'Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Installed', 'Lost']
+    const validStages = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout', 'Lost']
     if (!validStages.includes(stage)) {
       return Response.json({ error: 'Invalid stage' }, { status: 400 })
     }
