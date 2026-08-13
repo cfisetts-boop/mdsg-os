@@ -217,6 +217,9 @@ export async function POST(request) {
   // Always return 200 to Monday — non-200 marks automation as failed
   // Log everything so we can debug from Vercel logs
   console.log('Monday event received:', JSON.stringify({ event: parsed.event?.type, itemId, boardId, keys: Object.keys(parsed) }))
+  if (parsed.event?.type === 'change_name') {
+    console.log('RAW change_name event:', JSON.stringify(parsed.event))
+  }
 
   if (!itemId) {
     console.log('No itemId in event — skipping')
