@@ -76,6 +76,22 @@ const GROUP_MAP = {
 }
 
 // Monday STATUS column values → OS stage buckets (fallback when group unrecognized)
+function resolveGroupStage(title) {
+  const t = (title || '').toLowerCase().trim()
+  if (GROUP_MAP[t]) return GROUP_MAP[t]
+  // Fuzzy fallbacks for name variants
+  if (/lost|no.?go/.test(t))        return 'Lost'
+  if (/rfq|proposal.?\/|pricing/.test(t) && /rfq/.test(t)) return 'RFQ'
+  if (/open.?proposal/.test(t))     return 'Open Proposals'
+  if (/hold/.test(t))               return 'On Hold'
+  if (/award/.test(t))              return 'Awarded'
+  if (/shop|drawing/.test(t))       return 'Shop Drawings'
+  if (/order/.test(t))              return 'Ordered'
+  if (/deliver/.test(t))            return 'Delivered'
+  if (/close/.test(t))              return 'Closeout'
+  return null
+}
+
 const STATUS_MAP = {
   'working on':           'RFQ',
   'rebidding':            'RFQ',
@@ -137,7 +153,7 @@ function mapItem(item) {
   // Stage from board GROUP first (the group IS the pipeline bucket),
   // STATUS column only as fallback for unrecognized groups.
   const groupTitle = (item.group?.title || '').toLowerCase().trim()
-  const stageFromGroup = GROUP_MAP[groupTitle] || null
+  const stageFromGroup = resolveGroupStage(groupTitle)
 
   const job = {
     name:            item.name,
