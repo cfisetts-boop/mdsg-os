@@ -164,8 +164,10 @@ function mapItem(item) {
 
 // ── Upsert job into Supabase ─────────────────────────────────────────────────
 async function upsertJob(jobData) {
-  const { data: existing } = await supabase
-    .from('jobs').select('id').eq('monday_item_id', jobData.monday_item_id).maybeSingle()
+  // limit(1) instead of maybeSingle(): duplicates in the table must not crash the sync
+  const { data: existingRows } = await supabase
+    .from('jobs').select('id').eq('monday_item_id', jobData.monday_item_id).order('created_at', { ascending: true }).limit(1)
+  const existing = existingRows?.[0]
 
   if (existing) {
     // Update existing
