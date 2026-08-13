@@ -124,12 +124,14 @@ function parseSheet(sheet) {
 
   // Rows to ignore entirely regardless of position
   const SKIP_LABELS = /^(QTY|SKU|UNIT TYPE|QUANTITY|TOTAL|TOTALS?)$/i
-  const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC(?:ELLANEOUS)?|FILLERS?|TRIM|MOLDING)S?$/i
+  const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC(?:ELLANEOUS)?|FILLERS?|TRIM|MOLDING|HARDWARE\s*ALLOWANCES?)S?$/i
 
   const sheetTotals = { cabinets: null, hardware: null, netSF: null, splashSF: null, totalSF: null }
   let pendingQty = null
+  let currentCategory = null
 
   function makeUnit(name, qty) {
+    currentCategory = null
     return {
       unit_type_name:        name,
       is_ada:                /\b(ADA|HC|ACCESSIBLE)\b/i.test(name),
@@ -236,7 +238,10 @@ function parseSheet(sheet) {
     if (!current) return
 
     // ── Category label row (BASES, VANITIES, WALLS, TALLS, ACCESSORIES) ──
-    if (CATEGORY_LABELS.test(aStr) && !bIsNum) return
+    if (CATEGORY_LABELS.test(aStr) && !bIsNum) {
+      currentCategory = aStr.toUpperCase().replace(/S$/, '') + 'S'  // normalize: BASE→BASES
+      return
+    }
 
     // ── Data row: col A = qty (0-10), col B = SKU text ────────────────────
     const qty = aIsNum ? Math.round(a) : (parseInt(aStr) || 0)
@@ -247,7 +252,7 @@ function parseSheet(sheet) {
     // ── Filler / trim ───────────────────────────────────────────────────
     if (FILLER_RE.test(sku)) {
       if (/^TK8/i.test(sku)) current.toe_kick_lf += qty * (8 / 12)
-      current.fillers.push({ sku, description: sku, quantity_per_unit: qty, location: 'kitchen' })
+      current.fillers.push({ sku, description: sku, quantity_per_unit: qty, location: 'kitchen', category: currentCategory || 'ACCESSORIES' })
       return
     }
 
@@ -269,6 +274,7 @@ function parseSheet(sheet) {
       location,
       notes:             '',
       hardware_count:    hardware,
+      category:          currentCategory || (isVanity ? 'VANITIES' : 'BASES'),
     })
 
     // Accumulate SF by type
