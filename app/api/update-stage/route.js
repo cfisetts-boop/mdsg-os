@@ -20,9 +20,6 @@ export async function POST(request) {
 
     const updateData = { stage }
 
-    // Auto-set dates based on stage
-    if (stage === 'Awarded') updateData.bid_submitted_date = new Date().toISOString().split('T')[0]
-
     const { data, error } = await supabase
       .from('jobs')
       .update(updateData)
@@ -38,17 +35,19 @@ export async function POST(request) {
       action: `Stage updated to "${stage}"`,
     })
 
-    // Auto-create follow-up reminder when moving to Awarded
+    // Auto-create follow-up reminder when moving to Awarded (best effort)
     if (stage === 'Awarded') {
-      const followUp = new Date()
-      followUp.setDate(followUp.getDate() + 7)
-      await supabase.from('reminders').insert({
-        job_id: jobId,
-        due_date: followUp.toISOString().split('T')[0],
-        reminder_type: 'General',
-        message: 'Job awarded — submit shop drawings to manufacturer',
-        assigned_to: user || 'Cole',
-      })
+      try {
+        const followUp = new Date()
+        followUp.setDate(followUp.getDate() + 7)
+        await supabase.from('reminders').insert({
+          job_id: jobId,
+          due_date: followUp.toISOString().split('T')[0],
+          reminder_type: 'General',
+          message: 'Job awarded — submit shop drawings to manufacturer',
+          assigned_to: user || 'Cole',
+        })
+      } catch (remErr) { console.log('Reminder insert failed (non-fatal):', remErr.message) }
     }
 
     return Response.json({ success: true, job: data })

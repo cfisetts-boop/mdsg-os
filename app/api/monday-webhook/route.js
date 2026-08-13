@@ -62,7 +62,20 @@ const COL_MAP = {
   dropdown:        'submittal_status',// Submittal Status
 }
 
-// Monday STATUS column values → OS stage buckets (aligned to board groups)
+// Board GROUP title → OS stage (primary source of truth for stage)
+const GROUP_MAP = {
+  'rfq':            'RFQ',
+  'open proposals': 'Open Proposals',
+  'on hold':        'On Hold',
+  'awarded':        'Awarded',
+  'shop drawings':  'Shop Drawings',
+  'ordered':        'Ordered',
+  'delivered':      'Delivered',
+  'closeout':       'Closeout',
+  'lost':           'Lost',
+}
+
+// Monday STATUS column values → OS stage buckets (fallback when group unrecognized)
 const STATUS_MAP = {
   'working on':           'RFQ',
   'rebidding':            'RFQ',
@@ -83,6 +96,7 @@ async function fetchItem(itemId) {
         id
         name
         board { id }
+        group { id title }
         column_values {
           id
           type
@@ -120,12 +134,18 @@ const COLUMN_FIELD_MAP = {
 
 // ── Map a Monday item to an OS job object ────────────────────────────────────
 function mapItem(item) {
+  // Stage from board GROUP first (the group IS the pipeline bucket),
+  // STATUS column only as fallback for unrecognized groups.
+  const groupTitle = (item.group?.title || '').toLowerCase().trim()
+  const stageFromGroup = GROUP_MAP[groupTitle] || null
+
   const job = {
     name:            item.name,
     monday_item_id:  String(item.id),
     monday_board_id: String(item.board?.id || BOARD_ID),
-    stage:           'RFQ',  // default
+    stage:           stageFromGroup || 'RFQ',
   }
+  job.__stageFromGroup = !!stageFromGroup
 
   for (const col of (item.column_values || [])) {
     const field = COLUMN_FIELD_MAP[col.id]
@@ -140,7 +160,7 @@ function mapItem(item) {
     } catch {}
 
     if (field === '__status') {
-      job.stage = STATUS_MAP[label] || 'RFQ'
+      if (!job.__stageFromGroup) job.stage = STATUS_MAP[label] || 'RFQ'
     } else if (field === '__submittal_status') {
       job.submittal_status = col.label || val || null
     } else if (field === '__cost') {
@@ -162,6 +182,7 @@ function mapItem(item) {
     }
   }
 
+  delete job.__stageFromGroup
   return job
 }
 
