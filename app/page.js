@@ -108,8 +108,9 @@ export default function Home() {
         .catch(() => setFilesLoading(false))
       setCabListLoading(true)
       fetch('/api/cab-list?jobId=' + selectedJob.id)
-        .then(r => r.json()).then(d => { setCabList(d.cabList || null); setCabListLoading(false) })
+        .then(r => r.json()).then(d => { setCabList(d.cabList || null); setCabLoadedAt(d.updatedAt || null); setCabListLoading(false) })
         .catch(() => setCabListLoading(false))
+      setCabEditing(false); setCabDraft(null)
     }
   }, [selectedJob?.id])
   const [proposalMargin, setProposalMargin] = useState(20)
@@ -123,6 +124,11 @@ export default function Home() {
   const [cabList,        setCabList]        = useState(null)
   const [cabListLoading, setCabListLoading] = useState(false)
   const [cabSeeding,     setCabSeeding]     = useState(false)
+  const [cabEditing,     setCabEditing]     = useState(false)
+  const [cabDraft,       setCabDraft]       = useState(null)
+  const [cabLoadedAt,    setCabLoadedAt]    = useState(null)
+  const [cabSaving,      setCabSaving]      = useState(false)
+  const [cabExporting,   setCabExporting]   = useState(false)
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -406,6 +412,50 @@ export default function Home() {
 
   async function startBlankCabList() {
     await saveCabList({ project_name: selectedJob.name, unit_types: [], sheet_totals: null }, 'started blank')
+  }
+
+  function startCabEdit() {
+    setCabDraft(JSON.parse(JSON.stringify(cabList)))  // deep copy
+    setCabEditing(true)
+  }
+  function cabDraftUpdate(fn) {
+    setCabDraft(d => { const n = JSON.parse(JSON.stringify(d)); fn(n); return n })
+  }
+  async function saveCabEdit() {
+    setCabSaving(true)
+    try {
+      const res = await fetch('/api/cab-list', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: selectedJob.id, cabList: cabDraft, source: 'editor', baseUpdatedAt: cabLoadedAt }),
+      })
+      if (res.status === 409) {
+        const d = await res.json()
+        alert(d.message || 'Conflict — reload the job first.')
+      } else if (res.ok) {
+        setCabList(cabDraft); setCabEditing(false); setCabDraft(null)
+        setCabLoadedAt(new Date().toISOString())
+      } else {
+        const d = await res.json(); alert('Save failed: ' + (d.error || 'unknown'))
+      }
+    } catch (err) { alert('Save failed: ' + err.message) }
+    setCabSaving(false)
+  }
+  async function exportCabList() {
+    if (!cabList) return
+    setCabExporting(true)
+    try {
+      const base = { takeoffData: cabList, projectName: cabList.project_name || selectedJob.name, supplierName: cabList.specs?.cabinet_line || selectedJob.manufacturer || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
+      const safe = (cabList.project_name || selectedJob.name || 'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_')
+      for (const [mode, suffix] of [['internal', 'Cabinet_Schedule'], ['manufacturer', 'Cabinet_List_For_Pricing']]) {
+        const res = await fetch('/api/export/excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, mode }) })
+        if (!res.ok) throw new Error('Export failed (' + mode + ')')
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a'); a.href = url; a.download = safe + '_' + suffix + '.xlsx'; a.click(); URL.revokeObjectURL(url)
+        await new Promise(r => setTimeout(r, 400))
+      }
+    } catch (err) { alert(err.message) }
+    setCabExporting(false)
   }
 
   async function uploadJobFile(e) {
@@ -1126,11 +1176,21 @@ export default function Home() {
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                       <div style={{ fontWeight:500 }}>Cabinet List</div>
-                      {cabList && (
-                        <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
-                          {cabSeeding ? 'Importing...' : 'Re-import from Excel'}
-                          <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
-                        </label>
+                      {cabList && !cabEditing && (
+                        <div style={{ display:'flex', gap:6 }}>
+                          <button onClick={exportCabList} disabled={cabExporting} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{cabExporting ? 'Exporting...' : '⬇ Export (2 files)'}</button>
+                          <button onClick={startCabEdit} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✎ Edit</button>
+                          <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
+                            {cabSeeding ? 'Importing...' : 'Re-import'}
+                            <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
+                          </label>
+                        </div>
+                      )}
+                      {cabList && cabEditing && (
+                        <div style={{ display:'flex', gap:6 }}>
+                          <button onClick={saveCabEdit} disabled={cabSaving} style={{ padding:'4px 14px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600 }}>{cabSaving ? 'Saving...' : '✓ Save'}</button>
+                          <button onClick={() => { setCabEditing(false); setCabDraft(null) }} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Cancel</button>
+                        </div>
                       )}
                     </div>
                     {cabListLoading && <div style={{ fontSize:11, color:'#888' }}>Loading...</div>}
@@ -1144,30 +1204,60 @@ export default function Home() {
                         <span style={{ fontSize:11, color:'#bbb' }}>The editable cabinet list for this job lives here</span>
                       </div>
                     )}
-                    {!cabListLoading && cabList && (
+                    {!cabListLoading && cabList && (() => {
+                      const L = cabEditing ? cabDraft : cabList
+                      const upd = cabDraftUpdate
+                      return (
                       <div>
                         <div style={{ fontSize:11, color:'#888', marginBottom:10 }}>
-                          {(cabList.unit_types || []).length} unit types · {(cabList.unit_types || []).reduce((s,u)=>s+(u.unit_quantity||1),0)} total units · {(cabList.unit_types || []).reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(r.quantity_per_unit||0),0)*(u.unit_quantity||1),0).toLocaleString()} cabinets
-                          {cabList.sheet_totals?.totalSF ? ` · ${cabList.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
+                          {(L.unit_types || []).length} unit types · {(L.unit_types || []).reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)} total units · {(L.unit_types || []).reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0).toLocaleString()} cabinets
+                          {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
+                          {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
-                        <div style={{ maxHeight:420, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
-                          {(cabList.unit_types || []).map((ut, ui) => (
+                        <div style={{ maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
+                          {(L.unit_types || []).map((ut, ui) => (
                             <div key={ui} style={{ borderBottom:'0.5px solid #eee' }}>
-                              <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 12px', background:'#EEEDFE', fontSize:12, fontWeight:600, position:'sticky', top:0 }}>
-                                <span>{ut.unit_type_name}</span>
-                                <span style={{ color:'#3C3489' }}>{ut.unit_quantity} unit{ut.unit_quantity!==1?'s':''} · {(ut.skus||[]).reduce((s,r)=>s+(r.quantity_per_unit||0),0)} cabs/unit{typeof ut.excelSubtotalSF==='number' ? ` · ${ut.excelSubtotalSF.toFixed(2)} SF` : ''}</span>
+                              <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#EEEDFE', fontSize:12, fontWeight:600, position:'sticky', top:0, zIndex:1 }}>
+                                {cabEditing ? (
+                                  <>
+                                    <input value={ut.unit_type_name} onChange={e=>upd(n=>{n.unit_types[ui].unit_type_name=e.target.value})} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
+                                    <label style={{ fontSize:10, color:'#888' }}>Qty:</label>
+                                    <input type="number" min="1" value={ut.unit_quantity} onChange={e=>upd(n=>{n.unit_types[ui].unit_quantity=Number(e.target.value)||1})} style={{ width:56, padding:'3px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                    <button onClick={()=>{ if(confirm(`Delete unit ${ut.unit_type_name}?`)) upd(n=>{n.unit_types.splice(ui,1)}) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:14 }}>✕</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span style={{ flex:1 }}>{ut.unit_type_name}</span>
+                                    <span style={{ color:'#3C3489' }}>{ut.unit_quantity} unit{ut.unit_quantity!==1?'s':''} · {(ut.skus||[]).reduce((s,r)=>s+(Number(r.quantity_per_unit)||0),0)} cabs/unit{typeof ut.excelSubtotalSF==='number' ? ` · ${ut.excelSubtotalSF.toFixed(2)} SF` : ''}</span>
+                                  </>
+                                )}
                               </div>
                               {[...CAB_CATEGORIES, ...[...new Set([...(ut.skus||[]),...(ut.fillers||[])].map(r=>r.category).filter(cat=>cat&&!CAB_CATEGORIES.includes(cat)))]].map(cat => {
-                                const rows = [...(ut.skus||[]).map(r=>({...r,__f:false})), ...(ut.fillers||[]).map(r=>({...r,__f:true}))].filter(r => (r.category||'BASES') === cat)
-                                if (!rows.length) return null
+                                const skuRows = (ut.skus||[]).map((r,i)=>({...r,__f:false,__i:i})).filter(r=>(r.category||'BASES')===cat)
+                                const filRows = (ut.fillers||[]).map((r,i)=>({...r,__f:true,__i:i})).filter(r=>(r.category||'ACCESSORIES')===cat)
+                                const rows = [...skuRows, ...filRows]
+                                if (!rows.length && !cabEditing) return null
                                 return (
                                   <div key={cat}>
-                                    <div style={{ padding:'3px 12px', fontSize:10, color:'#888', fontWeight:600, letterSpacing:0.4, background:'#fafaf8' }}>{cat}</div>
-                                    {rows.map((r, ri) => (
-                                      <div key={ri} style={{ display:'flex', gap:10, padding:'3px 12px', fontSize:12, borderTop:'0.5px dotted #f0f0ec' }}>
-                                        <span style={{ width:28, textAlign:'right', color:'#888' }}>{r.quantity_per_unit}</span>
-                                        <span style={{ fontWeight:500, color:r.__f?'#888':'#222' }}>{r.sku}</span>
-                                        {!r.__f && r.hardware_count > 0 && <span style={{ marginLeft:'auto', fontSize:10, color:'#bbb' }}>HW {r.hardware_count}</span>}
+                                    <div style={{ display:'flex', justifyContent:'space-between', padding:'3px 12px', fontSize:10, color:'#888', fontWeight:600, letterSpacing:0.4, background:'#fafaf8' }}>
+                                      {cat}
+                                      {cabEditing && <button onClick={()=>upd(n=>{n.unit_types[ui].skus.push({ sku:'', quantity_per_unit:1, category:cat, hardware_count:0, location:'kitchen', hinge_side:'L/R', description:'', notes:'' })})} style={{ background:'none', border:'none', cursor:'pointer', color:'#3C3489', fontSize:10, fontWeight:600 }}>+ row</button>}
+                                    </div>
+                                    {rows.map((r) => (
+                                      <div key={(r.__f?'f':'s')+r.__i} style={{ display:'flex', gap:10, alignItems:'center', padding:'3px 12px', fontSize:12, borderTop:'0.5px dotted #f0f0ec' }}>
+                                        {cabEditing ? (
+                                          <>
+                                            <input type="number" min="0" value={r.quantity_per_unit} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t[r.__i].quantity_per_unit=Number(e.target.value)||0 })} style={{ width:48, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, textAlign:'right' }}/>
+                                            <input value={r.sku} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t[r.__i].sku=e.target.value.toUpperCase() })} style={{ flex:1, padding:'2px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:500 }}/>
+                                            <button onClick={()=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t.splice(r.__i,1) })} style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:12 }}>✕</button>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <span style={{ width:28, textAlign:'right', color:'#888' }}>{r.quantity_per_unit}</span>
+                                            <span style={{ fontWeight:500, color:r.__f?'#888':'#222' }}>{r.sku}</span>
+                                            {!r.__f && r.hardware_count > 0 && <span style={{ marginLeft:'auto', fontSize:10, color:'#bbb' }}>HW {r.hardware_count}</span>}
+                                          </>
+                                        )}
                                       </div>
                                     ))}
                                   </div>
@@ -1175,10 +1265,16 @@ export default function Home() {
                               })}
                             </div>
                           ))}
-                          {(cabList.unit_types || []).length === 0 && <div style={{ padding:16, fontSize:12, color:'#bbb' }}>Blank list — unit editing arrives in the next build</div>}
+                          {cabEditing && (
+                            <div style={{ padding:10 }}>
+                              <button onClick={()=>upd(n=>{ if(!n.unit_types) n.unit_types=[]; n.unit_types.push({ unit_type_name:'NEW UNIT', unit_quantity:1, skus:[], fillers:[], is_ada:false, countertop_sf:0, excelSubtotalSF:null, excelSubtotalHW:null }) })} style={{ width:'100%', padding:8, fontSize:12, background:'#f5f5f3', border:'1px dashed #ccc', borderRadius:6, cursor:'pointer', color:'#3C3489', fontWeight:500 }}>+ Add Unit Type</button>
+                            </div>
+                          )}
+                          {(L.unit_types || []).length === 0 && !cabEditing && <div style={{ padding:16, fontSize:12, color:'#bbb' }}>Blank list — click Edit to add units</div>}
                         </div>
                       </div>
-                    )}
+                      )
+                    })()}
                   </div>
 
                   {/* ── Job Files ──────────────────────────────────────── */}

@@ -23,8 +23,16 @@ export async function GET(request) {
 // PUT /api/cab-list  { jobId, cabList, source } → save the list
 export async function PUT(request) {
   try {
-    const { jobId, cabList, source = 'editor' } = await request.json()
+    const { jobId, cabList, source = 'editor', baseUpdatedAt } = await request.json()
     if (!jobId || !cabList) return Response.json({ error: 'jobId and cabList required' }, { status: 400 })
+
+    // Multi-user guard: reject the save if someone else saved after this editor loaded
+    if (baseUpdatedAt) {
+      const { data: cur } = await supabase.from('jobs').select('cab_list_updated_at').eq('id', jobId).single()
+      if (cur?.cab_list_updated_at && new Date(cur.cab_list_updated_at) > new Date(baseUpdatedAt)) {
+        return Response.json({ error: 'conflict', message: 'Someone else saved this list since you opened it. Reload the job to get their changes first.' }, { status: 409 })
+      }
+    }
 
     const { error } = await supabase.from('jobs').update({
       cab_list: cabList,
