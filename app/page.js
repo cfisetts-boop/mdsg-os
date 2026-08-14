@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import TakeoffEngine from './components/TakeoffEngine'
 import CountertopCalc from './components/CountertopCalc'
+import { calculateHardware, getSection, isAppliance } from '@/lib/hardwareUtils'
 import AgentPipeline from './components/AgentPipeline'
 
 
@@ -129,6 +130,7 @@ export default function Home() {
   const [cabLoadedAt,    setCabLoadedAt]    = useState(null)
   const [cabSaving,      setCabSaving]      = useState(false)
   const [cabExporting,   setCabExporting]   = useState(false)
+  const [cabCopyTarget,  setCabCopyTarget]  = useState('')
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -456,6 +458,24 @@ export default function Home() {
       }
     } catch (err) { alert(err.message) }
     setCabExporting(false)
+  }
+
+  async function copyCabListToJob() {
+    if (!cabCopyTarget || !cabList) return
+    const target = jobs.find(j => j.id === cabCopyTarget)
+    if (!target) return
+    // Warn if the target already has a list
+    const check = await fetch('/api/cab-list?jobId=' + cabCopyTarget).then(r => r.json()).catch(() => ({}))
+    if (check.cabList && !confirm(`${target.name} already has a cabinet list. Overwrite it?`)) return
+    if (!check.cabList && !confirm(`Copy this cabinet list to ${target.name}?`)) return
+    const copy = JSON.parse(JSON.stringify(cabList))
+    copy.project_name = target.name
+    const res = await fetch('/api/cab-list', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jobId: cabCopyTarget, cabList: copy, source: `copied from ${selectedJob.name}` }),
+    })
+    if (res.ok) { alert(`Copied to ${target.name}`); setCabCopyTarget('') }
+    else alert('Copy failed')
   }
 
   async function uploadJobFile(e) {
@@ -1184,6 +1204,11 @@ export default function Home() {
                             {cabSeeding ? 'Importing...' : 'Re-import'}
                             <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
                           </label>
+                          <select value={cabCopyTarget} onChange={e=>setCabCopyTarget(e.target.value)} style={{ padding:'4px 8px', fontSize:11, border:'0.5px solid #ddd', borderRadius:6, maxWidth:150 }}>
+                            <option value="">Copy to job...</option>
+                            {jobs.filter(j => j.id !== selectedJob.id).map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
+                          </select>
+                          {cabCopyTarget && <button onClick={copyCabListToJob} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>Copy</button>}
                         </div>
                       )}
                       {cabList && cabEditing && (
@@ -1248,7 +1273,12 @@ export default function Home() {
                                         {cabEditing ? (
                                           <>
                                             <input type="number" min="0" value={r.quantity_per_unit} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t[r.__i].quantity_per_unit=Number(e.target.value)||0 })} style={{ width:48, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, textAlign:'right' }}/>
-                                            <input value={r.sku} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t[r.__i].sku=e.target.value.toUpperCase() })} style={{ flex:1, padding:'2px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:500 }}/>
+                                            <input value={r.sku} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; const s=e.target.value.toUpperCase(); t[r.__i].sku=s; if(!r.__f){ const hw=calculateHardware(s); t[r.__i].hardware_count=hw.hardware ?? 0 } })} style={{ flex:1, padding:'2px 8px', border:'0.5px solid ' + (r.sku && !r.__f && isAppliance(r.sku) ? '#e0a800' : '#ccc'), borderRadius:4, fontSize:12, fontWeight:500 }}/>
+                                            {!r.__f && r.sku && (
+                                              <span style={{ fontSize:10, color: isAppliance(r.sku) ? '#B8860B' : '#bbb', whiteSpace:'nowrap' }}>
+                                                {isAppliance(r.sku) ? 'appliance — excluded' : `${getSection(r.sku)} · HW ${calculateHardware(r.sku).hardware ?? '?'}`}
+                                              </span>
+                                            )}
                                             <button onClick={()=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t.splice(r.__i,1) })} style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:12 }}>✕</button>
                                           </>
                                         ) : (
