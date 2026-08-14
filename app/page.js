@@ -131,6 +131,8 @@ export default function Home() {
   const [cabSaving,      setCabSaving]      = useState(false)
   const [cabExporting,   setCabExporting]   = useState(false)
   const [cabCopyTarget,  setCabCopyTarget]  = useState('')
+  const [jobSearch,      setJobSearch]      = useState('')
+  const [ownerFilter,    setOwnerFilter]    = useState('All')
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -783,7 +785,35 @@ export default function Home() {
           )}
 
           {/* JOBS LIST */}
-          {view === 'jobs' && (
+          {view === 'jobs' && (() => {
+            const owners = ['All', ...[...new Set(jobs.map(j => j.owner).filter(Boolean))].sort()]
+            const q = jobSearch.trim().toLowerCase()
+            const filteredJobs = jobs.filter(j =>
+              (ownerFilter === 'All' || j.owner === ownerFilter) &&
+              (!q || [j.name, j.gc_name, j.manufacturer, j.address, j.city, j.stage].some(v => (v || '').toLowerCase().includes(q)))
+            )
+            return (
+            <div>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+                <input
+                  value={jobSearch}
+                  onChange={e => setJobSearch(e.target.value)}
+                  placeholder="🔍 Search jobs — name, GC, manufacturer, city..."
+                  style={{ flex: 1, minWidth: 240, padding: '9px 14px', border: '0.5px solid #ccc', borderRadius: 8, fontSize: 13 }}
+                />
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {owners.map(o => (
+                    <button key={o} onClick={() => setOwnerFilter(o)}
+                      style={{ padding: '6px 14px', fontSize: 12, borderRadius: 8, cursor: 'pointer', fontWeight: 500,
+                        background: ownerFilter === o ? '#3C3489' : '#f5f5f3',
+                        color: ownerFilter === o ? '#fff' : '#555',
+                        border: '0.5px solid ' + (ownerFilter === o ? '#3C3489' : '#ddd') }}>
+                      {o}{o !== 'All' ? ` (${jobs.filter(j => j.owner === o).length})` : ''}
+                    </button>
+                  ))}
+                </div>
+                <span style={{ fontSize: 11, color: '#888' }}>{filteredJobs.length} of {jobs.length}</span>
+              </div>
             <div style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 10, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead><tr style={{ background: '#f5f5f3' }}>
@@ -793,7 +823,7 @@ export default function Home() {
                 </tr></thead>
                 <tbody>
                   {loading ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Loading...</td></tr>
-                  : jobs.map(job => {
+                  : filteredJobs.map(job => {
                     const c = STAGE_COLORS[job.stage] || STAGE_COLORS['Bid']
                     return (
                       <tr key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }}
@@ -814,7 +844,10 @@ export default function Home() {
                 </tbody>
               </table>
             </div>
-          )}
+          
+            </div>
+            )
+          })()}
 
           {/* JOB DETAIL */}
           {view === 'job-detail' && selectedJob && (
