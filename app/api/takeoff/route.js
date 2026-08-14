@@ -4,7 +4,7 @@ import { PDFDocument } from 'pdf-lib'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
-const APPLIANCE_RE = /^(DISH|DW|DISW|RANGE|REF[LR0-9]?|MICRO|OTR|APPLI|WASH|DRYER|OVEN|HOOD|VENT)/i
+import { APPLIANCE_RE } from '@/lib/skuRules'
 function stripAppliances(data) {
   if (!data?.unit_types) return data
   return {

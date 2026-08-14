@@ -1,8 +1,7 @@
 import ExcelJS from 'exceljs'
+import { APPLIANCE_RE, FILLER_RE, CATEGORY_LABELS } from '@/lib/skuRules'
 
-const FILLER_RE    = /^(WF|TF|BF|F\d|TK\d*|SCM|SMC|OCM|BEP|REP|TREP|VEP|TEP|DWEP|EPT|PLYS)/i  // SMC=SCM typo; REP/TREP/VEP/TEP = end panels
 // DW followed by 4 digits (DW2430R) = Diagonal Wall corner CABINET, not a dishwasher
-const APPLIANCE_RE = /^(DISH|DW(?!\d{4})|DISW|RANGE|REF|MICRO|OTR|WASH|DRYER|OVEN|HOOD|VENT)/i
 const BASE_RE      = /^(B[^WF]|SB|DB|BMC|BB|HC)/i   // base cabinets (not BW blind wall, not BF3 filler)
 const VANITY_RE    = /^V(SB|DB|B)/i
 
@@ -124,8 +123,7 @@ function parseSheet(sheet) {
 
   // Rows to ignore entirely regardless of position
   const SKIP_LABELS = /^(QTY|SKU|UNIT TYPE|QUANTITY|TOTAL|TOTALS?)$/i
-  const CATEGORY_LABELS = /^(BASES?|VANIT(?:Y|IES)|WALLS?|TALLS?|ACCESSORIES|MISC(?:ELLANEOUS)?|FILLERS?|TRIM|MOLDING|HARDWARE\s*ALLOWANCES?)S?$/i
-
+  
   const sheetTotals = { cabinets: null, hardware: null, netSF: null, splashSF: null, totalSF: null }
   let pendingQty = null
   let currentCategory = null

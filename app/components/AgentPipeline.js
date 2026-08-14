@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef } from 'react'
+import { APPLIANCE_RE } from '@/lib/skuRules'
 import { supabase } from '@/lib/supabase'
 
 
@@ -27,7 +28,7 @@ const AGENTS = [
 function isApplianceSku(sku) {
   const u = (sku || '').toUpperCase().trim()
   // DW + 4 digits (DW2430R) = Diagonal Wall corner CABINET, not a dishwasher
-  return /^(DISH|DW(?!\d{4})|DISW|RANGE|REF[LR0-9]?|MICRO|OTR|APPLI|WASH|DRYER|OVEN|HOOD|VENT)/.test(u)
+  return APPLIANCE_RE.test(u)
 }
 function isTrueCabinet(sku) {
   const u = (sku || '').toUpperCase().trim()
@@ -402,16 +403,22 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
     setExporting(true)
     setRunning('export')
     try {
-      const res = await fetch('/api/export/excel', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ takeoffData: editData, projectName: editData.project_name || 'MDSG Project', supplierName: editData.specs?.cabinet_line || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }),
-      })
-      if (!res.ok) throw new Error('Export failed')
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url
-      a.download = `${(editData.project_name||'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g,'_')}_Cabinet_Schedule.xlsx`
-      a.click(); URL.revokeObjectURL(url)
+      const base = { takeoffData: editData, projectName: editData.project_name || 'MDSG Project', supplierName: editData.specs?.cabinet_line || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
+      const safe = (editData.project_name || 'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_')
+      // Two files: internal full workbook + manufacturer pricing copy
+      for (const [mode, suffix] of [['internal', 'Cabinet_Schedule'], ['manufacturer', 'Cabinet_List_For_Pricing']]) {
+        const res = await fetch('/api/export/excel', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...base, mode }),
+        })
+        if (!res.ok) throw new Error('Export failed (' + mode + ')')
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a'); a.href = url
+        a.download = `${safe}_${suffix}.xlsx`
+        a.click(); URL.revokeObjectURL(url)
+        await new Promise(r => setTimeout(r, 400))  // let the browser register both downloads
+      }
       setComplete('export')
       setSavedAt(p => ({ ...p, export: new Date().toLocaleTimeString() }))
     } catch (err) { setAgentError('export'); alert('Export failed: ' + err.message) }

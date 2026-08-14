@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { APPLIANCE_RE } from '@/lib/skuRules'
 import { supabase } from '@/lib/supabase'
 
 
@@ -42,10 +43,10 @@ export default function TakeoffEngine({ jobs, onComplete }) {
   const [classificationData, setClassificationData] = useState(null)
   const [classifying, setClassifying] = useState(false)
 
-  // Mirrors lib/hardwareUtils.js isAppliance() — keep in sync
+  // Single source: lib/skuRules.js
   function isApplianceSku(sku) {
     const u = (sku || '').toUpperCase().trim()
-    return /^(DISH|DW|DISW|RANGE|REF[LR0-9]?|MICRO|OTR|APPLI|WASH|DRYER|OVEN|HOOD|VENT)/.test(u)
+    return APPLIANCE_RE.test(u)
   }
 
   // Returns false for anything that should NOT count as a cabinet box
