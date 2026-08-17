@@ -414,6 +414,31 @@ export default function Home() {
     setCabSeeding(false); e.target.value = ''
   }
 
+  async function importLeedoSummary(e) {
+    const file = e.target.files?.[0]; if (!file) return
+    setCabSeeding(true)
+    try {
+      const buf = await file.arrayBuffer()
+      const res = await fetch('/api/parse-leedo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/octet-stream', 'x-job-id': selectedJob.id, 'x-file-name': file.name },
+        body: buf,
+      })
+      const result = await res.json()
+      if (result.success && result.cabList) {
+        const v = result.cabList.verification || {}
+        await saveCabList(result.cabList, 'Leedo summary import')
+        const msg = v.leedoUnits != null
+          ? `Imported ${result.cabList.unit_types.length} unit types.\nLeedo summary says: ${v.leedoUnits} units / ${v.leedoCabinets} cabinets.\nParsed: ${v.parsedUnits} units / ${v.parsedCabs} total pieces (incl. accessories).${v.unitsMatch ? '\n✓ Unit counts match.' : '\n⚠ UNIT COUNT MISMATCH — review before sending for pricing.'}`
+          : `Imported ${result.cabList.unit_types.length} unit types.`
+        alert(msg)
+      } else {
+        alert('Leedo import failed: ' + (result.error || 'unknown error'))
+      }
+    } catch (err) { alert('Leedo import failed: ' + err.message) }
+    setCabSeeding(false); e.target.value = ''
+  }
+
   async function startBlankCabList() {
     await saveCabList({ project_name: selectedJob.name, unit_types: [], sheet_totals: null }, 'started blank')
   }
@@ -1237,6 +1262,10 @@ export default function Home() {
                             {cabSeeding ? 'Importing...' : 'Re-import'}
                             <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
                           </label>
+                          <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#1B5EA6', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
+                            Leedo PDF
+                            <input type="file" accept=".pdf" onChange={importLeedoSummary} style={{ display:'none' }} disabled={cabSeeding}/>
+                          </label>
                           <select value={cabCopyTarget} onChange={e=>setCabCopyTarget(e.target.value)} style={{ padding:'4px 8px', fontSize:11, border:'0.5px solid #ddd', borderRadius:6, maxWidth:150 }}>
                             <option value="">Copy to job...</option>
                             {jobs.filter(j => j.id !== selectedJob.id).map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
@@ -1257,6 +1286,10 @@ export default function Home() {
                         <label style={{ padding:'8px 16px', fontSize:12, background:'#3C3489', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
                           {cabSeeding ? 'Importing...' : '⬆ Seed from Excel'}
                           <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
+                        </label>
+                        <label style={{ padding:'8px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
+                          {cabSeeding ? 'Importing...' : '⬆ Import Leedo Summary (PDF)'}
+                          <input type="file" accept=".pdf" onChange={importLeedoSummary} style={{ display:'none' }} disabled={cabSeeding}/>
                         </label>
                         <button onClick={startBlankCabList} style={{ padding:'8px 16px', fontSize:12, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Start Blank</button>
                         <span style={{ fontSize:11, color:'#bbb' }}>The editable cabinet list for this job lives here</span>
