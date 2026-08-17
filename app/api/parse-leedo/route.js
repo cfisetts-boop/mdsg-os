@@ -46,7 +46,7 @@ export async function POST(request) {
 
     // Compact extraction: ONLY what the cab list needs. Arrays, not objects,
     // keep the response small enough that 13+ unit types never truncate.
-    const extraction = await anthropic.messages.create({
+    const stream = anthropic.messages.stream({
       model: 'claude-opus-4-5',
       max_tokens: 30000,
       messages: [{
@@ -77,6 +77,7 @@ Respond with ONLY this JSON, no markdown, no commentary:
         ],
       }],
     })
+    const extraction = await stream.finalMessage()
 
     const raw = extraction.content.map(b => (b.type === 'text' ? b.text : '')).join('')
     const parsed = safeParseJSON(raw)
