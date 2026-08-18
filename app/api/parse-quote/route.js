@@ -41,19 +41,21 @@ export async function POST(request) {
       const pdfBase64 = Buffer.from(pdfBuffer).toString('base64')
       docBlock = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } }
     }
-    const extraction = await anthropic.messages.create({
+    const stream = anthropic.messages.stream({
       model: 'claude-opus-4-5',
-      max_tokens: 8000,
+      max_tokens: 30000,
       messages: [{
         role: 'user',
         content: [
           docBlock,
           { type: 'text', text: `Parse this cabinet manufacturer quote PDF and return ONLY a JSON object, no markdown, no explanation. Use this structure:
-{"manufacturer":"Leedo","quote_number":"","rep_name":"","quote_date":null,"expiry_date":null,"project_name":"","totals":{"gross_amount":0,"freight_amount":0,"tax_amount":0,"grand_total":0,"freight_load_count":0},"unit_types":[{"unit_type_name":"","unit_quantity":1,"cabinet_count":0,"total_cubes":0,"gross_price":0,"line_items":[{"sku":"","description":"","door_style":"","finish":"","hinge_side":"","quantity":0,"extended_price":0}]}]}` }
+CRITICAL: include EVERY unit type section — do not stop early; merge sections that continue across pages. Keep line items COMPACT: each is a 3-element array [sku, qty, extendedPrice]. Use exact SKU text including commas/suffixes (e.g. "HCB12R,AD21"). gross_price is the PER-UNIT gross for that unit type.
+{"manufacturer":"Leedo","quote_number":"","rep_name":"","quote_date":null,"expiry_date":null,"project_name":"","totals":{"gross_amount":0,"freight_amount":0,"tax_amount":0,"grand_total":0,"freight_load_count":0},"unit_types":[{"unit_type_name":"","unit_quantity":1,"cabinet_count":0,"total_cubes":0,"gross_price":0,"line_items":[["B18L",1,111.01]]}]}` }
         ]
       }]
     })
-    const rawText = extraction.content[0].text
+    const extraction = await stream.finalMessage()
+    const rawText = extraction.content.map(b => (b.type === 'text' ? b.text : '')).join('')
     let parsedQuote
     try {
       const firstBrace = rawText.indexOf('{')
@@ -107,12 +109,20 @@ console.log('RAW CLAUDE RESPONSE:', rawText.substring(0, 1000))
         }
         if (utId && ut.line_items?.length > 0) {
           await supabase.from('cabinet_line_items').insert(
-            ut.line_items.map((item,j)=>({
-              unit_type_id: utId, job_id: jobId, sku: item.sku,
-              description: item.description, door_style: item.door_style,
-              finish: item.finish, hinge_side: item.hinge_side,
-              quantity: item.quantity||1, extended_price: item.extended_price||0, sort_order: j,
-            }))
+            ut.line_items.map((item, j) => {
+              const isArr = Array.isArray(item)  // compact triplet [sku, qty, ext]
+              return {
+                unit_type_id: utId, job_id: jobId,
+                sku:            isArr ? String(item[0] || '') : item.sku,
+                description:    isArr ? '' : (item.description || ''),
+                door_style:     isArr ? '' : (item.door_style || ''),
+                finish:         isArr ? '' : (item.finish || ''),
+                hinge_side:     isArr ? '' : (item.hinge_side || ''),
+                quantity:       isArr ? (Number(item[1]) || 1) : (item.quantity || 1),
+                extended_price: isArr ? (Number(item[2]) || 0) : (item.extended_price || 0),
+                sort_order: j,
+              }
+            })
           )
         }
       }
