@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = 0, applyDealerDiscount = true } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = 0, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00 } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -84,7 +84,9 @@ export async function POST(request) {
     const unitPriceSum = mergedUnits.reduce((s, u) => s + (u.manufacturer_price || 0), 0)
 
     const senderInfo   = SENDERS[sender] || SENDERS.Cole
-    const hardware     = job.hardware_allowance || 0
+    // Hardware allowance: pieces × $/piece at OUR cost, marked up with the same margin
+    const hwCost       = (Number(hwPieces) || 0) * (Number(hwRate) || 0)
+    const hardware     = 0  // legacy flat allowance replaced by hwCost path below
     const discount     = applyDealerDiscount ? (job.dealer_discount_pct || 0.05) : 0
     // Cost basis priority: explicit override from UI → job field → Σ unit mfr prices
     const grossCost    = (Number(grossCostOverride) > 0 ? Number(grossCostOverride) : 0)
@@ -95,14 +97,16 @@ export async function POST(request) {
     const netCost      = grossCost * (1 - discount)
     // TRUE gross-margin pricing on the cabinet gross only
     const mPct         = Number(marginPct)
-    const cabsToGC     = mPct > 0 && mPct < 95
-      ? netCost / (1 - mPct / 100)
-      : netCost * (markupMultiplier || job.markup_multiplier || 1.34)
+    const marginize    = (v) => mPct > 0 && mPct < 95
+      ? v / (1 - mPct / 100)
+      : v * (markupMultiplier || job.markup_multiplier || 1.34)
+    const cabsToGC     = marginize(netCost)
+    const hwToGC       = hwCost > 0 ? marginize(hwCost) : (job.hardware_allowance || 0)
     // Sales tax applies to the marked-up cabinet price only, not pass-throughs
-    const taxAmount    = salesTax > 0 ? cabsToGC * (salesTax / 100) : 0
-    const totalBid     = cabsToGC + freight + mfrTax + hardware + taxAmount
+    const taxAmount    = salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0
+    const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
     // Margin kept internal only — logged to activity but never shown on PDF
-    const hardwareCost = hardware > 0 ? hardware / 1.40 : 0
+    const hardwareCost = hwCost
     const margin       = mPct > 0 && mPct < 95 ? String(mPct) : (totalBid > 0 ? ((1 - netCost / (totalBid / (1 + salesTaxPct/100))) * 100).toFixed(1) : '0')
 
     const today      = new Date()
@@ -336,10 +340,11 @@ export async function POST(request) {
     }
 
     // Hardware allowance
-    if (hardware > 0) {
+    if (hwToGC > 0) {
       dt('Hardware Allowance', ML + 6, py, { size: 8, color: gray })
-      rAlign(fmtMoney(hardware), MR - 4, py, { size: 8 })
-      py -= 14
+      if (hwCost > 0) dt(`(${Number(hwPieces).toLocaleString()} pieces)`, ML + 6, py - 9, { size: 6.5, color: dgray })
+      rAlign(fmtMoney(hwToGC), MR - 4, py, { size: 8 })
+      py -= hwCost > 0 ? 18 : 14
     } else {
       dt('Hardware Allowance', ML + 6, py, { size: 8, color: gray })
       rAlign('Not included — see separate quote', MR - 4, py, { size: 7.5, color: dgray })

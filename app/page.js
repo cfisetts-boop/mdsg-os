@@ -111,7 +111,12 @@ export default function Home() {
         .catch(() => setFilesLoading(false))
       setCabListLoading(true)
       fetch('/api/cab-list?jobId=' + selectedJob.id)
-        .then(r => r.json()).then(d => { setCabList(d.cabList || null); setCabLoadedAt(d.updatedAt || null); setCabListLoading(false) })
+        .then(r => r.json()).then(d => {
+          setCabList(d.cabList || null); setCabLoadedAt(d.updatedAt || null); setCabListLoading(false)
+          const uts = d.cabList?.unit_types || []
+          const pieces = uts.reduce((s,u)=>s+(u.skus||[]).reduce((x,r2)=>x+(Number(r2.hardware_count)||0)*(Number(r2.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
+          if (pieces > 0) setHwPieces(String(pieces))
+        })
         .catch(() => setCabListLoading(false))
       setCabEditing(false); setCabDraft(null)
     }
@@ -121,6 +126,8 @@ export default function Home() {
   const [proposalFreight, setProposalFreight] = useState('')
   const [proposalMfrTax,  setProposalMfrTax]  = useState('')
   const [applyDiscount,   setApplyDiscount]   = useState(true)
+  const [hwPieces,        setHwPieces]        = useState('')
+  const [hwRate,          setHwRate]          = useState('4.00')
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
@@ -587,7 +594,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: Number(proposalMfrTax) || 0, applyDealerDiscount: applyDiscount }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: Number(proposalMfrTax) || 0, applyDealerDiscount: applyDiscount, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1200,6 +1207,17 @@ export default function Home() {
                         <input type="checkbox" checked={applyDiscount} onChange={e=>setApplyDiscount(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Apply dealer discount ({((selectedJob?.dealer_discount_pct || 0.05)*100).toFixed(0)}%) to gross cost
                       </label>
+                      <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:12 }}>
+                        <div>
+                          <label style={lbl}>Hardware Pieces</label>
+                          <input type="number" min="0" value={hwPieces} placeholder="0" onChange={e=>setHwPieces(e.target.value)} style={{ width:100, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
+                        </div>
+                        <div>
+                          <label style={lbl}>$/Piece (our cost)</label>
+                          <input type="number" min="0" step="0.25" value={hwRate} onChange={e=>setHwRate(e.target.value)} style={{ width:90, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
+                        </div>
+                        {Number(hwPieces)>0 && <span style={{ fontSize:11, color:'#2D7A3A', paddingBottom:9 }}>= ${(Number(hwPieces)*Number(hwRate)).toLocaleString(undefined,{maximumFractionDigits:0})} cost → marked up with margin</span>}
+                      </div>
                       <label style={lbl}>Gross Margin %</label>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                         <input type="number" step="1" min="0" max="60" value={proposalMargin} onChange={e => setProposalMargin(e.target.value)} style={{ width: 80, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />

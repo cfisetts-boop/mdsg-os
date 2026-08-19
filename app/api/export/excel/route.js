@@ -12,6 +12,7 @@
  */
 
 import ExcelJS from 'exceljs'
+import { FILLER_RE } from '@/lib/skuRules'
 import {
   calculateHardware,
   getSection,
@@ -523,25 +524,23 @@ function buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef
 function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) {
   const ws = wb.addWorksheet('Total Cabinet List & Hardware')
   ws.columns = [
-    { width: 12 }, // QTY/UNIT
-    { width: 22 }, // SKU
-    { width: 13 }, // UNIT COUNT
-    { width: 13 }, // TOTAL CABS
-    { width: 13 }, // HRDWR/CAB
-    { width: 13 }, // HRDWR TOTAL
+    { width: 12 }, { width: 22 }, { width: 13 }, { width: 13 },
+    { width: 13 }, { width: 13 },
+    { width: 12 }, // PRICE EA  (manufacturer fills)
+    { width: 14 }, // PRICE EXT (manufacturer fills)
   ]
 
   let r = 1
 
   // Title
-  ws.mergeCells(r, 1, r, 6)
+  ws.mergeCells(r, 1, r, 8)
   ws.getCell(r, 1).value = `${projectName.toUpperCase()} — TOTAL CABINET LIST & HARDWARE`
   ws.getCell(r, 1).font = boldFont(13, COLORS.title)
   ws.getRow(r).height = 20
   r++
 
   // Supplier line
-  ws.mergeCells(r, 1, r, 6)
+  ws.mergeCells(r, 1, r, 8)
   ws.getCell(r, 1).value = `Supplier: ${supplierName}  |  Catalog: ${catalogRef}  |  Hardware: Width-based by category; dash-# = drawer count; Special cases confirmed from catalog PDF`
   ws.getCell(r, 1).font = normalFont(9)
   r++
@@ -556,7 +555,7 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
     const qty = ut.unit_quantity || 1
 
     // Unit type banner
-    ws.mergeCells(r, 1, r, 6)
+    ws.mergeCells(r, 1, r, 8)
     ws.getCell(r, 1).value = `${ut.unit_type_name.toUpperCase()} — ${qty} UNITS`
     ws.getCell(r, 1).font = boldFont(11, COLORS.title)
     ws.getCell(r, 1).fill = fill(COLORS.headerRow)
@@ -564,7 +563,7 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
     r++
 
     // Column headers
-    const hwHeaders = ['QTY / UNIT', 'SKU', 'UNIT COUNT', 'TOTAL CABS', 'HRDWR / CAB', 'HRDWR TOTAL']
+    const hwHeaders = ['QTY / UNIT', 'SKU', 'UNIT COUNT', 'TOTAL CABS', 'HRDWR / CAB', 'HRDWR TOTAL', 'PRICE EA', 'PRICE EXT']
     const hwHeaderRow = ws.getRow(r)
     hwHeaders.forEach((h, i) => {
       const cell = hwHeaderRow.getCell(i + 1)
@@ -600,10 +599,11 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
       row.getCell(5).value = hwVal > 0 ? hwVal : null
       row.getCell(6).value = hwTotal > 0 ? hwTotal : null
 
-      ;[1, 2, 3, 4, 5, 6].forEach(col => {
+      ;[1, 2, 3, 4, 5, 6, 7, 8].forEach(col => {
         row.getCell(col).border = thinBorder()
         row.getCell(col).alignment = { horizontal: col === 2 ? 'left' : 'center', vertical: 'middle' }
       })
+      ;[7, 8].forEach(col => { row.getCell(col).fill = fill('FFF9E3'); row.getCell(col).numFmt = '$#,##0.00' })
       row.commit()
       r++
     })
@@ -617,11 +617,12 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
     subtotalRow.getCell(5).value = null
     subtotalRow.getCell(6).value = totalHwForUnit
 
-    ;[1, 2, 3, 4, 5, 6].forEach(col => {
+    ;[1, 2, 3, 4, 5, 6, 7, 8].forEach(col => {
       subtotalRow.getCell(col).fill = fill(COLORS.subtotalRow)
       subtotalRow.getCell(col).font = boldFont(10)
       subtotalRow.getCell(col).border = thinBorder()
     })
+    subtotalRow.getCell(8).numFmt = '$#,##0.00'
     subtotalRow.commit()
 
     grandTotalCabs += totalQpu * qty
@@ -655,7 +656,7 @@ function buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef) 
   })
 
   if (specialSkus.length > 0) {
-    ws.mergeCells(r, 1, r, 6)
+    ws.mergeCells(r, 1, r, 8)
     ws.getCell(r, 1).value = `SPECIAL CASES — Confirmed from catalog PDF:  ${[...new Set(specialSkus)].join('  |  ')}`
     ws.getCell(r, 1).font = { italic: true, size: 9 }
     ws.getRow(r).commit()
@@ -820,6 +821,117 @@ function buildUkonQuoteTab(wb, unitTypes, projectName, printDate) {
 }
 
 // ── Main Export Handler ───────────────────────────────────────────────────────
+
+// ── Manufacturer Pricing Sheet: one line per unique SKU, Leedo-style detail
+//    columns, two price columns (EA fillable, EXT auto-formula) ─────────────
+function buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, specs = {}) {
+  const ws = wb.addWorksheet('Master Pricing Sheet')
+  ws.columns = [
+    { width: 20 },  // SKU
+    { width: 24 },  // Cabinet Type / Drawer Box
+    { width: 13 },  // Door Style
+    { width: 13 },  // Finish
+    { width: 20 },  // Interior / Door Back
+    { width: 13 },  // Hinge Type
+    { width: 9 },   // Hinge Side
+    { width: 8 },   // Shelf
+    { width: 11 },  // TOTAL QTY
+    { width: 12 },  // PRICE EA
+    { width: 14 },  // PRICE EXT
+  ]
+
+  let r = 1
+  ws.mergeCells(r, 1, r, 11)
+  ws.getCell(r, 1).value = `${projectName.toUpperCase()} — MASTER PRICING SHEET`
+  ws.getCell(r, 1).font = boldFont(13, COLORS.title)
+  ws.getRow(r).height = 20
+  r++
+  ws.mergeCells(r, 1, r, 11)
+  ws.getCell(r, 1).value = `Supplier: ${supplierName}  |  Print Date: ${printDate}  |  Enter PRICE EA per piece — PRICE EXT calculates automatically`
+  ws.getCell(r, 1).font = normalFont(9)
+  r += 2
+
+  const hdrs = ['SKU', 'Cabinet Type / Drawer Box', 'Door Style', 'Finish', 'Interior / Door Back', 'Hinge Type', 'Hinge Side', 'Shelf', 'TOTAL QTY', 'PRICE EA', 'PRICE EXT']
+  const hrow = ws.getRow(r)
+  hdrs.forEach((t, i) => {
+    const cell = hrow.getCell(i + 1)
+    cell.value = t
+    cell.font = boldFont(9, 'FFFFFF')
+    cell.fill = fill(COLORS.headerBar)
+    cell.border = thinBorder()
+    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+  })
+  hrow.height = 24
+  hrow.commit()
+  r++
+
+  // Aggregate unique SKUs across the whole project (reclassified fillers excluded)
+  const skuMap = {}
+  unitTypes.forEach(ut => {
+    ;[...(ut.skus || []), ...(ut.fillers || [])].forEach(item => {
+      const key = (item.sku || '').toUpperCase()
+      if (!key) return
+      if (!skuMap[key]) skuMap[key] = { ...item, totalQty: 0 }
+      skuMap[key].totalQty += (Number(item.quantity_per_unit) || 1) * (ut.unit_quantity || 1)
+    })
+  })
+
+  const doorStyle = specs.door_style || specs.cabinet_line || ''
+  const finish    = specs.finish_color || specs.finish || ''
+
+  const rows = Object.values(skuMap).sort((a, b) => {
+    const sa = sectionSortIndex(getSection(a.sku)), sb = sectionSortIndex(getSection(b.sku))
+    return sa !== sb ? sa - sb : a.sku.localeCompare(b.sku)
+  })
+
+  let currentSection = null
+  rows.forEach(item => {
+    const section = getSection(item.sku)
+    if (section !== currentSection) {
+      currentSection = section
+      fillLabel(ws, r, 1, 11, `──  ${section.toUpperCase()}  ──`, COLORS.sectionBand || 'E8E8E4')
+      r++
+    }
+    const row = ws.getRow(r)
+    const vals = [
+      item.sku,
+      'Standard/PB Standard',
+      doorStyle,
+      finish,
+      '',
+      'Euro 6 Way',
+      normalizeHinge(item.hinge_side) || 'L/R',
+      '3/4',
+      item.totalQty,
+      null,  // PRICE EA — manufacturer fills
+      { formula: `I${r}*J${r}` },  // PRICE EXT = QTY × EA
+    ]
+    vals.forEach((v, i) => {
+      const cell = row.getCell(i + 1)
+      if (v !== null) cell.value = v
+      cell.border = thinBorder()
+      cell.alignment = { horizontal: i === 0 || i === 1 ? 'left' : 'center', vertical: 'middle' }
+    })
+    row.getCell(10).fill = fill('FFF9E3')
+    row.getCell(10).numFmt = '$#,##0.00'
+    row.getCell(11).numFmt = '$#,##0.00'
+    row.commit()
+    r++
+  })
+
+  // Grand total row: sums the EXT column
+  r++
+  fillLabel(ws, r, 1, 8, `TOTAL  —  ${rows.length} unique SKUs  |  ${rows.reduce((s, x) => s + x.totalQty, 0).toLocaleString()} total pieces`, COLORS.grandTotal)
+  ws.getCell(r, 9).value = rows.reduce((s, x) => s + x.totalQty, 0)
+  ws.getCell(r, 9).font = boldFont(10)
+  ws.getCell(r, 9).fill = fill(COLORS.grandTotal)
+  ws.getCell(r, 11).value = { formula: `SUM(K5:K${r - 2})` }
+  ws.getCell(r, 11).font = boldFont(11)
+  ws.getCell(r, 11).fill = fill(COLORS.grandTotal)
+  ws.getCell(r, 11).numFmt = '$#,##0.00'
+  ws.getRow(r).commit()
+}
+
 export async function POST(request) {
   try {
     const body = await request.json()
@@ -827,6 +939,7 @@ export async function POST(request) {
       takeoffData,
       projectName = takeoffData?.project_name || 'MDSG Project',
       supplierName = 'TBD',
+      mode = 'internal',
       catalogRef = 'TBD',
       printDate = new Date().toLocaleDateString('en-US'),
     } = body
@@ -846,10 +959,22 @@ export async function POST(request) {
     wb.modified = new Date()
 
     // Build tabs — Leedo format + UKON quote request
-    buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits, takeoffData.sheet_totals || null)
-    unitTypes.forEach(ut => buildUnitTab(wb, ut, projectName, supplierName, catalogRef))
-    buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef)
-    buildUkonQuoteTab(wb, unitTypes, projectName, printDate)
+    // Reclassify: any sku row matching the filler pattern moves to fillers —
+    // keeps exports honest even for lists saved before a pattern was added
+    unitTypes.forEach(ut => {
+      const stay = [], moved = []
+      ;(ut.skus || []).forEach(rw => (FILLER_RE.test(rw.sku || '') ? moved : stay).push(rw))
+      if (moved.length) { ut.skus = stay; ut.fillers = [...(ut.fillers || []), ...moved] }
+    })
+
+    if (mode === 'manufacturer') {
+      buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, takeoffData.specs || {})
+    } else {
+          buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits, takeoffData.sheet_totals || null)
+      unitTypes.forEach(ut => buildUnitTab(wb, ut, projectName, supplierName, catalogRef))
+      buildHardwareTab(wb, unitTypes, projectName, supplierName, catalogRef)
+      buildUkonQuoteTab(wb, unitTypes, projectName, printDate)
+    }
 
     // Stream back as .xlsx
     const buffer = await wb.xlsx.writeBuffer()
@@ -859,7 +984,7 @@ export async function POST(request) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${safeName}_Cabinet_Schedule.xlsx"`,
+        'Content-Disposition': `attachment; filename="${safeName}_${mode === 'manufacturer' ? 'Cabinet_List_For_Pricing' : 'Cabinet_Schedule'}.xlsx"`,
       },
     })
   } catch (err) {
