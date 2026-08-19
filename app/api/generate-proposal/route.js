@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {} } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = 0, applyDealerDiscount = true } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -85,24 +85,25 @@ export async function POST(request) {
 
     const senderInfo   = SENDERS[sender] || SENDERS.Cole
     const hardware     = job.hardware_allowance || 0
-    const discount     = job.dealer_discount_pct || 0.05
+    const discount     = applyDealerDiscount ? (job.dealer_discount_pct || 0.05) : 0
     // Cost basis priority: explicit override from UI → job field → Σ unit mfr prices
     const grossCost    = (Number(grossCostOverride) > 0 ? Number(grossCostOverride) : 0)
                        || job.manufacturer_gross_cost || unitPriceSum
-    const freight      = job.freight_cost || 0
-    const netCost      = (grossCost * (1 - discount)) + freight
-    // TRUE gross-margin pricing: price = cost / (1 - margin). A 20% margin on
-    // $140k cost → $175k price. (Legacy multiplier still honored if provided.)
+    // Freight & manufacturer tax are PASS-THROUGH: added after markup, never margined.
+    const freight      = freightPassThrough !== null ? Number(freightPassThrough) : (job.freight_cost || 0)
+    const mfrTax       = Number(mfrTaxPassThrough) || 0
+    const netCost      = grossCost * (1 - discount)
+    // TRUE gross-margin pricing on the cabinet gross only
     const mPct         = Number(marginPct)
     const cabsToGC     = mPct > 0 && mPct < 95
       ? netCost / (1 - mPct / 100)
       : netCost * (markupMultiplier || job.markup_multiplier || 1.34)
-    // Tax is calculated on cabinet material total
+    // Sales tax applies to the marked-up cabinet price only, not pass-throughs
     const taxAmount    = salesTax > 0 ? cabsToGC * (salesTax / 100) : 0
-    const totalBid     = cabsToGC + hardware + taxAmount
+    const totalBid     = cabsToGC + freight + mfrTax + hardware + taxAmount
     // Margin kept internal only — logged to activity but never shown on PDF
     const hardwareCost = hardware > 0 ? hardware / 1.40 : 0
-    const margin       = totalBid > 0 ? ((totalBid - netCost - hardwareCost - taxAmount) / totalBid * 100).toFixed(1) : '0'
+    const margin       = mPct > 0 && mPct < 95 ? String(mPct) : (totalBid > 0 ? ((1 - netCost / (totalBid / (1 + salesTaxPct/100))) * 100).toFixed(1) : '0')
 
     const today      = new Date()
     const validUntil = new Date(today)
@@ -319,9 +320,20 @@ export async function POST(request) {
 
     // Base cabinet price
     dt('Base Cabinet Price', ML + 6, py, { size: 8, color: gray })
-    dt('(includes freight, dealer discount & markup)', ML + 6, py - 9, { size: 6.5, color: dgray })
+    dt(discount > 0 ? '(includes dealer discount & markup)' : '(includes markup)', ML + 6, py - 9, { size: 6.5, color: dgray })
     rAlign(fmtMoney(cabsToGC), MR - 4, py, { size: 8 })
     py -= 20
+
+    if (freight > 0) {
+      dt('Freight (pass-through)', ML + 6, py, { size: 8, color: gray })
+      rAlign(fmtMoney(freight), MR - 4, py, { size: 8 })
+      py -= 14
+    }
+    if (mfrTax > 0) {
+      dt('Manufacturer Tax (pass-through)', ML + 6, py, { size: 8, color: gray })
+      rAlign(fmtMoney(mfrTax), MR - 4, py, { size: 8 })
+      py -= 14
+    }
 
     // Hardware allowance
     if (hardware > 0) {

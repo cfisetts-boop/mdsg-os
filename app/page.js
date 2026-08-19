@@ -100,6 +100,8 @@ export default function Home() {
   useEffect(() => {
     setBidSections(selectedJob?.proposal_sections ? { ...DEFAULT_BID_SECTIONS, ...selectedJob.proposal_sections } : DEFAULT_BID_SECTIONS)
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
+    setProposalFreight(selectedJob?.freight_cost > 0 ? String(selectedJob.freight_cost) : '')
+    setProposalMfrTax('')
     setJobFiles([])
     setCabList(null)
     if (selectedJob?.id) {
@@ -116,6 +118,9 @@ export default function Home() {
   }, [selectedJob?.id])
   const [proposalMargin, setProposalMargin] = useState(20)
   const [proposalGross,  setProposalGross]  = useState('')
+  const [proposalFreight, setProposalFreight] = useState('')
+  const [proposalMfrTax,  setProposalMfrTax]  = useState('')
+  const [applyDiscount,   setApplyDiscount]   = useState(true)
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
@@ -582,7 +587,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: Number(proposalMfrTax) || 0, applyDealerDiscount: applyDiscount }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1181,6 +1186,20 @@ export default function Home() {
                     <div style={{ marginBottom: 14 }}>
                       <label style={lbl}>Manufacturer Gross Cost ($ — from Leedo printable summary)</label>
                       <input type="number" min="0" value={proposalGross} placeholder="e.g. 140000" onChange={e => setProposalGross(e.target.value)} style={{ width: 160, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13, marginBottom: 10 }} />
+                      <div style={{ display:'flex', gap:10, marginBottom:10 }}>
+                        <div>
+                          <label style={lbl}>Freight $ (pass-through)</label>
+                          <input type="number" min="0" value={proposalFreight} placeholder="0" onChange={e=>setProposalFreight(e.target.value)} style={{ width:120, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
+                        </div>
+                        <div>
+                          <label style={lbl}>Mfr Tax $ (pass-through)</label>
+                          <input type="number" min="0" value={proposalMfrTax} placeholder="0" onChange={e=>setProposalMfrTax(e.target.value)} style={{ width:120, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
+                        </div>
+                      </div>
+                      <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
+                        <input type="checkbox" checked={applyDiscount} onChange={e=>setApplyDiscount(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        Apply dealer discount ({((selectedJob?.dealer_discount_pct || 0.05)*100).toFixed(0)}%) to gross cost
+                      </label>
                       <label style={lbl}>Gross Margin %</label>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
                         <input type="number" step="1" min="0" max="60" value={proposalMargin} onChange={e => setProposalMargin(e.target.value)} style={{ width: 80, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
@@ -1301,7 +1320,14 @@ export default function Home() {
                       return (
                       <div>
                         <div style={{ fontSize:11, color:'#888', marginBottom:10 }}>
-                          {(L.unit_types || []).length} unit types · {(L.unit_types || []).reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)} total units · {(L.unit_types || []).reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0).toLocaleString()} cabinets
+                          {(() => {
+                            const uts = L.unit_types || []
+                            const totalUnits = uts.reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)
+                            const allPieces  = uts.reduce((s,u)=>s+([...(u.skus||[]),...(u.fillers||[])].reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0))*(Number(u.unit_quantity)||1),0)
+                            const trueCabs   = L.sheet_totals?.cabinets ?? uts.reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
+                            const extras     = Math.max(0, allPieces - trueCabs)
+                            return `${uts.length} unit types · ${totalUnits} total units · ${trueCabs.toLocaleString()} cabinets${extras > 0 ? ` · ${extras.toLocaleString()} additional pieces` : ''}`
+                          })()}
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
