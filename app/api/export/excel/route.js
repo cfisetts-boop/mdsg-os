@@ -984,7 +984,7 @@ export async function POST(request) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${safeName}_${mode === 'manufacturer' ? 'Cabinet_List_For_Pricing' : 'Cabinet_Schedule'}.xlsx"`,
+        'Content-Disposition': `attachment; filename="${safeName}_${mode === 'manufacturer' ? 'Quote' : 'Full_List'}.xlsx"`,
       },
     })
   } catch (err) {

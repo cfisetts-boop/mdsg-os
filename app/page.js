@@ -116,6 +116,12 @@ export default function Home() {
           const uts = d.cabList?.unit_types || []
           const pieces = uts.reduce((s,u)=>s+(u.skus||[]).reduce((x,r2)=>x+(Number(r2.hardware_count)||0)*(Number(r2.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
           if (pieces > 0) setHwPieces(String(pieces))
+          const leedo = d.cabList?.leedo
+          if (leedo?.freight > 0) setProposalFreight(String(leedo.freight))
+          if (leedo?.grandTotal > 0 && leedo?.grossAmount > 0) {
+            const t = Math.max(0, leedo.grandTotal - leedo.grossAmount - (leedo.freight || 0))
+            if (t > 0) setProposalMfrTax(t.toFixed(2))
+          }
         })
         .catch(() => setCabListLoading(false))
       setCabEditing(false); setCabDraft(null)
@@ -487,7 +493,7 @@ export default function Home() {
     try {
       const base = { takeoffData: cabList, projectName: cabList.project_name || selectedJob.name, supplierName: cabList.specs?.cabinet_line || selectedJob.manufacturer || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
       const safe = (cabList.project_name || selectedJob.name || 'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_')
-      for (const [mode, suffix] of [['internal', 'Cabinet_Schedule'], ['manufacturer', 'Cabinet_List_For_Pricing']]) {
+      for (const [mode, suffix] of [['internal', 'Full_List'], ['manufacturer', 'Quote']]) {
         const res = await fetch('/api/export/excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, mode }) })
         if (!res.ok) throw new Error('Export failed (' + mode + ')')
         const blob = await res.blob()

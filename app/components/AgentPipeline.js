@@ -406,7 +406,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
       const base = { takeoffData: editData, projectName: editData.project_name || 'MDSG Project', supplierName: editData.specs?.cabinet_line || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
       const safe = (editData.project_name || 'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_')
       // Two files: internal full workbook + manufacturer pricing copy
-      for (const [mode, suffix] of [['internal', 'Cabinet_Schedule'], ['manufacturer', 'Cabinet_List_For_Pricing']]) {
+      for (const [mode, suffix] of [['internal', 'Full_List'], ['manufacturer', 'Quote']]) {
         const res = await fetch('/api/export/excel', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ ...base, mode }),

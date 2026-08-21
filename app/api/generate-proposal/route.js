@@ -84,16 +84,27 @@ export async function POST(request) {
     const unitPriceSum = mergedUnits.reduce((s, u) => s + (u.manufacturer_price || 0), 0)
 
     const senderInfo   = SENDERS[sender] || SENDERS.Cole
+    // Auto-pull Leedo quote figures from the job's imported cab list when the
+    // UI didn't supply them — makes the proposal correct even with empty inputs.
+    const leedo        = job.cab_list?.leedo || {}
+    const leedoTax     = (leedo.grandTotal > 0 && leedo.grossAmount > 0)
+      ? Math.max(0, leedo.grandTotal - leedo.grossAmount - (leedo.freight || 0))
+      : 0
+    let effHwPieces    = Number(hwPieces) || 0
+    if (effHwPieces === 0 && job.cab_list?.unit_types) {
+      effHwPieces = job.cab_list.unit_types.reduce((s, u) =>
+        s + (u.skus || []).reduce((x, r) => x + (Number(r.hardware_count) || 0) * (Number(r.quantity_per_unit) || 0), 0) * (Number(u.unit_quantity) || 1), 0)
+    }
     // Hardware allowance: pieces × $/piece at OUR cost, marked up with the same margin
-    const hwCost       = (Number(hwPieces) || 0) * (Number(hwRate) || 0)
+    const hwCost       = effHwPieces * (Number(hwRate) || 0)
     const hardware     = 0  // legacy flat allowance replaced by hwCost path below
     const discount     = applyDealerDiscount ? (job.dealer_discount_pct || 0.05) : 0
     // Cost basis priority: explicit override from UI → job field → Σ unit mfr prices
     const grossCost    = (Number(grossCostOverride) > 0 ? Number(grossCostOverride) : 0)
                        || job.manufacturer_gross_cost || unitPriceSum
     // Freight & manufacturer tax are PASS-THROUGH: added after markup, never margined.
-    const freight      = freightPassThrough !== null ? Number(freightPassThrough) : (job.freight_cost || 0)
-    const mfrTax       = Number(mfrTaxPassThrough) || 0
+    const freight      = freightPassThrough !== null ? Number(freightPassThrough) : (job.freight_cost || leedo.freight || 0)
+    const mfrTax       = Number(mfrTaxPassThrough) || leedoTax || 0
     const netCost      = grossCost * (1 - discount)
     // TRUE gross-margin pricing on the cabinet gross only
     const mPct         = Number(marginPct)
@@ -103,7 +114,7 @@ export async function POST(request) {
     const cabsToGC     = marginize(netCost)
     const hwToGC       = hwCost > 0 ? marginize(hwCost) : (job.hardware_allowance || 0)
     // Sales tax applies to the marked-up cabinet price only, not pass-throughs
-    const taxAmount    = salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0
+    const taxAmount    = mfrTax > 0 ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
     const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
     // Margin kept internal only — logged to activity but never shown on PDF
     const hardwareCost = hwCost
@@ -334,7 +345,8 @@ export async function POST(request) {
       py -= 14
     }
     if (mfrTax > 0) {
-      dt('Manufacturer Tax (pass-through)', ML + 6, py, { size: 8, color: gray })
+      const effRate = grossCost > 0 ? ((mfrTax / grossCost) * 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : null
+      dt(`Sales Tax${effRate ? ` (${effRate}%)` : ''} — from manufacturer quote`, ML + 6, py, { size: 8, color: gray })
       rAlign(fmtMoney(mfrTax), MR - 4, py, { size: 8 })
       py -= 14
     }
@@ -342,7 +354,7 @@ export async function POST(request) {
     // Hardware allowance
     if (hwToGC > 0) {
       dt('Hardware Allowance', ML + 6, py, { size: 8, color: gray })
-      if (hwCost > 0) dt(`(${Number(hwPieces).toLocaleString()} pieces)`, ML + 6, py - 9, { size: 6.5, color: dgray })
+      if (hwCost > 0) dt(`(${effHwPieces.toLocaleString()} pieces @ margin)`, ML + 6, py - 9, { size: 6.5, color: dgray })
       rAlign(fmtMoney(hwToGC), MR - 4, py, { size: 8 })
       py -= hwCost > 0 ? 18 : 14
     } else {
