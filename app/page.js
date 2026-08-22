@@ -1208,6 +1208,8 @@ export default function Home() {
                         <div style={{ fontWeight: 500, color: '#3B6D11', marginBottom: 4 }}>Parsed successfully</div>
                         <div>Manufacturer: {quoteResult.summary.manufacturer} · Unit types: {quoteResult.summary.unit_type_count} · Cabinets: {quoteResult.summary.total_cabinets?.toLocaleString()}</div>
                         <div style={{ fontWeight: 500 }}>Grand total: {fmt(quoteResult.summary.grand_total)}</div>
+                        {quoteResult.quote_recorded === false && <div style={{ color:'#A32D2D', fontWeight:600, marginTop:4 }}>⚠ Quote history NOT saved: {quoteResult.quote_record_error}</div>}
+                        {quoteResult.quote_recorded === true && <div style={{ color:'#2D7A3A', marginTop:4 }}>✓ Saved to quote history</div>}
                       </div>
                     )}
                     <div style={{ marginTop: 10 }}>

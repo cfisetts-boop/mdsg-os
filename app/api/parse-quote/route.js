@@ -7,7 +7,7 @@ export async function POST(request) {
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      process.env.SUPABASE_SERVICE_ROLE_KEY
     )
     const jobId = request.headers.get('x-job-id')
     const fileName = request.headers.get('x-file-name') || 'quote.pdf'
@@ -66,10 +66,10 @@ console.log('RAW CLAUDE RESPONSE:', rawText.substring(0, 1000))
       return Response.json({ error: 'Could not parse AI response', raw: rawText.substring(0, 500) }, { status: 422 })
     }
     if (jobId) {
-      await supabase.from('manufacturer_quotes').insert({
+      const { error: histErr } = await supabase.from('manufacturer_quotes').insert({
         job_id: jobId, manufacturer: parsedQuote.manufacturer,
         quote_number: parsedQuote.quote_number, rep_name: parsedQuote.rep_name,
-        quote_date: parsedQuote.quote_date, expiry_date: parsedQuote.expiry_date,
+        quote_date: parsedQuote.quote_date || null, expiry_date: parsedQuote.expiry_date || null,
         raw_extracted_json: parsedQuote,
         gross_amount: parsedQuote.totals?.gross_amount || 0,
         freight_amount: parsedQuote.totals?.freight_amount || 0,
@@ -78,6 +78,7 @@ console.log('RAW CLAUDE RESPONSE:', rawText.substring(0, 1000))
         total_cabinets: parsedQuote.unit_types?.reduce((s,u)=>s+(u.cabinet_count||0),0)||0,
         file_name: fileName, parsed_at: new Date().toISOString(),
       })
+      if (histErr) console.error('Quote history insert FAILED:', histErr.message)
       // ── UPSERT unit types: match existing rows (from the takeoff save) by
       //    normalized name and add pricing to them; only INSERT rows that
       //    don't exist yet. Never blind-append — that created duplicate rows.
@@ -141,7 +142,9 @@ console.log('RAW CLAUDE RESPONSE:', rawText.substring(0, 1000))
       })
     }
     return Response.json({
-      success: true, parsed: parsedQuote,
+      success: true,
+      quote_recorded: typeof histErr === 'undefined' ? null : !histErr,
+      quote_record_error: typeof histErr === 'undefined' ? null : (histErr?.message || null), parsed: parsedQuote,
       summary: {
         manufacturer: parsedQuote.manufacturer,
         quote_number: parsedQuote.quote_number,
