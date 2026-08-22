@@ -367,6 +367,20 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
       }
     }
     await supabase.from('jobs').update({ total_cabinet_count: grandTotal, unit_type_count: editData.unit_types.length }).eq('id', selectedJobId)
+
+    // ONE SOURCE OF TRUTH: the pipeline save also writes the job's Cabinet List,
+    // so the job card, exports, and proposals all read the same data.
+    try {
+      const check = await fetch('/api/cab-list?jobId=' + selectedJobId).then(r => r.json())
+      const proceed = !check.cabList || confirm('This job already has a Cabinet List. Overwrite it with this pipeline data?')
+      if (proceed) {
+        await fetch('/api/cab-list', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId: selectedJobId, cabList: editData, source: 'agent pipeline save' }),
+        })
+      }
+    } catch (e) { console.error('Cab list sync failed:', e) }
+
     await supabase.from('activity_log').insert({ job_id:selectedJobId, user_name:'Cole', action:`Elevation saved — ${editData.unit_types.length} unit types · ${grandTotal.toLocaleString()} cabinets` })
     setSaving(false)
     setSavedAt(p => ({ ...p, elevation: new Date().toLocaleTimeString() }))

@@ -134,6 +134,8 @@ export default function Home() {
   const [applyDiscount,   setApplyDiscount]   = useState(true)
   const [hwPieces,        setHwPieces]        = useState('')
   const [hwRate,          setHwRate]          = useState('4.00')
+  const [quoteCheck,      setQuoteCheck]      = useState(null)
+  const [quoteChecking,   setQuoteChecking]   = useState(false)
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
@@ -503,6 +505,16 @@ export default function Home() {
       }
     } catch (err) { alert(err.message) }
     setCabExporting(false)
+  }
+
+  async function runQuoteCheck() {
+    setQuoteChecking(true); setQuoteCheck(null)
+    try {
+      const r = await fetch('/api/quote-check?jobId=' + selectedJob.id)
+      const d = await r.json()
+      setQuoteCheck(d.error ? { error: d.error } : d)
+    } catch (err) { setQuoteCheck({ error: err.message }) }
+    setQuoteChecking(false)
   }
 
   async function copyCabListToJob() {
@@ -1305,6 +1317,7 @@ export default function Home() {
                             {cabSeeding ? 'Importing...' : 'Re-import'}
                             <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
                           </label>
+                          <button onClick={runQuoteCheck} disabled={quoteChecking} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#8B4513', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>{quoteChecking ? 'Checking...' : '⚖ Check vs Quote'}</button>
                           <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#1B5EA6', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
                             Leedo PDF
                             <input type="file" accept=".pdf" onChange={importLeedoSummary} style={{ display:'none' }} disabled={cabSeeding}/>
@@ -1355,6 +1368,25 @@ export default function Home() {
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
+                        {quoteCheck && (
+                          <div style={{ marginBottom:10, border:'0.5px solid ' + (quoteCheck.error ? '#ddd' : quoteCheck.clean ? '#4caf50' : '#e0a800'), borderRadius:8, padding:'10px 12px', background: quoteCheck.error ? '#fafaf8' : quoteCheck.clean ? '#f0f9f0' : '#fdf8ec' }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                              <div style={{ fontSize:12, fontWeight:600, color: quoteCheck.error ? '#888' : quoteCheck.clean ? '#2D7A3A' : '#8B6914' }}>
+                                {quoteCheck.error ? quoteCheck.error : (quoteCheck.clean ? '✓ ' : '⚠ ') + quoteCheck.summary}
+                              </div>
+                              <button onClick={()=>setQuoteCheck(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', fontSize:13 }}>✕</button>
+                            </div>
+                            {!quoteCheck.error && quoteCheck.issues?.length > 0 && (
+                              <div style={{ maxHeight:180, overflowY:'auto', marginTop:8 }}>
+                                {quoteCheck.issues.map((iss, ix) => (
+                                  <div key={ix} style={{ fontSize:11, padding:'3px 0', borderTop:'0.5px dotted #eee', color: iss.level==='unit' ? '#A32D2D' : '#8B6914' }}>
+                                    <strong>{iss.unit}</strong>{iss.sku ? ' · ' + iss.sku : ''} — {iss.detail}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div style={{ maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
                           {(L.unit_types || []).map((ut, ui) => (
                             <div key={ui} style={{ borderBottom:'0.5px solid #eee' }}>
