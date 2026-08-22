@@ -1231,6 +1231,8 @@ export default function Home() {
                                 ))}
                               </div>
                             )}
+                          </div>
+                        )}
                   </div>
 
                   <div style={card}>
@@ -1399,8 +1401,6 @@ export default function Home() {
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
-                          </div>
-                        )}
                         <div style={{ maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
                           {(L.unit_types || []).map((ut, ui) => (
                             <div key={ui} style={{ borderBottom:'0.5px solid #eee' }}>
