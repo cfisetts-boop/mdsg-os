@@ -178,7 +178,7 @@ Respond with ONLY this JSON, no markdown, no commentary:
           }
         }),
       }
-      await supabase.from('manufacturer_quotes').insert({
+      const { error: qErr } = await supabase.from('manufacturer_quotes').insert({
         job_id: jobId, manufacturer: 'Leedo',
         quote_number: quoteShape.quote_number, rep_name: parsed.summary?.rep || '',
         raw_extracted_json: quoteShape,
@@ -189,6 +189,8 @@ Respond with ONLY this JSON, no markdown, no commentary:
         total_cabinets: parsed.summary?.totalCabinets || 0,
         file_name: 'Leedo Printable Summary', parsed_at: new Date().toISOString(),
       })
+      if (qErr) console.error('Quote history insert FAILED:', qErr.message)
+      cabList.verification.quoteRecorded = !qErr
       await supabase.from('activity_log').insert({
         job_id: jobId, user_name: 'System',
         action: `Leedo summary imported — ${unit_types.length} unit types · ${parsedUnits} units · gross $${Math.round(parsed.summary.grossAmount).toLocaleString()}`,

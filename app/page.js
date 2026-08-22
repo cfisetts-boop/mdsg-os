@@ -451,7 +451,7 @@ export default function Home() {
         const v = result.cabList.verification || {}
         await saveCabList(result.cabList, 'Leedo summary import')
         const msg = v.leedoUnits != null
-          ? `Imported ${result.cabList.unit_types.length} unit types.\nLeedo summary says: ${v.leedoUnits} units / ${v.leedoCabinets} cabinets.\nParsed: ${v.parsedUnits} units / ${v.parsedCabs} total pieces (incl. accessories).${v.unitsMatch ? '\n✓ Unit counts match.' : '\n⚠ UNIT COUNT MISMATCH — review before sending for pricing.'}`
+          ? `Imported ${result.cabList.unit_types.length} unit types.\nLeedo summary says: ${v.leedoUnits} units / ${v.leedoCabinets} cabinets.\nParsed: ${v.parsedUnits} units / ${v.parsedCabs} total pieces (incl. accessories).${v.unitsMatch ? '\n✓ Unit counts match.' : '\n⚠ UNIT COUNT MISMATCH — review before sending for pricing.'}${v.quoteRecorded === false ? '\n⚠ Quote history NOT recorded — quote check will not see this import.' : v.quoteRecorded ? '\n✓ Recorded in quote history.' : ''}`
           : `Imported ${result.cabList.unit_types.length} unit types.`
         alert(msg)
       } else {
@@ -1210,6 +1210,27 @@ export default function Home() {
                         <div style={{ fontWeight: 500 }}>Grand total: {fmt(quoteResult.summary.grand_total)}</div>
                       </div>
                     )}
+                    <div style={{ marginTop: 10 }}>
+                      <button onClick={runQuoteCheck} disabled={quoteChecking} style={{ padding:'6px 14px', fontSize:12, background:'#8B4513', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{quoteChecking ? 'Checking...' : '⚖ Check Quote vs Cabinet List'}</button>
+                      <span style={{ fontSize:11, color:'#999', marginLeft:8 }}>Compares the latest uploaded quote against this job's cabinet list</span>
+                    </div>
+                    {quoteCheck && (
+                          <div style={{ marginBottom:10, border:'0.5px solid ' + (quoteCheck.error ? '#ddd' : quoteCheck.clean ? '#4caf50' : '#e0a800'), borderRadius:8, padding:'10px 12px', background: quoteCheck.error ? '#fafaf8' : quoteCheck.clean ? '#f0f9f0' : '#fdf8ec' }}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                              <div style={{ fontSize:12, fontWeight:600, color: quoteCheck.error ? '#888' : quoteCheck.clean ? '#2D7A3A' : '#8B6914' }}>
+                                {quoteCheck.error ? quoteCheck.error : (quoteCheck.clean ? '✓ ' : '⚠ ') + quoteCheck.summary}
+                              </div>
+                              <button onClick={()=>setQuoteCheck(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', fontSize:13 }}>✕</button>
+                            </div>
+                            {!quoteCheck.error && quoteCheck.issues?.length > 0 && (
+                              <div style={{ maxHeight:180, overflowY:'auto', marginTop:8 }}>
+                                {quoteCheck.issues.map((iss, ix) => (
+                                  <div key={ix} style={{ fontSize:11, padding:'3px 0', borderTop:'0.5px dotted #eee', color: iss.level==='unit' ? '#A32D2D' : '#8B6914' }}>
+                                    <strong>{iss.unit}</strong>{iss.sku ? ' · ' + iss.sku : ''} — {iss.detail}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                   </div>
 
                   <div style={card}>
@@ -1323,7 +1344,6 @@ export default function Home() {
                             {cabSeeding ? 'Importing...' : 'Re-import'}
                             <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
                           </label>
-                          <button onClick={runQuoteCheck} disabled={quoteChecking} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#8B4513', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>{quoteChecking ? 'Checking...' : '⚖ Check vs Quote'}</button>
                           <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#1B5EA6', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
                             Leedo PDF
                             <input type="file" accept=".pdf" onChange={importLeedoSummary} style={{ display:'none' }} disabled={cabSeeding}/>
@@ -1368,7 +1388,8 @@ export default function Home() {
                             const uts = L.unit_types || []
                             const totalUnits = uts.reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)
                             const allPieces  = uts.reduce((s,u)=>s+([...(u.skus||[]),...(u.fillers||[])].reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0))*(Number(u.unit_quantity)||1),0)
-                            const trueCabs   = L.sheet_totals?.cabinets ?? uts.reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
+                            const computedCabs = uts.reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
+                            const trueCabs   = (cabEditing || L.sheet_totals?.cabinets == null) ? computedCabs : L.sheet_totals.cabinets
                             const extras     = Math.max(0, allPieces - trueCabs)
                             const kindCount = (k) => uts.filter(u => (u.kind || 'unit') === k).reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)
                             const nU = kindCount('unit'), nB = kindCount('bathroom'), nA = kindCount('amenity')
@@ -1378,23 +1399,6 @@ export default function Home() {
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
-                        {quoteCheck && (
-                          <div style={{ marginBottom:10, border:'0.5px solid ' + (quoteCheck.error ? '#ddd' : quoteCheck.clean ? '#4caf50' : '#e0a800'), borderRadius:8, padding:'10px 12px', background: quoteCheck.error ? '#fafaf8' : quoteCheck.clean ? '#f0f9f0' : '#fdf8ec' }}>
-                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                              <div style={{ fontSize:12, fontWeight:600, color: quoteCheck.error ? '#888' : quoteCheck.clean ? '#2D7A3A' : '#8B6914' }}>
-                                {quoteCheck.error ? quoteCheck.error : (quoteCheck.clean ? '✓ ' : '⚠ ') + quoteCheck.summary}
-                              </div>
-                              <button onClick={()=>setQuoteCheck(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb', fontSize:13 }}>✕</button>
-                            </div>
-                            {!quoteCheck.error && quoteCheck.issues?.length > 0 && (
-                              <div style={{ maxHeight:180, overflowY:'auto', marginTop:8 }}>
-                                {quoteCheck.issues.map((iss, ix) => (
-                                  <div key={ix} style={{ fontSize:11, padding:'3px 0', borderTop:'0.5px dotted #eee', color: iss.level==='unit' ? '#A32D2D' : '#8B6914' }}>
-                                    <strong>{iss.unit}</strong>{iss.sku ? ' · ' + iss.sku : ''} — {iss.detail}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         )}
                         <div style={{ maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
@@ -1465,7 +1469,11 @@ export default function Home() {
                               <button onClick={()=>upd(n=>{ if(!n.unit_types) n.unit_types=[]; n.unit_types.push({ unit_type_name:'NEW UNIT', unit_quantity:1, skus:[], fillers:[], is_ada:false, countertop_sf:0, excelSubtotalSF:null, excelSubtotalHW:null }) })} style={{ width:'100%', padding:8, fontSize:12, background:'#f5f5f3', border:'1px dashed #ccc', borderRadius:6, cursor:'pointer', color:'#3C3489', fontWeight:500 }}>+ Add Unit Type</button>
                             </div>
                           )}
-                          {(L.unit_types || []).length === 0 && !cabEditing && <div style={{ padding:16, fontSize:12, color:'#bbb' }}>Blank list — click Edit to add units</div>}
+                          {(L.unit_types || []).length === 0 && !cabEditing && (
+                            <div style={{ padding:16, textAlign:'center' }}>
+                              <button onClick={()=>{ const d = JSON.parse(JSON.stringify(cabList)); d.unit_types = [{ unit_type_name:'UNIT A', unit_quantity:1, kind:'unit', skus:[], fillers:[], is_ada:false, countertop_sf:0, excelSubtotalSF:null, excelSubtotalHW:null }]; setCabDraft(d); setCabEditing(true) }} style={{ padding:'10px 20px', fontSize:13, background:'#3C3489', color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontWeight:500 }}>+ Start Building — Add First Unit</button>
+                            </div>
+                          )}
                         </div>
                       </div>
                       )
