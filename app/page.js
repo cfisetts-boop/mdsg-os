@@ -215,6 +215,7 @@ export default function Home() {
   useEffect(() => {
     if (selectedJob) {
       setEditFields({
+        name: selectedJob.name || '',
         door_style: selectedJob.door_style || '',
         finish_color: selectedJob.finish_color || '',
         box_construction: selectedJob.box_construction || '',
@@ -258,6 +259,7 @@ export default function Home() {
     if (!selectedJob) return
     setSavingEdits(true)
     await supabase.from('jobs').update({
+      name: editFields.name || selectedJob.name,
       door_style: editFields.door_style,
       finish_color: editFields.finish_color,
       box_construction: editFields.box_construction,
@@ -981,6 +983,10 @@ export default function Home() {
                     ) : (
                       <div>
                         <div style={{ fontSize:11, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.4, marginBottom:8 }}>Job Info</div>
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={lbl}>Job Name</label>
+                          <input value={editFields.name} onChange={e => setEditFields(pv => ({ ...pv, name: e.target.value }))} style={{ ...inp, fontWeight: 600 }} />
+                        </div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                           <div><label style={lbl}>General Contractor</label><input value={editFields.gc_name} onChange={e => setEditFields(p => ({ ...p, gc_name: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Manufacturer</label><input value={editFields.manufacturer} onChange={e => setEditFields(p => ({ ...p, manufacturer: e.target.value }))} style={inp} /></div>
@@ -1327,6 +1333,7 @@ export default function Home() {
                             {jobs.filter(j => j.id !== selectedJob.id).map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
                           </select>
                           {cabCopyTarget && <button onClick={copyCabListToJob} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>Copy</button>}
+                          <button onClick={async()=>{ if(!confirm('Clear the entire cabinet list for this job? This cannot be undone.')) return; await fetch('/api/cab-list', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); setCabList(null); setQuoteCheck(null) }} style={{ padding:'4px 12px', fontSize:11, background:'#fff', color:'#A32D2D', border:'0.5px solid #e0b4b4', borderRadius:6, cursor:'pointer', marginLeft:'auto' }}>Clear List</button>
                         </div>
                       )}
                       {cabList && cabEditing && (
@@ -1363,7 +1370,10 @@ export default function Home() {
                             const allPieces  = uts.reduce((s,u)=>s+([...(u.skus||[]),...(u.fillers||[])].reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0))*(Number(u.unit_quantity)||1),0)
                             const trueCabs   = L.sheet_totals?.cabinets ?? uts.reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
                             const extras     = Math.max(0, allPieces - trueCabs)
-                            return `${uts.length} unit types · ${totalUnits} total units · ${trueCabs.toLocaleString()} cabinets${extras > 0 ? ` · ${extras.toLocaleString()} additional pieces` : ''}`
+                            const kindCount = (k) => uts.filter(u => (u.kind || 'unit') === k).reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)
+                            const nU = kindCount('unit'), nB = kindCount('bathroom'), nA = kindCount('amenity')
+                            const kindStr = (nB > 0 || nA > 0) ? `${nU} units · ${nB > 0 ? nB + ' bathrooms · ' : ''}${nA > 0 ? nA + ' amenities · ' : ''}${totalUnits} total` : `${totalUnits} total units`
+                            return `${uts.length} unit types · ${kindStr} · ${trueCabs.toLocaleString()} cabinets${extras > 0 ? ` · ${extras.toLocaleString()} additional pieces` : ''}`
                           })()}
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
@@ -1394,8 +1404,15 @@ export default function Home() {
                                 {cabEditing ? (
                                   <>
                                     <input value={ut.unit_type_name} onChange={e=>upd(n=>{n.unit_types[ui].unit_type_name=e.target.value})} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
+                                    {['unit','bathroom','amenity'].map(k => (
+                                      <button key={k} onClick={()=>upd(n=>{n.unit_types[ui].kind=k})}
+                                        style={{ padding:'2px 8px', fontSize:10, borderRadius:5, cursor:'pointer', textTransform:'capitalize',
+                                          background:(ut.kind||'unit')===k?'#3C3489':'#fff', color:(ut.kind||'unit')===k?'#fff':'#888',
+                                          border:'0.5px solid '+((ut.kind||'unit')===k?'#3C3489':'#ccc') }}>{k}</button>
+                                    ))}
                                     <label style={{ fontSize:10, color:'#888' }}>Qty:</label>
                                     <input type="number" min="1" value={ut.unit_quantity} onChange={e=>upd(n=>{n.unit_types[ui].unit_quantity=Number(e.target.value)||1})} style={{ width:56, padding:'3px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                    <button title="Duplicate unit" onClick={()=>upd(n=>{ const cp=JSON.parse(JSON.stringify(n.unit_types[ui])); cp.unit_type_name=cp.unit_type_name+' COPY'; n.unit_types.splice(ui+1,0,cp) })} style={{ background:'none', border:'none', cursor:'pointer', color:'#3C3489', fontSize:13 }}>⧉</button>
                                     <button onClick={()=>{ if(confirm(`Delete unit ${ut.unit_type_name}?`)) upd(n=>{n.unit_types.splice(ui,1)}) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:14 }}>✕</button>
                                   </>
                                 ) : (

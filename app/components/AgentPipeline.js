@@ -19,7 +19,7 @@ const AGENTS = [
   { key: 'upload',     label: 'Upload',            desc: 'Plan set PDF',        color: '#6366f1', step: 1 },
   { key: 'classify',   label: 'Page Classifier',   desc: 'Sort page types',     color: '#7c3aed', step: 2 },
   { key: 'matrix',     label: 'Unit Matrix',       desc: 'Types + counts',      color: '#0d9488', step: 3 },
-  { key: 'elevation',  label: 'Elevation Engine',  desc: 'SKU extraction',      color: '#8b5cf6', step: 4 },
+  { key: 'elevation',  label: 'Cabinet Agent',  desc: 'SKU extraction',      color: '#8b5cf6', step: 4 },
   { key: 'countertop', label: 'Countertop Agent',  desc: 'LF → SF calc',        color: '#d97706', step: 5 },
   { key: 'export',     label: 'Export',            desc: 'Excel + PDF',         color: '#16a34a', step: 6 },
 ]
@@ -282,7 +282,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
     setActiveAgent('elevation')
   }
 
-  // ── Elevation Engine ─────────────────────────────────────────────────────
+  // ── Cabinet Agent ─────────────────────────────────────────────────────
   async function runExtraction() {
     if (!files.length) return alert('No plan files uploaded')
     setRunning('elevation')
@@ -772,7 +772,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
                 </div>
               )}
               <div style={{ fontSize:11, color:MUTED }}>
-                ✓ Elevation Engine will use {classifyData.pagesByType?.elevation?.length||0} elevation pages · Unit Matrix will use {classifyData.pagesByType?.unit_schedule?.length||0} schedule pages
+                ✓ Cabinet Agent will use {classifyData.pagesByType?.elevation?.length||0} elevation pages · Unit Matrix will use {classifyData.pagesByType?.unit_schedule?.length||0} schedule pages
               </div>
             </div>
             <div style={{ display:'flex', gap:10 }}>
@@ -849,7 +849,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
     const grandTotal = editData?.unit_types?.reduce((s,ut)=>s+getCabsPerUnit(ut)*(ut.unit_quantity||1),0)||0
     return (
       <div>
-        <PanelHeader agentKey="elevation" title="Elevation Engine" subtitle="AI reads every elevation sheet and extracts cabinet SKUs, quantities, and hinge sides per unit type."
+        <PanelHeader agentKey="elevation" title="Cabinet Agent" subtitle="AI reads every elevation sheet and extracts cabinet SKUs, quantities, and hinge sides per unit type."
           action={
             <div style={{ display:'flex', gap:8, alignItems:'center' }}>
               <SaveBadge agentKey="elevation"/>
@@ -867,7 +867,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
             {classifyData && <div style={{ fontSize:11, color:'#7c3aed', marginBottom:16 }}>✓ Using {classifyData.pagesByType?.elevation?.length||0} elevation pages from classifier</div>}
             {hasExcel()
               ? <Btn label={excelImporting ? '⏳ Importing Excel...' : '📊 Import from Excel'} onClick={runExcelImport} disabled={excelImporting} color="#0d9488"/>
-              : <Btn label="Run Elevation Engine" onClick={runExtraction} color="#8b5cf6"/>}
+              : <Btn label="Run Cabinet Agent" onClick={runExtraction} color="#8b5cf6"/>}
           </div>
         )}
         {agentStatus.elevation==='running' && (
@@ -997,7 +997,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
         />
         {ctUnits.length===0 && (
           <div style={{ ...dcard, textAlign:'center', padding:32 }}>
-            <div style={{ fontSize:13, color:MUTED }}>Complete the Elevation Engine step first — unit types will auto-populate here.<br/>Or add unit types manually below.</div>
+            <div style={{ fontSize:13, color:MUTED }}>Complete the Cabinet Agent step first — unit types will auto-populate here.<br/>Or add unit types manually below.</div>
             <button style={{ marginTop:16, padding:'7px 18px', fontSize:12, background:'#d9770620', color:'#d97706', border:'1px solid #d9770640', borderRadius:6, cursor:'pointer' }}
               onClick={()=>setCtUnits([{name:'Unit Type 1',qty:1,kitchenLF:0,vanityLF:0,sinks:0}])}>+ Add Unit Type</button>
           </div>
@@ -1094,7 +1094,7 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
             <button onClick={runExport} disabled={exporting||!editData} style={{ padding:'12px 20px', fontSize:14, fontWeight:600, background:exporting||!editData?'#252545':'#16a34a', color:exporting||!editData?MUTED:TEXT, border:'none', borderRadius:8, cursor:exporting||!editData?'not-allowed':'pointer', transition:'opacity 0.15s' }}>
               {exporting?'⏳ Generating Excel...':'⬇ Download Cabinet Schedule (Excel)'}
             </button>
-            {!editData && <div style={{ fontSize:11, color:'#d97706', textAlign:'center' }}>Complete the Elevation Engine step first to enable export</div>}
+            {!editData && <div style={{ fontSize:11, color:'#d97706', textAlign:'center' }}>Complete the Cabinet Agent step first to enable export</div>}
           </div>
         </div>
       </div>

@@ -50,3 +50,19 @@ export async function PUT(request) {
     return Response.json({ error: err.message }, { status: 500 })
   }
 }
+
+// DELETE /api/cab-list  { jobId } → clear the job's cabinet list
+export async function DELETE(request) {
+  try {
+    const { jobId } = await request.json()
+    if (!jobId) return Response.json({ error: 'jobId required' }, { status: 400 })
+    const { error } = await supabase.from('jobs').update({
+      cab_list: null, cab_list_updated_at: new Date().toISOString(),
+    }).eq('id', jobId)
+    if (error) throw new Error(error.message)
+    await supabase.from('activity_log').insert({ job_id: jobId, user_name: 'Cole', action: 'Cabinet list cleared' })
+    return Response.json({ success: true })
+  } catch (err) {
+    return Response.json({ error: err.message }, { status: 500 })
+  }
+}

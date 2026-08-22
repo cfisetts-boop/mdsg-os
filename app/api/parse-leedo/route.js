@@ -156,6 +156,39 @@ Respond with ONLY this JSON, no markdown, no commentary:
     // Optionally attach gross to the job for proposal pricing
     if (jobId && parsed.summary?.grossAmount > 0) {
       await supabase.from('jobs').update({ manufacturer_gross_cost: parsed.summary.grossAmount }).eq('id', jobId)
+
+      // The printable summary IS a manufacturer quote — record it so the
+      // quote-vs-list checker and quote history can see it.
+      const quoteShape = {
+        manufacturer: 'Leedo',
+        quote_number: parsed.summary?.quoteNumber || '',
+        totals: {
+          gross_amount: parsed.summary?.grossAmount || 0,
+          freight_amount: parsed.summary?.freight || 0,
+          grand_total: parsed.summary?.grandTotal || 0,
+        },
+        unit_types: (parsed.unitDetails || []).map(([name, rows]) => {
+          const meta = summaryByName[String(name).trim().toUpperCase()] || {}
+          return {
+            unit_type_name: String(name).trim(),
+            unit_quantity: meta.unitQty || 1,
+            cabinet_count: meta.cabinetQty || 0,
+            gross_price: meta.gross || 0,
+            line_items: (rows || []).map(([sku, qty]) => [String(sku || '').trim(), Number(qty) || 0, 0]),
+          }
+        }),
+      }
+      await supabase.from('manufacturer_quotes').insert({
+        job_id: jobId, manufacturer: 'Leedo',
+        quote_number: quoteShape.quote_number, rep_name: parsed.summary?.rep || '',
+        raw_extracted_json: quoteShape,
+        gross_amount: quoteShape.totals.gross_amount,
+        freight_amount: quoteShape.totals.freight_amount,
+        grand_total: quoteShape.totals.grand_total,
+        total_units: parsed.summary?.totalUnits || 0,
+        total_cabinets: parsed.summary?.totalCabinets || 0,
+        file_name: 'Leedo Printable Summary', parsed_at: new Date().toISOString(),
+      })
       await supabase.from('activity_log').insert({
         job_id: jobId, user_name: 'System',
         action: `Leedo summary imported — ${unit_types.length} unit types · ${parsedUnits} units · gross $${Math.round(parsed.summary.grossAmount).toLocaleString()}`,
