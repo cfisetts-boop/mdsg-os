@@ -138,6 +138,7 @@ export default function Home() {
   const [quoteChecking,   setQuoteChecking]   = useState(false)
   const [skuSuggest,      setSkuSuggest]      = useState([])
   const [productLine,     setProductLine]     = useState('framed')
+  const [hideUnitPricing, setHideUnitPricing] = useState(false)
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
@@ -626,7 +627,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: Number(proposalMfrTax) || 0, applyDealerDiscount: applyDiscount, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: Number(proposalMfrTax) || 0, applyDealerDiscount: applyDiscount, hideUnitPricing, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1104,110 +1105,6 @@ export default function Home() {
                     )}
                   </div>
 
-                  {/* ── Countertop Proposal Configuration ─────────────────────── */}
-                  <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}>Generate Countertop Proposal</div>
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={lbl}>Sender</label>
-                      <select value={ctSender} onChange={e=>setCtSender(e.target.value)} style={{ ...inp, width: 180, marginBottom: 12 }}>
-                        <option value="Cole">Cole Isetts — Sales Representative</option>
-                        <option value="Pam">Pamela Isetts — President</option>
-                        <option value="MDSG">MDSG Team</option>
-                      </select>
-                      <label style={lbl}>Waste Factor %</label>
-                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:12 }}>
-                        <input type="number" min="0" max="30" value={ctWastePct} onChange={e=>setCtWastePct(Number(e.target.value))} style={{ ...inp, width:70 }}/>
-                        <span style={{ fontSize:11, color:'#2D7A3A' }}>{ctWastePct}% added to net SF for order quantity</span>
-                      </div>
-                      <label style={lbl}>Countertop Material Cost ($ — from supplier quote)</label>
-                      <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:160, marginBottom:10 }}/>
-                      <label style={lbl}>Gross Margin %</label>
-                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:10 }}>
-                        <input type="number" step="1" min="0" max="60" value={ctMargin} onChange={e=>setCtMargin(e.target.value)} style={{ ...inp, width:70 }}/>
-                        {Number(ctGross)>0 && Number(ctMargin)>0 && <span style={{ fontSize:11, color:'#2D7A3A', fontWeight:500 }}>→ sell ≈ ${Math.round(Number(ctGross)/(1-Number(ctMargin)/100)).toLocaleString()}</span>}
-                      </div>
-                      <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-                        {[15,20,25,30,35].map(m=><button key={m} onClick={()=>setCtMargin(m)} style={{ padding:'3px 9px', fontSize:11, borderRadius:6, cursor:'pointer', background:Number(ctMargin)===m?'#2D7A3A':'#f5f5f3', color:Number(ctMargin)===m?'#fff':'#555', border:'0.5px solid #ddd' }}>{m}%</button>)}
-                      </div>
-                      <label style={lbl}>Notes (appears on proposal)</label>
-                      <textarea value={ctNotes} onChange={e=>setCtNotes(e.target.value)} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:52, resize:'vertical', fontFamily:'inherit', marginBottom:4 }}/>
-                    </div>
-                    {[
-                      ['includedInBid', 'Included in Bid', 38],
-                      ['assembly', 'Assembly, Staging & Installation', 44],
-                      ['notIncluded', 'Not Included in Bid (one bullet per line)', 80],
-                      ['bottomNotes', 'Proposal Notes', 44],
-                    ].map(([key, label, h]) => (
-                      <div key={key} style={{ marginBottom: 10 }}>
-                        <label style={lbl}>{label}</label>
-                        <textarea value={ctBidSections[key]} onChange={e=>setCtBidSections(p=>({...p,[key]:e.target.value}))} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:h, resize:'vertical', fontFamily:'inherit' }}/>
-                      </div>
-                    ))}
-                    <button onClick={()=>setCtBidSections(DEFAULT_CT_BID_SECTIONS)} style={{ marginBottom:10, padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd' }}>↺ Reset to defaults</button>
-                  </div>
-
-                  <div style={{ ...card, borderColor: ctSavedData ? '#2D7A3A' : '#e5e5e0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}>Countertop</div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <button onClick={() => setCtIncludeCabinets(p => !p)} style={{ padding: '3px 10px', fontSize: 10, borderRadius: 10, cursor: 'pointer', fontWeight: 500, background: ctIncludeCabinets ? '#e8f5e9' : '#f5f5f3', color: ctIncludeCabinets ? '#2D7A3A' : '#888', border: ctIncludeCabinets ? '0.5px solid #2D7A3A' : '0.5px solid #ccc' }}>
-                          {ctIncludeCabinets ? '✓ Cabinets in Proposal' : 'Cabinets Excluded'}
-                        </button>
-                        {ctSavedData && (
-                          <button onClick={generateCtProposal} disabled={ctGenerating} style={{ padding: '4px 12px', fontSize: 11, background: ctGenerating ? '#888' : '#2D7A3A', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontWeight: 500 }}>
-                            {ctGenerating ? 'Generating...' : '⬇ CT Proposal PDF'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {ctSavedData ? (
-                      <div style={{ background: '#f5fdf6', border: '0.5px solid #b2dfb4', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, color: '#2D7A3A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Saved Takeoff</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-                          {[['Kitchen SF', ((ctSavedData.kSF)||0).toFixed(1)], ['Vanity SF', ((ctSavedData.vSF)||0).toFixed(1)], ['Total Material SF', ((ctSavedData.kSF||0)+(ctSavedData.vSF||0)+(ctSavedData.sideSF||0)).toFixed(1)], ['Kitchen LF', ((ctSavedData.kLF)||0).toFixed(1)], ['Vanity LF', ((ctSavedData.vLF)||0).toFixed(1)], ['Backsplash LF', ((ctSavedData.backLF)||0).toFixed(1)]].map(([l,v]) => (
-                            <div key={l}><div style={{ fontSize: 9, color: '#888', textTransform: 'uppercase' }}>{l}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#2D7A3A' }}>{v}</div></div>
-                          ))}
-                        </div>
-                        {ctSavedData.cuts > 0 && <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Sink Cutouts: <strong>{ctSavedData.cuts}</strong></div>}
-                      </div>
-                    ) : (
-                      <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12, padding: '10px 0' }}>
-                        No countertop takeoff saved yet — use the <span style={{ color: '#3C3489', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setView('agent-pipeline')}>⚡ Agent Pipeline</span> to run a takeoff and save
-                      </div>
-                    )}
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 6 }}>Fabricator Quote</div>
-                      <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 14, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
-                        <div style={{ color: '#555', fontSize: 12 }}>{ctQuoteUploading ? '⏳ Reading quote...' : ctQuoteResult ? `✓ ${ctQuoteResult.fabricator || 'Quote'} — $${Math.round(ctQuoteResult.total_amount).toLocaleString()}` : 'Click to upload fabricator quote PDF'}</div>
-                        {!ctQuoteResult && <div style={{ color: '#aaa', fontSize: 10, marginTop: 2 }}>CAPO · SFI · Hilton · any fabricator</div>}
-                        <input type="file" accept=".pdf" onChange={handleCtQuoteUpload} style={{ display: 'none' }} disabled={ctQuoteUploading} />
-                      </label>
-                      {ctQuoteResult && (
-                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0f9f0', borderRadius: 6, fontSize: 11 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#888' }}>Fabricator cost:</span><span style={{ fontWeight: 500 }}>${Math.round(ctQuoteResult.total_amount).toLocaleString()}</span></div>
-                          {ctQuoteResult.material_type && <div style={{ color: '#888', fontSize: 10, marginTop: 2 }}>{ctQuoteResult.material_type} · {ctQuoteResult.color || ''}</div>}
-                        </div>
-                      )}
-                    </div>
-                    {ctQuoteResult && (
-                      <div style={{ borderTop: '0.5px solid #eee', paddingTop: 12 }}>
-                        <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 8 }}>Markup & Pricing</div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                          <label style={{ ...lbl, marginBottom: 0, minWidth: 110 }}>Markup Multiplier</label>
-                          <input type="number" step="0.01" min="1.00" max="2.00" value={ctMarkup} onChange={e => setCtMarkup(Number(e.target.value))} style={{ width: 72, padding: '5px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
-                          <span style={{ fontSize: 11, color: '#3B6D11', fontWeight: 500 }}>{ctMarkup > 1 ? ((1 - 1/Number(ctMarkup))*100).toFixed(1) : '0.0'}% margin</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                          {[1.20, 1.25, 1.30, 1.35].map(m => (<button key={m} onClick={() => setCtMarkup(m)} style={{ padding: '3px 9px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: Number(ctMarkup) === m ? '#3C3489' : '#f5f5f3', color: Number(ctMarkup) === m ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{m}×</button>))}
-                        </div>
-                        <div style={{ background: '#1a1a2e', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div><div style={{ fontSize: 9, color: '#666', textTransform: 'uppercase', letterSpacing: 0.4 }}>Bid to GC — Countertop</div><div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>${Math.round((ctQuoteResult.total_amount || 0) * ctMarkup).toLocaleString()}</div></div>
-                          <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9, color: '#666' }}>Gross Profit</div><div style={{ fontSize: 14, fontWeight: 600, color: '#4a9' }}>${Math.round((ctQuoteResult.total_amount || 0) * (ctMarkup - 1)).toLocaleString()}</div></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 12 }}>Upload Manufacturer Quote PDF</div>
                     <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
@@ -1267,6 +1164,10 @@ export default function Home() {
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={applyDiscount} onChange={e=>setApplyDiscount(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Apply dealer discount ({((selectedJob?.dealer_discount_pct || 0.05)*100).toFixed(0)}%) to gross cost
+                      </label>
+                      <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
+                        <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        Hide unit breakdown — lump sum only (shows unit/amenity counts, no per-unit table)
                       </label>
                       <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:12 }}>
                         <div>
@@ -1660,6 +1561,110 @@ export default function Home() {
                       </div>
                     ))}
                     {(selectedJob.activity_log || []).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
+                  </div>
+
+                  {/* ── Countertop Proposal Configuration ─────────────────────── */}
+                  <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
+                    <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}>Generate Countertop Proposal</div>
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={lbl}>Sender</label>
+                      <select value={ctSender} onChange={e=>setCtSender(e.target.value)} style={{ ...inp, width: 180, marginBottom: 12 }}>
+                        <option value="Cole">Cole Isetts — Sales Representative</option>
+                        <option value="Pam">Pamela Isetts — President</option>
+                        <option value="MDSG">MDSG Team</option>
+                      </select>
+                      <label style={lbl}>Waste Factor %</label>
+                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:12 }}>
+                        <input type="number" min="0" max="30" value={ctWastePct} onChange={e=>setCtWastePct(Number(e.target.value))} style={{ ...inp, width:70 }}/>
+                        <span style={{ fontSize:11, color:'#2D7A3A' }}>{ctWastePct}% added to net SF for order quantity</span>
+                      </div>
+                      <label style={lbl}>Countertop Material Cost ($ — from supplier quote)</label>
+                      <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:160, marginBottom:10 }}/>
+                      <label style={lbl}>Gross Margin %</label>
+                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:10 }}>
+                        <input type="number" step="1" min="0" max="60" value={ctMargin} onChange={e=>setCtMargin(e.target.value)} style={{ ...inp, width:70 }}/>
+                        {Number(ctGross)>0 && Number(ctMargin)>0 && <span style={{ fontSize:11, color:'#2D7A3A', fontWeight:500 }}>→ sell ≈ ${Math.round(Number(ctGross)/(1-Number(ctMargin)/100)).toLocaleString()}</span>}
+                      </div>
+                      <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+                        {[15,20,25,30,35].map(m=><button key={m} onClick={()=>setCtMargin(m)} style={{ padding:'3px 9px', fontSize:11, borderRadius:6, cursor:'pointer', background:Number(ctMargin)===m?'#2D7A3A':'#f5f5f3', color:Number(ctMargin)===m?'#fff':'#555', border:'0.5px solid #ddd' }}>{m}%</button>)}
+                      </div>
+                      <label style={lbl}>Notes (appears on proposal)</label>
+                      <textarea value={ctNotes} onChange={e=>setCtNotes(e.target.value)} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:52, resize:'vertical', fontFamily:'inherit', marginBottom:4 }}/>
+                    </div>
+                    {[
+                      ['includedInBid', 'Included in Bid', 38],
+                      ['assembly', 'Assembly, Staging & Installation', 44],
+                      ['notIncluded', 'Not Included in Bid (one bullet per line)', 80],
+                      ['bottomNotes', 'Proposal Notes', 44],
+                    ].map(([key, label, h]) => (
+                      <div key={key} style={{ marginBottom: 10 }}>
+                        <label style={lbl}>{label}</label>
+                        <textarea value={ctBidSections[key]} onChange={e=>setCtBidSections(p=>({...p,[key]:e.target.value}))} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:h, resize:'vertical', fontFamily:'inherit' }}/>
+                      </div>
+                    ))}
+                    <button onClick={()=>setCtBidSections(DEFAULT_CT_BID_SECTIONS)} style={{ marginBottom:10, padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd' }}>↺ Reset to defaults</button>
+                  </div>
+
+                  <div style={{ ...card, borderColor: ctSavedData ? '#2D7A3A' : '#e5e5e0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                      <div style={{ fontWeight: 500 }}>Countertop</div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <button onClick={() => setCtIncludeCabinets(p => !p)} style={{ padding: '3px 10px', fontSize: 10, borderRadius: 10, cursor: 'pointer', fontWeight: 500, background: ctIncludeCabinets ? '#e8f5e9' : '#f5f5f3', color: ctIncludeCabinets ? '#2D7A3A' : '#888', border: ctIncludeCabinets ? '0.5px solid #2D7A3A' : '0.5px solid #ccc' }}>
+                          {ctIncludeCabinets ? '✓ Cabinets in Proposal' : 'Cabinets Excluded'}
+                        </button>
+                        {ctSavedData && (
+                          <button onClick={generateCtProposal} disabled={ctGenerating} style={{ padding: '4px 12px', fontSize: 11, background: ctGenerating ? '#888' : '#2D7A3A', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontWeight: 500 }}>
+                            {ctGenerating ? 'Generating...' : '⬇ CT Proposal PDF'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {ctSavedData ? (
+                      <div style={{ background: '#f5fdf6', border: '0.5px solid #b2dfb4', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, color: '#2D7A3A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Saved Takeoff</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                          {[['Kitchen SF', ((ctSavedData.kSF)||0).toFixed(1)], ['Vanity SF', ((ctSavedData.vSF)||0).toFixed(1)], ['Total Material SF', ((ctSavedData.kSF||0)+(ctSavedData.vSF||0)+(ctSavedData.sideSF||0)).toFixed(1)], ['Kitchen LF', ((ctSavedData.kLF)||0).toFixed(1)], ['Vanity LF', ((ctSavedData.vLF)||0).toFixed(1)], ['Backsplash LF', ((ctSavedData.backLF)||0).toFixed(1)]].map(([l,v]) => (
+                            <div key={l}><div style={{ fontSize: 9, color: '#888', textTransform: 'uppercase' }}>{l}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#2D7A3A' }}>{v}</div></div>
+                          ))}
+                        </div>
+                        {ctSavedData.cuts > 0 && <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Sink Cutouts: <strong>{ctSavedData.cuts}</strong></div>}
+                      </div>
+                    ) : (
+                      <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12, padding: '10px 0' }}>
+                        No countertop takeoff saved yet — use the <span style={{ color: '#3C3489', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setView('agent-pipeline')}>⚡ Agent Pipeline</span> to run a takeoff and save
+                      </div>
+                    )}
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 6 }}>Fabricator Quote</div>
+                      <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 14, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
+                        <div style={{ color: '#555', fontSize: 12 }}>{ctQuoteUploading ? '⏳ Reading quote...' : ctQuoteResult ? `✓ ${ctQuoteResult.fabricator || 'Quote'} — $${Math.round(ctQuoteResult.total_amount).toLocaleString()}` : 'Click to upload fabricator quote PDF'}</div>
+                        {!ctQuoteResult && <div style={{ color: '#aaa', fontSize: 10, marginTop: 2 }}>CAPO · SFI · Hilton · any fabricator</div>}
+                        <input type="file" accept=".pdf" onChange={handleCtQuoteUpload} style={{ display: 'none' }} disabled={ctQuoteUploading} />
+                      </label>
+                      {ctQuoteResult && (
+                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0f9f0', borderRadius: 6, fontSize: 11 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#888' }}>Fabricator cost:</span><span style={{ fontWeight: 500 }}>${Math.round(ctQuoteResult.total_amount).toLocaleString()}</span></div>
+                          {ctQuoteResult.material_type && <div style={{ color: '#888', fontSize: 10, marginTop: 2 }}>{ctQuoteResult.material_type} · {ctQuoteResult.color || ''}</div>}
+                        </div>
+                      )}
+                    </div>
+                    {ctQuoteResult && (
+                      <div style={{ borderTop: '0.5px solid #eee', paddingTop: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 8 }}>Markup & Pricing</div>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                          <label style={{ ...lbl, marginBottom: 0, minWidth: 110 }}>Markup Multiplier</label>
+                          <input type="number" step="0.01" min="1.00" max="2.00" value={ctMarkup} onChange={e => setCtMarkup(Number(e.target.value))} style={{ width: 72, padding: '5px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
+                          <span style={{ fontSize: 11, color: '#3B6D11', fontWeight: 500 }}>{ctMarkup > 1 ? ((1 - 1/Number(ctMarkup))*100).toFixed(1) : '0.0'}% margin</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+                          {[1.20, 1.25, 1.30, 1.35].map(m => (<button key={m} onClick={() => setCtMarkup(m)} style={{ padding: '3px 9px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: Number(ctMarkup) === m ? '#3C3489' : '#f5f5f3', color: Number(ctMarkup) === m ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{m}×</button>))}
+                        </div>
+                        <div style={{ background: '#1a1a2e', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div><div style={{ fontSize: 9, color: '#666', textTransform: 'uppercase', letterSpacing: 0.4 }}>Bid to GC — Countertop</div><div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>${Math.round((ctQuoteResult.total_amount || 0) * ctMarkup).toLocaleString()}</div></div>
+                          <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9, color: '#666' }}>Gross Profit</div><div style={{ fontSize: 14, fontWeight: 600, color: '#4a9' }}>${Math.round((ctQuoteResult.total_amount || 0) * (ctMarkup - 1)).toLocaleString()}</div></div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = 0, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00 } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = 0, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -95,6 +95,12 @@ export async function POST(request) {
       effHwPieces = job.cab_list.unit_types.reduce((s, u) =>
         s + (u.skus || []).reduce((x, r) => x + (Number(r.hardware_count) || 0) * (Number(r.quantity_per_unit) || 0), 0) * (Number(u.unit_quantity) || 1), 0)
     }
+    // Unit / bathroom / amenity counts from the cab list classifications
+    const clUnits = job.cab_list?.unit_types || []
+    const kindQty = (k) => clUnits.filter(u => (u.kind || 'unit') === k).reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)
+    const nUnits = kindQty('unit'), nBaths = kindQty('bathroom'), nAmen = kindQty('amenity')
+    const amenNames = clUnits.filter(u => (u.kind || 'unit') === 'amenity').map(u => u.unit_type_name)
+
     // Hardware allowance: pieces × $/piece at OUR cost, marked up with the same margin
     const hwCost       = effHwPieces * (Number(hwRate) || 0)
     const hardware     = 0  // legacy flat allowance replaced by hwCost path below
@@ -261,12 +267,13 @@ export async function POST(request) {
       ['HINGES:',             'Soft Close'],
     ]
     const specR = [
-      ['NO. OF UNITS:',      String(job.total_residential_units || '—')],
-      ['NO. OF AMENITIES:',  String(job.amenity_unit_count || '—')],
+      ['NO. OF UNITS:',      String(nUnits > 0 ? nUnits : (job.total_residential_units || '—'))],
+      ...(nBaths > 0 ? [['NO. OF BATHROOMS:', String(nBaths)]] : []),
+      ['NO. OF AMENITIES:',  String(nAmen > 0 ? nAmen : (job.amenity_unit_count || '—'))],
       ['EST. DELIVERY:',     job.est_delivery || '—'],
       ['NO. OF DELIVERIES:', job.num_deliveries || '—'],
       ['TOTAL CABINETS:',    (job.total_cabinet_count || 0).toLocaleString()],
-      ['HARDWARE ALLOW.:',   hardware > 0 ? fmtMoney(hardware) : 'Not included'],
+      ['HARDWARE ALLOW.:',   hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included'],
     ]
 
     const LBL_W  = 108
@@ -290,7 +297,26 @@ export async function POST(request) {
     // ═══════════════════════════════════════════════════════════════════════
     // UNIT TYPE BREAKDOWN
     // ═══════════════════════════════════════════════════════════════════════
-    let uy = afterSpecs - 18   // 18pt gap: separator → UNIT TYPE bar (vs. old 13pt which left only 1pt visual gap)
+    let uy = afterSpecs - 18   // 18pt gap: separator → UNIT TYPE bar
+    if (hideUnitPricing) {
+      // LUMP SUM MODE: no per-unit table — just the project scale line
+      drect(ML, uy, PW, 12, darkGreen)
+      dt('PROJECT SCOPE', ML + PW / 2 - bold.widthOfTextAtSize('PROJECT SCOPE', 8) / 2, uy + 4, { bold: true, size: 8, color: white })
+      uy -= 16
+      const scopeBits = []
+      if (nUnits > 0) scopeBits.push(`${nUnits} Units`)
+      if (nBaths > 0) scopeBits.push(`${nBaths} Bathrooms`)
+      if (nAmen > 0) scopeBits.push(`${nAmen} Amenities`)
+      if (scopeBits.length === 0) scopeBits.push(`${sortedUnits.reduce((s, u) => s + (u.unit_quantity || 1), 0)} Units`)
+      dt(scopeBits.join('  ·  '), ML + 6, uy, { bold: true, size: 9 })
+      uy -= 12
+      if (amenNames.length > 0) {
+        dt('Amenity spaces: ' + amenNames.join(', '), ML + 6, uy, { size: 7, color: gray, maxWidth: PW - 12 })
+        uy -= 11
+      }
+      dt(`Total cabinets: ${(job.total_cabinet_count || 0).toLocaleString()}`, ML + 6, uy, { size: 7.5, color: gray })
+      uy -= 14
+    } else {
     drect(ML, uy, PW, 12, darkGreen)
     dt('UNIT TYPE BREAKDOWN', ML + PW / 2 - bold.widthOfTextAtSize('UNIT TYPE BREAKDOWN', 8) / 2, uy + 4, { bold: true, size: 8, color: white })
     uy -= 13
@@ -302,7 +328,19 @@ export async function POST(request) {
     dt('Mfr Price',  ML + 408, uy + 3, { size: 7, bold: true, color: gray })
     uy -= 12
 
-    displayUnits.forEach((ut, i) => {
+    const kindOf = (name) => {
+      const m = clUnits.find(u => (u.unit_type_name || '').trim().toUpperCase() === (name || '').trim().toUpperCase())
+      return m ? (m.kind || 'unit') : 'unit'
+    }
+    const displayOrdered = [...displayUnits.filter(u => kindOf(u.unit_type_name) !== 'amenity'), ...displayUnits.filter(u => kindOf(u.unit_type_name) === 'amenity')]
+    let amenHeaderDrawn = false
+    displayOrdered.forEach((ut, i) => {
+      if (!amenHeaderDrawn && kindOf(ut.unit_type_name) === 'amenity') {
+        drect(ML, uy, PW, 11, rgb(0.93, 0.93, 0.98))
+        dt('AMENITIES', ML + 6, uy + 2, { bold: true, size: 7, color: rgb(0.24, 0.2, 0.54) })
+        uy -= 11
+        amenHeaderDrawn = true
+      }
       if (i % 2 === 0) drect(ML, uy, PW, 11, mintBg)
       dt(ut.unit_type_name, ML + 6,   uy + 2, { size: 7, maxWidth: 265 })
       dt(String(ut.unit_quantity || 1), ML + 283, uy + 2, { size: 7 })
@@ -317,6 +355,7 @@ export async function POST(request) {
     dt(String(sortedUnits.reduce((s, u) => s + (u.cabinet_count || 0) * (u.unit_quantity || 1), 0).toLocaleString()), ML + 333, uy + 3, { bold: true, size: 7 })
     dt(unitPriceSum > 0 ? fmtMoney(unitPriceSum) : '—', ML + 411, uy + 3, { bold: true, size: 7 })
     uy -= 12
+    }
 
     if (sortedUnits.length > 13) {
       dt(`+ ${sortedUnits.length - 13} more unit types — see attached cabinet schedule`, ML + 6, uy + 2, { size: 7, color: gray })
