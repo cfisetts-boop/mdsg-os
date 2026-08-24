@@ -1353,7 +1353,10 @@ export default function Home() {
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                       <div style={{ fontWeight:500 }}>Cabinet List</div>
                       {cabList && !cabEditing && (
-                        <div style={{ display:'flex', gap:6 }}>
+                        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
+                          {['framed','frameless'].map(pl => (
+                            <button key={pl} onClick={async()=>{ const upd2 = { ...cabList, product_line: pl }; await saveCabList(upd2, 'product line → ' + pl) }} style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer', textTransform:'capitalize', background:(cabList.product_line||'framed')===pl?'#3C3489':'#f5f5f3', color:(cabList.product_line||'framed')===pl?'#fff':'#888', border:'0.5px solid #ddd' }}>{pl}</button>
+                          ))}
                           <button onClick={exportCabList} disabled={cabExporting} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{cabExporting ? 'Exporting...' : '⬇ Export (2 files)'}</button>
                           <button onClick={startCabEdit} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✎ Edit</button>
                           <label style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
@@ -1378,7 +1381,10 @@ export default function Home() {
                       </datalist>
                     )}
                     {cabList && cabEditing && (
-                        <div style={{ display:'flex', gap:6 }}>
+                        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                          {['framed','frameless'].map(pl => (
+                            <button key={pl} onClick={()=>cabDraftUpdate(n=>{ n.product_line = pl })} style={{ padding:'4px 10px', fontSize:11, borderRadius:6, cursor:'pointer', textTransform:'capitalize', background:(cabDraft?.product_line||'framed')===pl?'#3C3489':'#f5f5f3', color:(cabDraft?.product_line||'framed')===pl?'#fff':'#888', border:'0.5px solid #ddd' }}>{pl}</button>
+                          ))}
                           <button onClick={saveCabEdit} disabled={cabSaving} style={{ padding:'4px 14px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600 }}>{cabSaving ? 'Saving...' : '✓ Save'}</button>
                           <button onClick={() => { setCabEditing(false); setCabDraft(null) }} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Cancel</button>
                         </div>
