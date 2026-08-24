@@ -1324,8 +1324,11 @@ export default function Home() {
                             const trueCabs   = (cabEditing || L.sheet_totals?.cabinets == null) ? computedCabs : L.sheet_totals.cabinets
                             const extras     = Math.max(0, allPieces - trueCabs)
                             const kindCount = (k) => uts.filter(u => (u.kind || 'unit') === k).reduce((s,u)=>s+(Number(u.unit_quantity)||1),0)
+                            const kindCabs  = (k) => uts.filter(u => (u.kind || 'unit') === k).reduce((s,u)=>s+(u.skus||[]).reduce((x,r)=>x+(Number(r.quantity_per_unit)||0),0)*(Number(u.unit_quantity)||1),0)
                             const nU = kindCount('unit'), nB = kindCount('bathroom'), nA = kindCount('amenity')
-                            const kindStr = (nB > 0 || nA > 0) ? `${nU} units · ${nB > 0 ? nB + ' bathrooms · ' : ''}${nA > 0 ? nA + ' amenities · ' : ''}${totalUnits} total` : `${totalUnits} total units`
+                            const kindStr = (nB > 0 || nA > 0)
+                              ? `${nU} units (${kindCabs('unit').toLocaleString()} cabs)${nB > 0 ? ` · ${nB} bathrooms (${kindCabs('bathroom').toLocaleString()} cabs)` : ''}${nA > 0 ? ` · ${nA} amenities (${kindCabs('amenity').toLocaleString()} cabs)` : ''} · ${totalUnits} total areas`
+                              : `${totalUnits} total units`
                             return `${uts.length} unit types · ${kindStr} · ${trueCabs.toLocaleString()} cabinets${extras > 0 ? ` · ${extras.toLocaleString()} additional pieces` : ''}`
                           })()}
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}

@@ -99,6 +99,9 @@ export async function POST(request) {
     const clUnits = job.cab_list?.unit_types || []
     const kindQty = (k) => clUnits.filter(u => (u.kind || 'unit') === k).reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)
     const nUnits = kindQty('unit'), nBaths = kindQty('bathroom'), nAmen = kindQty('amenity')
+    const clCabs = job.cab_list?.sheet_totals?.cabinets
+      ?? clUnits.reduce((s, u) => s + (u.skus || []).reduce((x, r) => x + (Number(r.quantity_per_unit) || 0), 0) * (Number(u.unit_quantity) || 1), 0)
+    const totalCabsDisplay = clCabs > 0 ? clCabs : (job.total_cabinet_count || 0)
     const amenNames = clUnits.filter(u => (u.kind || 'unit') === 'amenity').map(u => u.unit_type_name)
 
     // Hardware allowance: pieces × $/piece at OUR cost, marked up with the same margin
@@ -272,7 +275,7 @@ export async function POST(request) {
       ['NO. OF AMENITIES:',  String(nAmen > 0 ? nAmen : (job.amenity_unit_count || '—'))],
       ['EST. DELIVERY:',     job.est_delivery || '—'],
       ['NO. OF DELIVERIES:', job.num_deliveries || '—'],
-      ['TOTAL CABINETS:',    (job.total_cabinet_count || 0).toLocaleString()],
+      ['TOTAL CABINETS:',    totalCabsDisplay.toLocaleString()],
       ['HARDWARE ALLOW.:',   hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included'],
     ]
 
@@ -314,7 +317,7 @@ export async function POST(request) {
         dt('Amenity spaces: ' + amenNames.join(', '), ML + 6, uy, { size: 7, color: gray, maxWidth: PW - 12 })
         uy -= 11
       }
-      dt(`Total cabinets: ${(job.total_cabinet_count || 0).toLocaleString()}`, ML + 6, uy, { size: 7.5, color: gray })
+      dt(`Total cabinets: ${totalCabsDisplay.toLocaleString()}`, ML + 6, uy, { size: 7.5, color: gray })
       uy -= 14
     } else {
     drect(ML, uy, PW, 12, darkGreen)
@@ -374,9 +377,8 @@ export async function POST(request) {
 
     // Base cabinet price
     dt('Base Cabinet Price', ML + 6, py, { size: 8, color: gray })
-    dt(discount > 0 ? '(includes dealer discount & markup)' : '(includes markup)', ML + 6, py - 9, { size: 6.5, color: dgray })
     rAlign(fmtMoney(cabsToGC), MR - 4, py, { size: 8 })
-    py -= 20
+    py -= 14
 
     if (freight > 0) {
       dt('Freight (pass-through)', ML + 6, py, { size: 8, color: gray })
@@ -384,7 +386,7 @@ export async function POST(request) {
       py -= 14
     }
     if (mfrTax > 0) {
-      const effRate = grossCost > 0 ? ((mfrTax / grossCost) * 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : null
+      const effRate = (grossCost + freight) > 0 ? ((mfrTax / (grossCost + freight)) * 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : null
       dt(`Sales Tax${effRate ? ` (${effRate}%)` : ''} — from manufacturer quote`, ML + 6, py, { size: 8, color: gray })
       rAlign(fmtMoney(mfrTax), MR - 4, py, { size: 8 })
       py -= 14
@@ -393,7 +395,7 @@ export async function POST(request) {
     // Hardware allowance
     if (hwToGC > 0) {
       dt('Hardware Allowance', ML + 6, py, { size: 8, color: gray })
-      if (hwCost > 0) dt(`(${effHwPieces.toLocaleString()} pieces @ margin)`, ML + 6, py - 9, { size: 6.5, color: dgray })
+      if (hwCost > 0) dt(`(${effHwPieces.toLocaleString()} pieces)`, ML + 6, py - 9, { size: 6.5, color: dgray })
       rAlign(fmtMoney(hwToGC), MR - 4, py, { size: 8 })
       py -= hwCost > 0 ? 18 : 14
     } else {
@@ -402,8 +404,8 @@ export async function POST(request) {
       py -= 14
     }
 
-    // Sales tax
-    if (salesTax > 0) {
+    // Sales tax (suppressed when zero or when mfr tax passes through)
+    if (salesTax > 0 && taxAmount > 0) {
       dt(`Sales Tax (${salesTax}%)`, ML + 6, py, { size: 8, color: gray })
       rAlign(fmtMoney(taxAmount), MR - 4, py, { size: 8 })
       py -= 14
