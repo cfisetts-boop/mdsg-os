@@ -136,6 +136,8 @@ export default function Home() {
   const [hwRate,          setHwRate]          = useState('4.00')
   const [quoteCheck,      setQuoteCheck]      = useState(null)
   const [quoteChecking,   setQuoteChecking]   = useState(false)
+  const [skuSuggest,      setSkuSuggest]      = useState([])
+  const [productLine,     setProductLine]     = useState('framed')
   const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
@@ -428,7 +430,7 @@ export default function Home() {
       const res = await fetch('/api/takeoff/excel', { method: 'POST', body: fd })
       const result = await res.json()
       if (result.success && result.data) {
-        await saveCabList(result.data, 'seeded from Excel')
+        await saveCabList({ ...result.data, product_line: productLine }, 'seeded from Excel')
       } else {
         alert('Could not parse that file: ' + (result.error || 'unknown error'))
       }
@@ -449,7 +451,7 @@ export default function Home() {
       const result = await res.json()
       if (result.success && result.cabList) {
         const v = result.cabList.verification || {}
-        await saveCabList(result.cabList, 'Leedo summary import')
+        await saveCabList({ ...result.cabList, product_line: productLine }, 'Leedo summary import')
         const msg = v.leedoUnits != null
           ? `Imported ${result.cabList.unit_types.length} unit types.\nLeedo summary says: ${v.leedoUnits} units / ${v.leedoCabinets} cabinets.\nParsed: ${v.parsedUnits} units / ${v.parsedCabs} total pieces (incl. accessories).${v.unitsMatch ? '\n✓ Unit counts match.' : '\n⚠ UNIT COUNT MISMATCH — review before sending for pricing.'}${v.quoteRecorded === false ? '\n⚠ Quote history NOT recorded — quote check will not see this import.' : v.quoteRecorded ? '\n✓ Recorded in quote history.' : ''}`
           : `Imported ${result.cabList.unit_types.length} unit types.`
@@ -462,7 +464,17 @@ export default function Home() {
   }
 
   async function startBlankCabList() {
-    await saveCabList({ project_name: selectedJob.name, unit_types: [], sheet_totals: null }, 'started blank')
+    await saveCabList({ project_name: selectedJob.name, product_line: productLine, unit_types: [], sheet_totals: null }, 'started blank')
+  }
+
+  async function fetchSkuSuggestions(q) {
+    const line = (cabEditing ? cabDraft : cabList)?.product_line || 'framed'
+    if (!q || q.length < 2) { setSkuSuggest([]); return }
+    try {
+      const r = await fetch(`/api/leedo-catalog?line=${line}&q=${encodeURIComponent(q)}`)
+      const d = await r.json()
+      setSkuSuggest(d.items || [])
+    } catch { setSkuSuggest([]) }
   }
 
   function startCabEdit() {
@@ -1360,7 +1372,12 @@ export default function Home() {
                           <button onClick={async()=>{ if(!confirm('Clear the entire cabinet list for this job? This cannot be undone.')) return; await fetch('/api/cab-list', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); setCabList(null); setQuoteCheck(null) }} style={{ padding:'4px 12px', fontSize:11, background:'#fff', color:'#A32D2D', border:'0.5px solid #e0b4b4', borderRadius:6, cursor:'pointer', marginLeft:'auto' }}>Clear List</button>
                         </div>
                       )}
-                      {cabList && cabEditing && (
+                      {cabEditing && (
+                      <datalist id="leedo-sku-suggest">
+                        {skuSuggest.map(it => <option key={it.sku} value={it.sku}>{it.description || ''}</option>)}
+                      </datalist>
+                    )}
+                    {cabList && cabEditing && (
                         <div style={{ display:'flex', gap:6 }}>
                           <button onClick={saveCabEdit} disabled={cabSaving} style={{ padding:'4px 14px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:600 }}>{cabSaving ? 'Saving...' : '✓ Save'}</button>
                           <button onClick={() => { setCabEditing(false); setCabDraft(null) }} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Cancel</button>
@@ -1374,6 +1391,10 @@ export default function Home() {
                           {cabSeeding ? 'Importing...' : '⬆ Seed from Excel'}
                           <input type="file" accept=".xlsx,.xlsm" onChange={seedCabListFromExcel} style={{ display:'none' }} disabled={cabSeeding}/>
                         </label>
+                        <span style={{ fontSize:11, color:'#888' }}>Product line:</span>
+                        {['framed','frameless'].map(pl => (
+                          <button key={pl} onClick={()=>setProductLine(pl)} style={{ padding:'6px 12px', fontSize:12, borderRadius:6, cursor:'pointer', textTransform:'capitalize', background:productLine===pl?'#3C3489':'#f5f5f3', color:productLine===pl?'#fff':'#555', border:'0.5px solid #ddd' }}>{pl}</button>
+                        ))}
                         <label style={{ padding:'8px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
                           {cabSeeding ? 'Importing...' : '⬆ Import Leedo Summary (PDF)'}
                           <input type="file" accept=".pdf" onChange={importLeedoSummary} style={{ display:'none' }} disabled={cabSeeding}/>
@@ -1401,6 +1422,7 @@ export default function Home() {
                             return `${uts.length} unit types · ${kindStr} · ${trueCabs.toLocaleString()} cabinets${extras > 0 ? ` · ${extras.toLocaleString()} additional pieces` : ''}`
                           })()}
                           {L.sheet_totals?.totalSF ? ` · ${L.sheet_totals.totalSF.toFixed(2)} SF countertop` : ''}
+                          {L.product_line && <span style={{ color:'#3C3489', fontWeight:600, textTransform:'capitalize' }}> · {L.product_line}</span>}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
                         <div style={{ maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
@@ -1444,7 +1466,7 @@ export default function Home() {
                                         {cabEditing ? (
                                           <>
                                             <input type="number" min="0" value={r.quantity_per_unit} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t[r.__i].quantity_per_unit=Number(e.target.value)||0 })} style={{ width:48, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, textAlign:'right' }}/>
-                                            <input value={r.sku} onChange={e=>upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; const s=e.target.value.toUpperCase(); t[r.__i].sku=s; if(!r.__f){ const hw=calculateHardware(s); t[r.__i].hardware_count=hw.hardware ?? 0 } })} style={{ flex:1, padding:'2px 8px', border:'0.5px solid ' + (r.sku && !r.__f && isAppliance(r.sku) ? '#e0a800' : '#ccc'), borderRadius:4, fontSize:12, fontWeight:500 }}/>
+                                            <input list="leedo-sku-suggest" value={r.sku} onChange={e=>{ const s=e.target.value.toUpperCase(); fetchSkuSuggestions(s); upd(n=>{ const t=r.__f?n.unit_types[ui].fillers:n.unit_types[ui].skus; t[r.__i].sku=s; if(!r.__f){ const hw=calculateHardware(s); t[r.__i].hardware_count=hw.hardware ?? 0 } }) }} style={{ flex:1, padding:'2px 8px', border:'0.5px solid ' + (r.sku && !r.__f && isAppliance(r.sku) ? '#e0a800' : '#ccc'), borderRadius:4, fontSize:12, fontWeight:500 }}/>
                                             {!r.__f && r.sku && (
                                               <span style={{ fontSize:10, color: isAppliance(r.sku) ? '#B8860B' : '#bbb', whiteSpace:'nowrap' }}>
                                                 {isAppliance(r.sku) ? 'appliance — excluded' : `${getSection(r.sku)} · HW ${calculateHardware(r.sku).hardware ?? '?'}`}
@@ -1473,7 +1495,7 @@ export default function Home() {
                           )}
                           {(L.unit_types || []).length === 0 && !cabEditing && (
                             <div style={{ padding:16, textAlign:'center' }}>
-                              <button onClick={()=>{ const d = JSON.parse(JSON.stringify(cabList)); d.unit_types = [{ unit_type_name:'UNIT A', unit_quantity:1, kind:'unit', skus:[], fillers:[], is_ada:false, countertop_sf:0, excelSubtotalSF:null, excelSubtotalHW:null }]; setCabDraft(d); setCabEditing(true) }} style={{ padding:'10px 20px', fontSize:13, background:'#3C3489', color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontWeight:500 }}>+ Start Building — Add First Unit</button>
+                              <button onClick={()=>{ const d = JSON.parse(JSON.stringify(cabList)); d.product_line = d.product_line || productLine; d.unit_types = [{ unit_type_name:'UNIT A', unit_quantity:1, kind:'unit', skus:[], fillers:[], is_ada:false, countertop_sf:0, excelSubtotalSF:null, excelSubtotalHW:null }]; setCabDraft(d); setCabEditing(true) }} style={{ padding:'10px 20px', fontSize:13, background:'#3C3489', color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontWeight:500 }}>+ Start Building — Add First Unit</button>
                             </div>
                           )}
                         </div>
