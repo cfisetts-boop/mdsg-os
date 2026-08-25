@@ -126,11 +126,23 @@ async function fetchItem(itemId) {
 }
 
 // ── Exact column ID → OS field mapping (from your board's real IDs) ─────────
+// "Who Owns" initials → OS owner (first-letter match)
+function resolveOwner(initials) {
+  const c = String(initials || '').trim().toUpperCase()[0] || ''
+  return { P: 'Pam', V: 'Vicki', B: 'Blake', C: 'Cole', T: 'Tabetha' }[c] || 'Cole'
+}
+// Text dates arrive free-form; only store parseable ones
+function safeDate(v) {
+  const d = new Date(v)
+  return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0]
+}
+
 const COLUMN_FIELD_MAP = {
-  'text_mkyn4fgr':  'gc_name',
+  'text_mkyn4fgr':  '__owner',        // Who Owns (initials)
   'color_mkywb1z7': '__status',               // special: needs STATUS_MAP
   'text_mkyns5k1':  'scope_notes',
-  'text_mkyny685':  'address',
+  'text_mkyny685':  'gc_name',        // GENERAL CONTRACTOR
+  'text_mkyn289n':  'address',        // ADDRESS
   'date_mkynm6s6':  'bid_due_date',
   'text_mkyntx29':  'gc_contact',
   'text_mkynxhmm':  'gc_phone',
@@ -190,6 +202,10 @@ function mapItem(item) {
       if (n > 0) job.gross_margin_pct = n
     } else if (field === '__tops') {
       job.tops_included = /yes|true|1/i.test(val)
+    } else if (field === '__owner') {
+      if (val) job.owner = resolveOwner(val)
+    } else if (field === 'order_date' || field === 'delivery_date') {
+      const d = safeDate(val); if (d) job[field] = d
     } else if (field === '__change_orders') {
       const n = parseInt(val)
       if (!isNaN(n)) job.change_order_count = n
@@ -221,7 +237,7 @@ async function upsertJob(jobData) {
   } else {
     // Create new
     const { data, error } = await supabase.from('jobs')
-      .insert({ ...jobData, owner: 'Cole', city: 'Denver', state: 'CO' })
+      .insert({ ...jobData, owner: jobData.owner || 'Cole', city: 'Denver', state: 'CO' })
       .select('id').single()
     if (error) throw error
     await supabase.from('activity_log').insert({
