@@ -313,10 +313,6 @@ export async function POST(request) {
       if (scopeBits.length === 0) scopeBits.push(`${sortedUnits.reduce((s, u) => s + (u.unit_quantity || 1), 0)} Units`)
       dt(scopeBits.join('  ·  '), ML + 6, uy, { bold: true, size: 9 })
       uy -= 12
-      if (amenNames.length > 0) {
-        dt('Amenity spaces: ' + amenNames.join(', '), ML + 6, uy, { size: 7, color: gray, maxWidth: PW - 12 })
-        uy -= 11
-      }
       dt(`Total cabinets: ${totalCabsDisplay.toLocaleString()}`, ML + 6, uy, { size: 7.5, color: gray })
       uy -= 14
     } else {
