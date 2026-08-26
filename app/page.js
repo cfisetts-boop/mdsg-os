@@ -818,7 +818,7 @@ export default function Home() {
                     <div style={{ fontSize: 10, fontWeight: 500, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
                       {stage} <span style={{ background: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>{jobs.filter(j => j.stage === stage).length}</span>
                     </div>
-                    {jobs.filter(j => j.stage === stage).map(job => (
+                    {jobs.filter(j => j.stage === stage).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(job => (
                       <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }}
                         style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 6, padding: 10, marginBottom: 6, cursor: 'pointer' }}>
                         <div style={{ fontWeight: 500, fontSize: 12 }}>{job.name}</div>
