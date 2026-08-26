@@ -156,6 +156,7 @@ export default function Home() {
   const [cabCopyTarget,  setCabCopyTarget]  = useState('')
   const [jobSearch,      setJobSearch]      = useState('')
   const [ownerFilter,    setOwnerFilter]    = useState('All')
+  const [gcFilter,       setGcFilter]       = useState('All')
   const [proposalSalesTax, setProposalSalesTax] = useState(9.15)
   const [proposalLoading, setProposalLoading] = useState(false)
   const [stageUpdating, setStageUpdating] = useState(false)
@@ -857,9 +858,11 @@ export default function Home() {
           {/* JOBS LIST */}
           {view === 'jobs' && (() => {
             const owners = ['All', ...[...new Set(jobs.map(j => j.owner).filter(Boolean))].sort()]
+            const gcs = ['All', ...[...new Set(jobs.map(j => (j.gc_name || '').trim()).filter(Boolean))].sort()]
             const q = jobSearch.trim().toLowerCase()
             const filteredJobs = jobs.filter(j =>
               (ownerFilter === 'All' || j.owner === ownerFilter) &&
+              (gcFilter === 'All' || (j.gc_name || '').trim() === gcFilter) &&
               (!q || [j.name, j.gc_name, j.manufacturer, j.address, j.city, j.stage].some(v => (v || '').toLowerCase().includes(q)))
             )
             return (
@@ -882,6 +885,9 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
+                <select value={gcFilter} onChange={e => setGcFilter(e.target.value)} style={{ padding: '7px 10px', fontSize: 12, border: '0.5px solid #ccc', borderRadius: 8, maxWidth: 200 }}>
+                  {gcs.map(g => <option key={g} value={g}>{g === 'All' ? 'All GCs' : g}</option>)}
+                </select>
                 <span style={{ fontSize: 11, color: '#888' }}>{filteredJobs.length} of {jobs.length}</span>
               </div>
             <div style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 10, overflow: 'hidden' }}>
