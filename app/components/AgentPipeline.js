@@ -16,12 +16,11 @@ const dlbl   = { fontSize: 10, color: MUTED, display: 'block', marginBottom: 4, 
 const dcard  = { background: CARD, border: `0.5px solid ${BORDER}`, borderRadius: 10, padding: 20, marginBottom: 16 }
 
 const AGENTS = [
-  { key: 'upload',     label: 'Upload',            desc: 'Plan set PDF',        color: '#6366f1', step: 1 },
-  { key: 'classify',   label: 'Page Classifier',   desc: 'Sort page types',     color: '#7c3aed', step: 2 },
-  { key: 'matrix',     label: 'Unit Matrix',       desc: 'Types + counts',      color: '#0d9488', step: 3 },
-  { key: 'elevation',  label: 'Cabinet Agent',  desc: 'SKU extraction',      color: '#8b5cf6', step: 4 },
-  { key: 'countertop', label: 'Countertop Agent',  desc: 'LF → SF calc',        color: '#d97706', step: 5 },
-  { key: 'export',     label: 'Export',            desc: 'Excel + PDF',         color: '#16a34a', step: 6 },
+  { key: 'upload',     label: 'Upload',                    desc: 'Excel or PDF',           color: '#6366f1', step: 1 },
+  { key: 'elevation',  label: 'Cabinet Agent',             desc: 'SKUs + Unit Matrix',     color: '#8b5cf6', step: 2 },
+  { key: 'countertop', label: 'Countertop Agent',          desc: 'Excel SF or LF calc',    color: '#d97706', step: 3 },
+  { key: 'export',     label: 'Export',                    desc: 'Quote + Full List',      color: '#16a34a', step: 4 },
+  { key: 'classify',   label: 'Page Classifier (optional)', desc: 'Full plan sets only',   color: '#7c3aed', step: 5 },
 ]
 
 // ── Cabinet helpers (from TakeoffEngine) ─────────────────────────────────────
@@ -202,11 +201,13 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
         setComplete('elevation')
         // Use Excel SF directly — back-calculate LF so display matches Excel totals
         setCtUnits(uts.map(ut => ({
-          name:      ut.unit_type_name,
-          qty:       ut.unit_quantity || 1,
-          kitchenLF: ut.kitchenSF ? Math.round((ut.kitchenSF / 2.125) * 100) / 100 : (ut.kitchenLF || 0),
-          vanityLF:  ut.vanitySF  ? Math.round((ut.vanitySF  / 1.875) * 100) / 100 : (ut.vanityLF  || 0),
-          sinks:     ut.sinks     || 0,
+          name:       ut.unit_type_name,
+          qty:        ut.unit_quantity || 1,
+          kitchenLF:  ut.kitchenSF ? Math.round((ut.kitchenSF / 2.125) * 100) / 100 : (ut.kitchenLF || 0),
+          vanityLF:   ut.vanitySF  ? Math.round((ut.vanitySF  / 1.875) * 100) / 100 : (ut.vanityLF  || 0),
+          kitchenSFx: ut.kitchenSF || null,   // exact SF from the Excel sheet — display/totals prefer this
+          vanitySFx:  ut.vanitySF  || null,
+          sinks:      ut.sinks     || 0,
         })))
         setWastePct(5)  // 5% for side splash per Excel standard
         // Grand TOTALS / SPLASH / TOTAL block from the source sheet — the law for output totals
@@ -392,8 +393,8 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
     const qty = ut.qty || 1
     acc.kitchenLF += (ut.kitchenLF||0) * qty
     acc.vanityLF  += (ut.vanityLF||0)  * qty
-    acc.kitchenSF += (ut.kitchenLF||0) * 2.125 * qty
-    acc.vanitySF  += (ut.vanityLF||0)  * 1.875 * qty
+    acc.kitchenSF += (ut.kitchenSFx != null ? ut.kitchenSFx : (ut.kitchenLF||0) * 2.125) * qty
+    acc.vanitySF  += (ut.vanitySFx  != null ? ut.vanitySFx  : (ut.vanityLF||0)  * 1.875) * qty
     acc.sinks     += (ut.sinks||0)     * qty
     return acc
   }, { kitchenLF:0, vanityLF:0, kitchenSF:0, vanitySF:0, sinks:0 })
@@ -494,12 +495,11 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
   // ── Pipeline bar (top strip, Option 2 layout) ────────────────────────────
   function PipelineBar() {
     const PDF_NODES = [
-      { key:'upload',     label:'Upload'     },
-      { key:'classify',   label:'Classify'   },
-      { key:'matrix',     label:'Matrix'     },
-      { key:'elevation',  label:'Elevation'  },
-      { key:'countertop', label:'Countertop' },
-      { key:'export',     label:'Export'     },
+      { key:'upload',     label:'Upload'         },
+      { key:'elevation',  label:'Cabinet Agent'  },
+      { key:'countertop', label:'Countertop'     },
+      { key:'export',     label:'Export'         },
+      { key:'classify',   label:'Classify (opt)' },
     ]
     const XL_NODES = [
       { key:'upload',    label:'Upload' },
@@ -1013,15 +1013,15 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
                 </thead>
                 <tbody>
                   {ctUnits.map((ut,i)=>{
-                    const kSF = (ut.kitchenLF||0)*2.125
-                    const vSF = (ut.vanityLF||0)*1.875
+                    const kSF = ut.kitchenSFx != null ? ut.kitchenSFx : (ut.kitchenLF||0)*2.125
+                    const vSF = ut.vanitySFx  != null ? ut.vanitySFx  : (ut.vanityLF||0)*1.875
                     return (
                       <tr key={i} style={{ borderBottom:`1px solid ${BORDER}22` }}>
                         <td style={{ padding:'5px 8px', fontSize:12, color:TEXT, fontWeight:500 }}>{ut.name}</td>
                         <td style={{ padding:'5px 8px' }}><input type="text" inputMode="numeric" value={ut.qty===1&&ut.qty===1?ut.qty:ut.qty} onChange={e=>setCtUnits(p=>p.map((r,j)=>j===i?{...r,qty:parseInt(e.target.value.replace(/[^0-9]/g,''))||1}:r))} style={{ ...dinp, width:65, textAlign:'center', fontWeight:600 }}/></td>
-                        <td style={{ padding:'5px 8px' }}><input type="number" step="0.25" value={ut.kitchenLF||''} onChange={e=>setCtUnits(p=>p.map((r,j)=>j===i?{...r,kitchenLF:parseFloat(e.target.value)||0}:r))} style={{ ...dinp, width:75 }} placeholder="0"/></td>
+                        <td style={{ padding:'5px 8px' }}><input type="number" step="0.25" value={ut.kitchenLF||''} onChange={e=>setCtUnits(p=>p.map((r,j)=>j===i?{...r,kitchenLF:parseFloat(e.target.value)||0,kitchenSFx:null}:r))} style={{ ...dinp, width:75 }} placeholder="0"/></td>
                         <td style={{ padding:'5px 8px', fontSize:12, color:'#d97706', fontWeight:600 }}>{kSF>0?kSF.toFixed(1)+' SF':'—'}</td>
-                        <td style={{ padding:'5px 8px' }}><input type="number" step="0.25" value={ut.vanityLF||''} onChange={e=>setCtUnits(p=>p.map((r,j)=>j===i?{...r,vanityLF:parseFloat(e.target.value)||0}:r))} style={{ ...dinp, width:75 }} placeholder="0"/></td>
+                        <td style={{ padding:'5px 8px' }}><input type="number" step="0.25" value={ut.vanityLF||''} onChange={e=>setCtUnits(p=>p.map((r,j)=>j===i?{...r,vanityLF:parseFloat(e.target.value)||0,vanitySFx:null}:r))} style={{ ...dinp, width:75 }} placeholder="0"/></td>
                         <td style={{ padding:'5px 8px', fontSize:12, color:'#d97706', fontWeight:600 }}>{vSF>0?vSF.toFixed(1)+' SF':'—'}</td>
                         <td style={{ padding:'5px 8px' }}><input type="number" value={ut.sinks||0} onChange={e=>setCtUnits(p=>p.map((r,j)=>j===i?{...r,sinks:parseInt(e.target.value)||0}:r))} style={{ ...dinp, width:50, textAlign:'center' }}/></td>
                       </tr>
@@ -1110,8 +1110,8 @@ export default function AgentPipeline({ jobs = [], onComplete }) {
       <div style={{ flex:1, overflowY:'auto', padding:28, maxWidth:900 }}>
         {activeAgent==='upload'     && <UploadPanel/>}
         {activeAgent==='classify'   && <ClassifyPanel/>}
-        {activeAgent==='matrix'     && <MatrixPanel/>}
-        {activeAgent==='elevation'  && <ElevationPanel/>}
+        {activeAgent==='matrix'     && <><ElevationPanel/><div style={{ height:20 }}/><MatrixPanel/></>}
+        {activeAgent==='elevation'  && <><ElevationPanel/><div style={{ height:20 }}/><MatrixPanel/></>}
         {activeAgent==='countertop' && <CountertopPanel/>}
         {activeAgent==='export'     && <ExportPanel/>}
       </div>
