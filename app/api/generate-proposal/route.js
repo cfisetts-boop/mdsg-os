@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = 0, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -113,7 +113,7 @@ export async function POST(request) {
                        || job.manufacturer_gross_cost || unitPriceSum
     // Freight & manufacturer tax are PASS-THROUGH: added after markup, never margined.
     const freight      = freightPassThrough !== null ? Number(freightPassThrough) : (job.freight_cost || leedo.freight || 0)
-    const mfrTax       = Number(mfrTaxPassThrough) || leedoTax || 0
+    const mfrTax       = mfrTaxPassThrough !== null && mfrTaxPassThrough !== undefined ? Number(mfrTaxPassThrough) || 0 : (leedoTax || 0)
     const netCost      = grossCost * (1 - discount)
     // TRUE gross-margin pricing on the cabinet gross only
     const mPct         = Number(marginPct)

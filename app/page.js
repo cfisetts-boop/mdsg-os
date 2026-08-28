@@ -139,12 +139,21 @@ export default function Home() {
   const [skuSuggest,      setSkuSuggest]      = useState([])
   const [productLine,     setProductLine]     = useState('framed')
   const [hideUnitPricing, setHideUnitPricing] = useState(false)
-  const FILE_CATEGORIES = ['Drawings', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
+  const DOOR_STYLES = {
+    framed: ['CHANNING','COVINGTON','PERRYTON','ROSSER','CANYON','HARDIN','RIDGELAND','ALLIANCE 5-PC','ASHTON','AUSTIN','CONCORD SHAKER','PARKER','RIVERSIDE 5-PC','SLATON','FILLMORE','HARTFORD SHAKER','RADISSON','RAINIER','FOSTER','MIDWAY','SAVOY','TAYLOR','VANCOUVER','SHELBY','LUCINA','HUNTINGTON','SHELDON'],
+    frameless: ['CHATEAU','COSTA','PRATO','RISANO','ALTO 5-PC','ASTRA','CAVA','PARC','SIENA','CORSO','FORTE','SORANO','TORANO','VITTORIA','LUCERNE'],
+  }
+  const DRAWER_BOXES = {
+    framed: ['PB Standard','PB Undermount w/Soft Close','PW Standard','PW Dovetail Standard','PW Dovetail w/Undermount Soft Close'],
+    frameless: ['PB','PB Undermount Soft Close','Double Wall Metal Soft Close','PW Dovetail w/Undermount Soft Close'],
+  }
+  const FILE_CATEGORIES = ['Drawings', 'Floor Plans (Redacted)', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
   const [fileUploading,  setFileUploading]  = useState(false)
   const [fileCategory,   setFileCategory]   = useState('Drawings')
-  const CAB_CATEGORIES = ['BASES', 'VANITIES', 'WALLS', 'TALLS', 'ACCESSORIES', 'TRIM', 'HARDWARE ALLOWANCES']
+  const CAB_CATEGORIES = ['BASES', 'VANITIES', 'WALLS', 'TALLS', 'ACCESSORIES', 'HARDWARE ALLOWANCES']
+  const normCat = (c) => (c === 'TRIM' || c === 'MOLDING' || !c) ? null : c
   const [cabList,        setCabList]        = useState(null)
   const [cabListLoading, setCabListLoading] = useState(false)
   const [cabSeeding,     setCabSeeding]     = useState(false)
@@ -221,6 +230,7 @@ export default function Home() {
       setEditFields({
         name: selectedJob.name || '',
         door_style: selectedJob.door_style || '',
+        drawer_box: selectedJob.drawer_box || '',
         finish_color: selectedJob.finish_color || '',
         box_construction: selectedJob.box_construction || '',
         hardware_allowance: selectedJob.hardware_allowance || 0,
@@ -265,6 +275,7 @@ export default function Home() {
     await supabase.from('jobs').update({
       name: editFields.name || selectedJob.name,
       door_style: editFields.door_style,
+      drawer_box: editFields.drawer_box || null,
       finish_color: editFields.finish_color,
       box_construction: editFields.box_construction,
       hardware_allowance: Number(editFields.hardware_allowance) || 0,
@@ -628,7 +639,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: Number(proposalMfrTax) || 0, applyDealerDiscount: applyDiscount, hideUnitPricing, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, hideUnitPricing, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1022,11 +1033,20 @@ export default function Home() {
                         </div>
                         <div style={{ fontSize:11, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.4, marginBottom:8, marginTop:4 }}>Cabinet Specs</div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
-                          <div><label style={lbl}>Door Style</label><input value={editFields.door_style} onChange={e => setEditFields(p => ({ ...p, door_style: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Door Style</label>
+                            <select value={editFields.door_style} onChange={e => setEditFields(pv => ({ ...pv, door_style: e.target.value }))} style={inp}>
+                              <option value="">— select —</option>
+                              {(DOOR_STYLES[cabList?.product_line || 'framed'] || []).map(d => <option key={d} value={d}>{d}</option>)}
+                              {editFields.door_style && !(DOOR_STYLES[cabList?.product_line || 'framed'] || []).includes(editFields.door_style) && <option value={editFields.door_style}>{editFields.door_style}</option>}
+                            </select></div>
+                          <div><label style={lbl}>Drawer Box &amp; Glide</label>
+                            <select value={editFields.drawer_box} onChange={e => setEditFields(pv => ({ ...pv, drawer_box: e.target.value }))} style={inp}>
+                              <option value="">— select —</option>
+                              {(DRAWER_BOXES[cabList?.product_line || 'framed'] || []).map(d => <option key={d} value={d}>{d}</option>)}
+                            </select></div>
                           <div><label style={lbl}>Finish / Color</label><input value={editFields.finish_color} onChange={e => setEditFields(p => ({ ...p, finish_color: e.target.value }))} style={inp} /></div>
                         </div>
                         <div style={{ marginBottom: 12 }}><label style={lbl}>Box Construction</label><input value={editFields.box_construction} onChange={e => setEditFields(p => ({ ...p, box_construction: e.target.value }))} style={inp} /></div>
-                        <div style={{ marginBottom: 12 }}><label style={lbl}>Hardware Allowance ($)</label><input type="number" value={editFields.hardware_allowance} onChange={e => setEditFields(p => ({ ...p, hardware_allowance: e.target.value }))} style={{ ...inp, width: 120 }} /></div>
                         <div style={{ marginBottom: 14 }}><label style={lbl}>Scope Notes</label><textarea value={editFields.scope_notes} onChange={e => setEditFields(p => ({ ...p, scope_notes: e.target.value }))} style={{ ...inp, height: 56, resize: 'vertical' }} /></div>
                         {editUnitTypes.length > 0 && (
                           <div style={{ marginBottom: 14 }}>
@@ -1367,8 +1387,8 @@ export default function Home() {
                                 )}
                               </div>
                               {[...CAB_CATEGORIES, ...[...new Set([...(ut.skus||[]),...(ut.fillers||[])].map(r=>r.category).filter(cat=>cat&&!CAB_CATEGORIES.includes(cat)))]].map(cat => {
-                                const skuRows = (ut.skus||[]).map((r,i)=>({...r,__f:false,__i:i})).filter(r=>(r.category||'BASES')===cat)
-                                const filRows = (ut.fillers||[]).map((r,i)=>({...r,__f:true,__i:i})).filter(r=>(r.category||'ACCESSORIES')===cat)
+                                const skuRows = (ut.skus||[]).map((r,i)=>({...r,__f:false,__i:i})).filter(r=>((r.category==='TRIM'||r.category==='MOLDING')?'ACCESSORIES':(r.category||'BASES'))===cat)
+                                const filRows = (ut.fillers||[]).map((r,i)=>({...r,__f:true,__i:i})).filter(r=>((r.category==='TRIM'||r.category==='MOLDING')?'ACCESSORIES':(r.category||'ACCESSORIES'))===cat)
                                 const rows = [...skuRows, ...filRows]
                                 if (!rows.length && !cabEditing) return null
                                 return (
@@ -1446,12 +1466,13 @@ export default function Home() {
                             const parts = f.name.split('__')
                             const label = parts.length >= 3 ? parts.slice(2).join('__') : f.name
                             const sizeLabel = f.size > 0 ? (f.size > 1048576 ? (f.size/1048576).toFixed(1)+'MB' : Math.round(f.size/1024)+'KB') : ''
+                            const dateLabel = f.created_at ? new Date(f.created_at).toLocaleDateString() : ''
                             const ext2 = label.split('.').pop().toLowerCase(); const icon = ext2==='pdf'?'📄':['doc','docx'].includes(ext2)?'📝':['xls','xlsx','csv'].includes(ext2)?'📊':['jpg','jpeg','png'].includes(ext2)?'🖼️':'📎'
                             return (
                               <div key={f.path} style={{ display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:6, background:'#f9f9f9', marginBottom:3 }}>
                                 <span style={{ fontSize:13 }}>{icon}</span>
                                 <button onClick={()=>downloadJobFile(f.path, label)} style={{ flex:1, textAlign:'left', background:'none', border:'none', cursor:'pointer', fontSize:11, color:'#3C3489', padding:0, fontWeight:500 }}>{label}</button>
-                                {sizeLabel && <span style={{ fontSize:10, color:'#bbb' }}>{sizeLabel}</span>}
+                                {sizeLabel && <span style={{ fontSize:10, color:'#bbb' }}>{sizeLabel}{dateLabel ? ' · ' + dateLabel : ''}</span>}
                                 <button onClick={()=>deleteJobFile(f.path)} style={{ background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:13, lineHeight:1, padding:'0 2px' }}>✕</button>
                               </div>
                             )

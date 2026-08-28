@@ -18,7 +18,7 @@ function sectionToCategory(section) {
   if (s.startsWith('vanity'))  return 'VANITIES'
   if (s.startsWith('wall'))    return 'WALLS'
   if (s.startsWith('tall'))    return 'TALLS'
-  if (s.includes('trim') || s.includes('molding')) return 'TRIM'
+  if (s.includes('trim') || s.includes('molding')) return 'ACCESSORIES'
   return 'ACCESSORIES'
 }
 

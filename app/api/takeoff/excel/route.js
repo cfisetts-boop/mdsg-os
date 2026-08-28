@@ -238,6 +238,7 @@ function parseSheet(sheet) {
     // ── Category label row (BASES, VANITIES, WALLS, TALLS, ACCESSORIES) ──
     if (CATEGORY_LABELS.test(aStr) && !bIsNum) {
       currentCategory = aStr.toUpperCase().replace(/S$/, '') + 'S'  // normalize: BASE→BASES
+      if (currentCategory === 'TRIMS' || currentCategory === 'MOLDINGS') currentCategory = 'ACCESSORIES'
       return
     }
 
