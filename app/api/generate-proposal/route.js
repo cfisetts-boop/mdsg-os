@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -123,7 +123,8 @@ export async function POST(request) {
     const cabsToGC     = marginize(netCost)
     const hwToGC       = hwCost > 0 ? marginize(hwCost) : (job.hardware_allowance || 0)
     // Sales tax applies to the marked-up cabinet price only, not pass-throughs
-    const taxAmount    = mfrTax > 0 ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
+    const taxZeroed    = mfrTaxPassThrough !== null && mfrTaxPassThrough !== undefined && Number(mfrTaxPassThrough) === 0
+    const taxAmount    = (taxZeroed || mfrTax > 0) ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
     const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
     // Margin kept internal only — logged to activity but never shown on PDF
     const hardwareCost = hwCost
@@ -372,6 +373,7 @@ export async function POST(request) {
     py -= 15
 
     // Base cabinet price
+    if (!totalOnly) {
     dt('Base Cabinet Price', ML + 6, py, { size: 8, color: gray })
     rAlign(fmtMoney(cabsToGC), MR - 4, py, { size: 8 })
     py -= 14
@@ -411,6 +413,8 @@ export async function POST(request) {
     if (notes) {
       dt('Notes: ' + notes, ML + 6, py, { size: 7, color: gray, maxWidth: PW - 12 })
       py -= 12
+    }
+
     }
 
     py -= 4

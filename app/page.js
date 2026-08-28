@@ -139,6 +139,7 @@ export default function Home() {
   const [skuSuggest,      setSkuSuggest]      = useState([])
   const [productLine,     setProductLine]     = useState('framed')
   const [hideUnitPricing, setHideUnitPricing] = useState(false)
+  const [totalOnly,       setTotalOnly]       = useState(false)
   const DOOR_STYLES = {
     framed: ['CHANNING','COVINGTON','PERRYTON','ROSSER','CANYON','HARDIN','RIDGELAND','ALLIANCE 5-PC','ASHTON','AUSTIN','CONCORD SHAKER','PARKER','RIVERSIDE 5-PC','SLATON','FILLMORE','HARTFORD SHAKER','RADISSON','RAINIER','FOSTER','MIDWAY','SAVOY','TAYLOR','VANCOUVER','SHELBY','LUCINA','HUNTINGTON','SHELDON'],
     frameless: ['CHATEAU','COSTA','PRATO','RISANO','ALTO 5-PC','ASTRA','CAVA','PARC','SIENA','CORSO','FORTE','SORANO','TORANO','VITTORIA','LUCERNE'],
@@ -639,7 +640,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, hideUnitPricing, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, hideUnitPricing, totalOnly, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1194,6 +1195,10 @@ export default function Home() {
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Hide unit breakdown — lump sum only (shows unit/amenity counts, no per-unit table)
+                      </label>
+                      <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
+                        <input type="checkbox" checked={totalOnly} onChange={e=>setTotalOnly(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        Grand total only — hide Base/Freight/Tax/Hardware lines, show one TOTAL
                       </label>
                       <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:12 }}>
                         <div>
