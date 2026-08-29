@@ -694,10 +694,21 @@ export default function Home() {
     loadReminders()
   }
 
-  const pipelineValue = jobs.reduce((s, j) => s + (j.bid_value || 0), 0)
-  const activeBids = jobs.filter(j => ['RFQ', 'Open Proposals', 'Bid', 'Pricing', 'Proposal Sent'].includes(j.stage)).length
-  const awardedValue = jobs.filter(j => !['RFQ', 'Open Proposals', 'Bid', 'Pricing', 'Proposal Sent', 'Lost', 'On Hold'].includes(j.stage)).reduce((s, j) => s + (j.bid_value || 0), 0)
-  const avgMargin = jobs.filter(j => j.gross_margin_pct > 0).reduce((s, j, _, arr) => s + j.gross_margin_pct / arr.length, 0)
+  // Effective bid value: Monday TOTAL first, else derived from cost + margin
+  const effVal = (j) => (Number(j.bid_value) > 0 ? Number(j.bid_value)
+    : (Number(j.manufacturer_gross_cost) > 0 && Number(j.gross_margin_pct) > 0 && Number(j.gross_margin_pct) < 95
+        ? Number(j.manufacturer_gross_cost) / (1 - Number(j.gross_margin_pct) / 100) : 0))
+  const BID_STAGES      = ['RFQ', 'Open Proposals', 'On Hold', 'Bid', 'Pricing', 'Proposal Sent']
+  const CONTRACT_STAGES = ['Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
+  const pipelineValue = jobs.filter(j => BID_STAGES.includes(j.stage)).reduce((s, j) => s + effVal(j), 0)
+  const activeBids = jobs.filter(j => BID_STAGES.includes(j.stage)).length
+  const contractValue = jobs.filter(j => CONTRACT_STAGES.includes(j.stage)).reduce((s, j) => s + effVal(j), 0)
+  const contractCount = jobs.filter(j => CONTRACT_STAGES.includes(j.stage)).length
+  // Blended margin: $-weighted across jobs where both value and cost are known
+  const marginJobs = jobs.filter(j => !['Lost'].includes(j.stage) && effVal(j) > 0 && Number(j.manufacturer_gross_cost) > 0)
+  const mSell = marginJobs.reduce((s, j) => s + effVal(j), 0)
+  const mCost = marginJobs.reduce((s, j) => s + Number(j.manufacturer_gross_cost), 0)
+  const avgMargin = mSell > 0 ? ((mSell - mCost) / mSell) * 100 : 0
   const overdueReminders = reminders.filter(r => r.due_date <= new Date().toISOString().split('T')[0])
   const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
   const inTransitCount = allActiveShipments.filter(s => s.status === 'In Transit').length
@@ -789,9 +800,9 @@ export default function Home() {
               )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
                 {[
-                  { label: 'Pipeline Value', value: fmt(pipelineValue), sub: `${jobs.length} total jobs` },
-                  { label: 'Active Bids', value: activeBids, sub: 'in bid stage' },
-                  { label: 'Avg Margin', value: fmtPct(avgMargin), sub: 'across priced jobs' },
+                  { label: 'Pipeline Value', value: fmt(pipelineValue), sub: `${activeBids} active bids` },
+                  { label: 'Under Contract', value: fmt(contractValue), sub: `${contractCount} jobs awarded+` },
+                  { label: 'Blended Margin', value: fmtPct(avgMargin), sub: `${marginJobs.length} priced jobs, $-weighted` },
                   { label: 'In Transit', value: inTransitCount, sub: 'loads on the way', alert: delayedCount > 0 },
                 ].map(m => (
                   <div key={m.label} style={{ background: m.alert ? '#FAEEDA' : '#f5f5f3', borderRadius: 8, padding: 14 }}>
@@ -838,6 +849,7 @@ export default function Home() {
                   <div key={stage} style={{ background: '#f5f5f3', borderRadius: 8, padding: 10, minHeight: 80 }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
                       {stage} <span style={{ background: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>{jobs.filter(j => j.stage === stage).length}</span>
+                      {(() => { const v = jobs.filter(j => j.stage === stage).reduce((s, j) => s + effVal(j), 0); return v > 0 ? <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 6, opacity: 0.75 }}>{fmt(v)}</span> : null })()}
                     </div>
                     {jobs.filter(j => j.stage === stage).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(job => (
                       <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }}
