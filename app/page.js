@@ -544,6 +544,14 @@ export default function Home() {
     setCabExporting(false)
   }
 
+  async function logContact(job) {
+    const today = new Date().toISOString().split('T')[0]
+    await supabase.from('jobs').update({ last_contacted_at: today }).eq('id', job.id)
+    await supabase.from('activity_log').insert({ job_id: job.id, user_name: job.owner || 'Cole', action: 'Contact logged — GC follow-up' })
+    fetchJobs()
+    if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, last_contacted_at: today })
+  }
+
   async function runQuoteCheck() {
     setQuoteChecking(true); setQuoteCheck(null)
     try {
@@ -710,6 +718,14 @@ export default function Home() {
   const mCost = marginJobs.reduce((s, j) => s + Number(j.manufacturer_gross_cost), 0)
   const avgMargin = mSell > 0 ? Math.max(0, Math.min(1, (mSell - mCost) / mSell)) : 0
   const overdueReminders = reminders.filter(r => r.due_date <= new Date().toISOString().split('T')[0])
+  // Bid follow-ups: bid-stage job, due date ≥7 days past, no contact since due date
+  const todayISO = new Date().toISOString().split('T')[0]
+  const daysPast = (d) => Math.floor((new Date(todayISO) - new Date(d)) / 86400000)
+  const followUps = jobs.filter(j =>
+    ['Open Proposals', 'Proposal Sent', 'On Hold'].includes(j.stage) &&
+    j.bid_due_date && daysPast(j.bid_due_date) >= 7 &&
+    (!j.last_contacted_at || j.last_contacted_at < j.bid_due_date)
+  ).map(j => ({ ...j, __days: daysPast(j.bid_due_date) })).sort((a, b) => b.__days - a.__days)
   const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
   const inTransitCount = allActiveShipments.filter(s => s.status === 'In Transit').length
   const delayedCount = allActiveShipments.filter(s => s.status === 'Delayed').length
@@ -796,6 +812,20 @@ export default function Home() {
                 <div style={{ background: '#FAEEDA', border: '0.5px solid #EF9F27', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#633806', display: 'flex', gap: 16 }}>
                   {overdueReminders.length > 0 && <span>⚑ {overdueReminders.length} reminder{overdueReminders.length > 1 ? 's' : ''} overdue — <span onClick={() => setView('reminders')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>view</span></span>}
                   {delayedCount > 0 && <span>🚚 {delayedCount} shipment{delayedCount > 1 ? 's' : ''} delayed — <span onClick={() => setView('shipments')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>view</span></span>}
+                </div>
+              )}
+              {followUps.length > 0 && (
+                <div style={{ background: '#FDF8EC', border: '0.5px solid #e0c98a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#8B6914', marginBottom: 8 }}>⏰ Bid Follow-Ups Needed ({followUps.length})</div>
+                  {followUps.slice(0, 8).map(j => (
+                    <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '0.5px dotted #e8dcc0', fontSize: 12 }}>
+                      <span onClick={() => { setSelectedJob(j); setView('job-detail') }} style={{ fontWeight: 600, cursor: 'pointer', color: '#1B5EA6', flex: 1 }}>{j.name}</span>
+                      <span style={{ color: '#888' }}>{j.owner || '—'}</span>
+                      <span style={{ color: '#A32D2D', fontWeight: 500 }}>{j.__days}d past bid date</span>
+                      <span style={{ color: '#aaa', fontSize: 11 }}>{j.last_contacted_at ? 'last contact ' + j.last_contacted_at : 'no contact logged'}</span>
+                      <button onClick={() => logContact(j)} style={{ padding: '3px 10px', fontSize: 11, background: '#2D7A3A', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer' }}>✓ Log contact</button>
+                    </div>
+                  ))}
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 24 }}>
@@ -979,6 +1009,7 @@ export default function Home() {
               <div style={{ ...card, marginBottom: 16, padding: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 10 }}>Pipeline Stage</div>
                 <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => logContact(selectedJob)} style={{ padding: '6px 12px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: '#2D7A3A', color: '#fff', border: 'none', fontWeight: 500 }}>✓ Log contact{selectedJob.last_contacted_at ? ` (last: ${selectedJob.last_contacted_at})` : ''}</button>
                   {STAGES.map(stage => {
                     const c = STAGE_COLORS[stage]; const isCurrent = selectedJob.stage === stage
                     return <button key={stage} onClick={() => updateStage(stage)} disabled={stageUpdating}
