@@ -708,7 +708,7 @@ export default function Home() {
   const marginJobs = jobs.filter(j => !['Lost'].includes(j.stage) && effVal(j) > 0 && Number(j.manufacturer_gross_cost) > 0)
   const mSell = marginJobs.reduce((s, j) => s + effVal(j), 0)
   const mCost = marginJobs.reduce((s, j) => s + Number(j.manufacturer_gross_cost), 0)
-  const avgMargin = mSell > 0 ? ((mSell - mCost) / mSell) * 100 : 0
+  const avgMargin = mSell > 0 ? Math.max(0, Math.min(1, (mSell - mCost) / mSell)) : 0
   const overdueReminders = reminders.filter(r => r.due_date <= new Date().toISOString().split('T')[0])
   const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
   const inTransitCount = allActiveShipments.filter(s => s.status === 'In Transit').length
