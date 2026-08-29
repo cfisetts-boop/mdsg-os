@@ -113,7 +113,8 @@ export async function POST(request) {
                        || job.manufacturer_gross_cost || unitPriceSum
     // Freight & manufacturer tax are PASS-THROUGH: added after markup, never margined.
     const freight      = freightPassThrough !== null ? Number(freightPassThrough) : (job.freight_cost || leedo.freight || 0)
-    const mfrTax       = mfrTaxPassThrough !== null && mfrTaxPassThrough !== undefined ? Number(mfrTaxPassThrough) || 0 : (leedoTax || 0)
+    const taxExplicit  = mfrTaxPassThrough !== null && mfrTaxPassThrough !== undefined && String(mfrTaxPassThrough).trim() !== ''
+    const mfrTax       = taxExplicit ? (Number(mfrTaxPassThrough) || 0) : (leedoTax || 0)
     const netCost      = grossCost * (1 - discount)
     // TRUE gross-margin pricing on the cabinet gross only
     const mPct         = Number(marginPct)
@@ -123,7 +124,7 @@ export async function POST(request) {
     const cabsToGC     = marginize(netCost)
     const hwToGC       = hwCost > 0 ? marginize(hwCost) : (job.hardware_allowance || 0)
     // Sales tax applies to the marked-up cabinet price only, not pass-throughs
-    const taxZeroed    = mfrTaxPassThrough !== null && mfrTaxPassThrough !== undefined && Number(mfrTaxPassThrough) === 0
+    const taxZeroed    = taxExplicit && (Number(mfrTaxPassThrough) || 0) === 0
     const taxAmount    = (taxZeroed || mfrTax > 0) ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
     const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
     // Margin kept internal only — logged to activity but never shown on PDF
@@ -266,8 +267,7 @@ export async function POST(request) {
       ['COLOR:',              job.finish_color || 'TBD'],
       ['BOX CONSTRUCTION:',   isFramed  ? 'Framed'      : boxConst],
       ['BOX MATERIAL:',       isPlywood ? 'Plywood'     : 'Particleboard'],
-      ['DRAWER:',             'Dovetail'],
-      ['DRAWER GLIDE:',       'Undermount w/Soft Close'],
+      ['DRAWER BOX/GLIDE:',   job.drawer_box || 'Dovetail / Undermount Soft Close'],
       ['HINGES:',             'Soft Close'],
     ]
     const specR = [

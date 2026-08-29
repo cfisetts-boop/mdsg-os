@@ -144,6 +144,7 @@ export default function Home() {
     framed: ['CHANNING','COVINGTON','PERRYTON','ROSSER','CANYON','HARDIN','RIDGELAND','ALLIANCE 5-PC','ASHTON','AUSTIN','CONCORD SHAKER','PARKER','RIVERSIDE 5-PC','SLATON','FILLMORE','HARTFORD SHAKER','RADISSON','RAINIER','FOSTER','MIDWAY','SAVOY','TAYLOR','VANCOUVER','SHELBY','LUCINA','HUNTINGTON','SHELDON'],
     frameless: ['CHATEAU','COSTA','PRATO','RISANO','ALTO 5-PC','ASTRA','CAVA','PARC','SIENA','CORSO','FORTE','SORANO','TORANO','VITTORIA','LUCERNE'],
   }
+  const DOOR_FINISHES = ['TruWhite','Arbor Grey','Graphite','Linen','Mid Grey','Midnight Navy','Onyx','Sagebrush','Ash','Caramel','Chestnut','Espresso','Harvest','Java','Natural','Oyster','Sable','Alabaster','Baritone','Charwood','Coastal Grey','Driftwood','Libretti','Linea Black','Pebblebrook','Sagestone','Sandy Alder','Steel Grey','Urban Walnut','Vintage Grey','White Satin','Wood Grain White','Morning Fog','Natural Elm','Weathered Oak','Light Teak','Texas Cypress','Midnight Teak','Glacier','Grey Cashmere','Harmony','Obsidian Ash','Timeless','White Tusk']
   const DRAWER_BOXES = {
     framed: ['PB Standard','PB Undermount w/Soft Close','PW Standard','PW Dovetail Standard','PW Dovetail w/Undermount Soft Close'],
     frameless: ['PB','PB Undermount Soft Close','Double Wall Metal Soft Close','PW Dovetail w/Undermount Soft Close'],
@@ -1045,7 +1046,8 @@ export default function Home() {
                               <option value="">— select —</option>
                               {(DRAWER_BOXES[cabList?.product_line || 'framed'] || []).map(d => <option key={d} value={d}>{d}</option>)}
                             </select></div>
-                          <div><label style={lbl}>Finish / Color</label><input value={editFields.finish_color} onChange={e => setEditFields(p => ({ ...p, finish_color: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Finish / Color</label><input list="door-finish-options" value={editFields.finish_color} onChange={e => setEditFields(pv => ({ ...pv, finish_color: e.target.value }))} style={inp} />
+                            <datalist id="door-finish-options">{DOOR_FINISHES.map(f => <option key={f} value={f} />)}</datalist></div>
                         </div>
                         <div style={{ marginBottom: 12 }}><label style={lbl}>Box Construction</label><input value={editFields.box_construction} onChange={e => setEditFields(p => ({ ...p, box_construction: e.target.value }))} style={inp} /></div>
                         <div style={{ marginBottom: 14 }}><label style={lbl}>Scope Notes</label><textarea value={editFields.scope_notes} onChange={e => setEditFields(p => ({ ...p, scope_notes: e.target.value }))} style={{ ...inp, height: 56, resize: 'vertical' }} /></div>
