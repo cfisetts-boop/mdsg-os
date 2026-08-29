@@ -100,6 +100,8 @@ export default function Home() {
   useEffect(() => {
     setBidSections(selectedJob?.proposal_sections ? { ...DEFAULT_BID_SECTIONS, ...selectedJob.proposal_sections } : DEFAULT_BID_SECTIONS)
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
+    setSowRows(Array.isArray(selectedJob?.scope_of_work) ? selectedJob.scope_of_work : null)
+    setSowEditing(false)
     setProposalFreight(selectedJob?.freight_cost > 0 ? String(selectedJob.freight_cost) : '')
     setProposalMfrTax('')
     setJobFiles([])
@@ -140,6 +142,16 @@ export default function Home() {
   const [productLine,     setProductLine]     = useState('framed')
   const [hideUnitPricing, setHideUnitPricing] = useState(false)
   const [totalOnly,       setTotalOnly]       = useState(false)
+  const [sowRows,         setSowRows]         = useState(null)
+  const [sowEditing,      setSowEditing]      = useState(false)
+  const [sowSaving,       setSowSaving]       = useState(false)
+  const SOW_TEMPLATE = [
+    ['GC & Contact Info', ''], ['Project Address', ''], ['Bid Due Date', ''],
+    ['Cabinet Specs Confirmed With GC (call/text)', ''], ['Finish Schedule', ''],
+    ['Countertop Specs', ''], ['Unit Matrix & Amenities', ''], ['Kitchen / Bath Layout Count', ''],
+    ['Number of Floors', ''], ['Est. Delivery Dates', ''], ['Floor Sequence', ''],
+    ['CT Plans Sent to Richard/Lorine (date + return date)', ''], ['Sales Tax Notes', ''], ['Notes', ''],
+  ]
   const DOOR_STYLES = {
     framed: ['CHANNING','COVINGTON','PERRYTON','ROSSER','CANYON','HARDIN','RIDGELAND','ALLIANCE 5-PC','ASHTON','AUSTIN','CONCORD SHAKER','PARKER','RIVERSIDE 5-PC','SLATON','FILLMORE','HARTFORD SHAKER','RADISSON','RAINIER','FOSTER','MIDWAY','SAVOY','TAYLOR','VANCOUVER','SHELBY','LUCINA','HUNTINGTON','SHELDON'],
     frameless: ['CHATEAU','COSTA','PRATO','RISANO','ALTO 5-PC','ASTRA','CAVA','PARC','SIENA','CORSO','FORTE','SORANO','TORANO','VITTORIA','LUCERNE'],
@@ -542,6 +554,14 @@ export default function Home() {
       }
     } catch (err) { alert(err.message) }
     setCabExporting(false)
+  }
+
+  async function saveSow(rows) {
+    setSowSaving(true)
+    await supabase.from('jobs').update({ scope_of_work: rows }).eq('id', selectedJob.id)
+    setSelectedJob({ ...selectedJob, scope_of_work: rows })
+    setSowRows(rows); setSowSaving(false); setSowEditing(false)
+    await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: 'Cole', action: 'Scope of Work updated' })
   }
 
   async function logContact(job) {
@@ -1341,6 +1361,40 @@ export default function Home() {
                       <span style={{ color: '#888' }}>Gross Margin</span>
                       <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
                     </div>
+                  </div>
+
+                  {/* ── Scope of Work ──────────────────────────────────── */}
+                  <div style={card}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontWeight: 500 }}>Scope of Work</div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(SOW_TEMPLATE.map(r=>[...r])); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
+                        {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
+                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}
+                      </div>
+                    </div>
+                    {!sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
+                    {sowRows && (
+                      <div>
+                        {sowRows.map((r, i) => (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none' }}>
+                            {sowEditing ? (
+                              <>
+                                <input value={r[0]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[e.target.value,x[1]]:x))} style={{ width:260, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
+                                <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                <button onClick={()=>setSowRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>✕</button>
+                              </>
+                            ) : (
+                              <>
+                                <span style={{ width:260, fontSize:12, fontWeight:600, color:'#555' }}>{r[0]}</span>
+                                <span style={{ flex:1, fontSize:12, color: r[1] ? '#1a1a1a' : '#ccc' }}>{r[1] || '—'}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                        {sowEditing && <button onClick={()=>setSowRows(rs=>[...rs, ['','']])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Row</button>}
+                      </div>
+                    )}
                   </div>
 
                   {/* ── Cab List ───────────────────────────────────────── */}
