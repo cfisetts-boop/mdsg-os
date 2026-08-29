@@ -233,6 +233,10 @@ export default function Home() {
         name: selectedJob.name || '',
         door_style: selectedJob.door_style || '',
         drawer_box: selectedJob.drawer_box || '',
+        cabinet_construction: selectedJob.cabinet_construction || '',
+        interior_color: selectedJob.interior_color || '',
+        shelf_thickness: selectedJob.shelf_thickness || '',
+        hinge_type: selectedJob.hinge_type || '',
         finish_color: selectedJob.finish_color || '',
         box_construction: selectedJob.box_construction || '',
         hardware_allowance: selectedJob.hardware_allowance || 0,
@@ -278,6 +282,10 @@ export default function Home() {
       name: editFields.name || selectedJob.name,
       door_style: editFields.door_style,
       drawer_box: editFields.drawer_box || null,
+      cabinet_construction: editFields.cabinet_construction || null,
+      interior_color: editFields.interior_color || null,
+      shelf_thickness: editFields.shelf_thickness || null,
+      hinge_type: editFields.hinge_type || null,
       finish_color: editFields.finish_color,
       box_construction: editFields.box_construction,
       hardware_allowance: Number(editFields.hardware_allowance) || 0,
@@ -994,7 +1002,7 @@ export default function Home() {
                     </div>
                     {!editingProposal ? (
                       <div>
-                        {[['Door Style', selectedJob.door_style], ['Finish / Color', selectedJob.finish_color], ['Box Construction', selectedJob.box_construction], ['Hardware Allowance', selectedJob.hardware_allowance ? fmt(selectedJob.hardware_allowance) : null], ['Scope Notes', selectedJob.scope_notes]].filter(([, v]) => v).map(([label, value]) => (
+                        {[['Door Style', selectedJob.door_style], ['Finish / Color', selectedJob.finish_color], ['Drawer Box', selectedJob.drawer_box], ['Construction', selectedJob.cabinet_construction], ['Interior', selectedJob.interior_color], ['Shelf', selectedJob.shelf_thickness], ['Hinge', selectedJob.hinge_type], ['Box Construction', selectedJob.box_construction], ['Hardware Allowance', selectedJob.hardware_allowance ? fmt(selectedJob.hardware_allowance) : null], ['Scope Notes', selectedJob.scope_notes]].filter(([, v]) => v).map(([label, value]) => (
                           <div key={label} style={{ marginBottom: 10 }}>
                             <div style={lbl}>{label}</div>
                             <div style={{ fontSize: 13 }}>{value}</div>
@@ -1045,6 +1053,16 @@ export default function Home() {
                             <select value={editFields.drawer_box} onChange={e => setEditFields(pv => ({ ...pv, drawer_box: e.target.value }))} style={inp}>
                               <option value="">— select —</option>
                               {(DRAWER_BOXES[cabList?.product_line || 'framed'] || []).map(d => <option key={d} value={d}>{d}</option>)}
+                            </select></div>
+                          <div><label style={lbl}>Cabinet Construction</label>
+                            <select value={editFields.cabinet_construction} onChange={e => setEditFields(pv => ({ ...pv, cabinet_construction: e.target.value }))} style={inp}>
+                              <option value="">— select —</option><option>Standard</option><option>Plywood</option>
+                            </select></div>
+                          <div><label style={lbl}>Interior Color</label><input value={editFields.interior_color} placeholder="White" onChange={e => setEditFields(pv => ({ ...pv, interior_color: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Shelf Thickness</label><input value={editFields.shelf_thickness} placeholder={'3/4"'} onChange={e => setEditFields(pv => ({ ...pv, shelf_thickness: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Door Hinge Type</label>
+                            <select value={editFields.hinge_type} onChange={e => setEditFields(pv => ({ ...pv, hinge_type: e.target.value }))} style={inp}>
+                              <option value="">— select —</option><option>Euro 6 Way</option><option>Soft-Close</option>
                             </select></div>
                           <div><label style={lbl}>Finish / Color</label><input list="door-finish-options" value={editFields.finish_color} onChange={e => setEditFields(pv => ({ ...pv, finish_color: e.target.value }))} style={inp} />
                             <datalist id="door-finish-options">{DOOR_FINISHES.map(f => <option key={f} value={f} />)}</datalist></div>

@@ -266,8 +266,11 @@ export async function POST(request) {
       ['MATERIAL:',           'Maple'],
       ['COLOR:',              job.finish_color || 'TBD'],
       ['BOX CONSTRUCTION:',   isFramed  ? 'Framed'      : boxConst],
-      ['BOX MATERIAL:',       isPlywood ? 'Plywood'     : 'Particleboard'],
+      ['BOX MATERIAL:',       job.cabinet_construction || (isPlywood ? 'Plywood' : 'Particleboard')],
       ['DRAWER BOX/GLIDE:',   job.drawer_box || 'Dovetail / Undermount Soft Close'],
+      ['INTERIOR:',           job.interior_color || 'White'],
+      ['SHELF:',              job.shelf_thickness || '3/4"'],
+      ['HINGE:',              job.hinge_type || 'Euro 6 Way'],
       ['HINGES:',             'Soft Close'],
     ]
     const specR = [
