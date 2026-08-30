@@ -102,6 +102,8 @@ export default function Home() {
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
     setSowRows(Array.isArray(selectedJob?.scope_of_work) ? selectedJob.scope_of_work : null)
     setSowEditing(false)
+    setPaRows(Array.isArray(selectedJob?.post_award) ? selectedJob.post_award : null)
+    setPaEditing(false)
     setProposalFreight(selectedJob?.freight_cost > 0 ? String(selectedJob.freight_cost) : '')
     setProposalMfrTax('')
     setJobFiles([])
@@ -151,6 +153,35 @@ export default function Home() {
   const [loginPw,         setLoginPw]         = useState('')
   const [loginErr,        setLoginErr]        = useState('')
   const [loginBusy,       setLoginBusy]       = useState(false)
+  const [paRows,          setPaRows]          = useState(null)
+  const [paEditing,       setPaEditing]       = useState(false)
+  const [paSaving,        setPaSaving]        = useState(false)
+  const PA_TEMPLATE = [
+    ['CONTRACT', 'Scope list review & schedule of deliveries'],
+    ['CONTRACT', 'Review & negotiate contract changes'],
+    ['CONTRACT', 'Receive contract from GC'],
+    ['CONTRACT', 'Execute contract & return to GC for signature'],
+    ['COI', 'Order COI from Erin at Pacific'],
+    ['COI', 'Receive COI & forward to GC'],
+    ['SHOP DRAWINGS', 'Prepare shop drawings'],
+    ['SHOP DRAWINGS', 'Send to GC for approval / red-line'],
+    ['SHOP DRAWINGS', 'Red-line changes made & resubmitted (if needed)'],
+    ['SHOP DRAWINGS', 'Shops APPROVED'],
+    ['ORDER', 'Prepare order — double-check against approved shops'],
+    ['ORDER', 'Send order to manufacturer'],
+    ['ORDER', 'Receive acknowledgement — double-check against approved shops'],
+    ['ORDER', 'Confirm order'],
+    ['ORDER', 'Confirm delivery dates'],
+    ['ORDER', 'Request deposits (imports: deposit w/ order + balance before delivery)'],
+    ['DELIVERY', 'Communicate with GC and Willy (installer)'],
+    ['DELIVERY', 'Call-ahead requested — Willy schedules crew'],
+    ['DELIVERY', 'Follow up GC + Willy on delivery changes'],
+    ['DELIVERY', 'Weekly GC check for delivery updates'],
+    ['CLOSEOUT', 'Deliveries completed'],
+    ['CLOSEOUT', 'Invoice / Textura for materials delivered'],
+    ['CLOSEOUT', 'Willy punch complete — additional materials identified'],
+    ['CLOSEOUT', 'Change order (if GC responsibility): prepared, executed, material ordered'],
+  ]
   const SOW_TEMPLATE = [
     ['GC & Contact Info', ''], ['Project Address', ''], ['Bid Due Date', ''],
     ['Cabinet Specs Confirmed With GC (call/text)', ''], ['Finish Schedule', ''],
@@ -167,7 +198,7 @@ export default function Home() {
     framed: ['PB Standard','PB Undermount w/Soft Close','PW Standard','PW Dovetail Standard','PW Dovetail w/Undermount Soft Close'],
     frameless: ['PB','PB Undermount Soft Close','Double Wall Metal Soft Close','PW Dovetail w/Undermount Soft Close'],
   }
-  const FILE_CATEGORIES = ['Drawings', 'Floor Plans (Redacted)', 'Contract', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
+  const FILE_CATEGORIES = ['Drawings', 'Floor Plans (Redacted)', 'Contract', 'COI', 'Shop Drawings', 'Acknowledgement', 'Quote', 'Change Order', 'Proposal', 'Photo', 'Other']
   const [jobFiles,       setJobFiles]       = useState([])
   const [filesLoading,   setFilesLoading]   = useState(false)
   const [fileUploading,  setFileUploading]  = useState(false)
@@ -582,6 +613,19 @@ export default function Home() {
     setSelectedJob({ ...selectedJob, scope_of_work: rows })
     setSowRows(rows); setSowSaving(false); setSowEditing(false)
     await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: 'Cole', action: 'Scope of Work updated' })
+  }
+
+  async function savePa(rows) {
+    setPaSaving(true)
+    await supabase.from('jobs').update({ post_award: rows }).eq('id', selectedJob.id)
+    setSelectedJob({ ...selectedJob, post_award: rows })
+    setPaRows(rows); setPaSaving(false); setPaEditing(false)
+  }
+  function togglePaTask(i) {
+    const rows = paRows.map((r, j) => j === i
+      ? [r[0], r[1], !r[2], !r[2] ? new Date().toISOString().split('T')[0] : null]
+      : r)
+    setPaRows(rows); savePa(rows)
   }
 
   async function logContact(job) {
@@ -1458,6 +1502,46 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+
+                  {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
+                  <div style={card}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontWeight: 500 }}>Post-Award Checklist{paRows && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{paRows.filter(r=>r[2]).length}/{paRows.length} done</span>}</div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        {!paRows && <button onClick={()=>{ const t = PA_TEMPLATE.map(r=>[r[0],r[1],false,null]); setPaRows(t); savePa(t) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start Checklist</button>}
+                        {paRows && !paEditing && <button onClick={()=>setPaEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit Tasks</button>}
+                        {paEditing && <button onClick={()=>savePa(paRows.filter(r=>r[1].trim()))} disabled={paSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{paSaving?'Saving...':'✓ Done Editing'}</button>}
+                      </div>
+                    </div>
+                    {paRows && (() => {
+                      let lastPhase = null
+                      return paRows.map((r, i) => {
+                        const showPhase = r[0] !== lastPhase; lastPhase = r[0]
+                        return (
+                          <div key={i}>
+                            {showPhase && <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'8px 0 2px' }}>{r[0]}</div>}
+                            <div style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0' }}>
+                              {paEditing ? (
+                                <>
+                                  <input value={r[0]} onChange={e=>setPaRows(rs=>rs.map((x,j)=>j===i?[e.target.value.toUpperCase(),x[1],x[2],x[3]]:x))} style={{ width:120, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:11 }}/>
+                                  <input value={r[1]} onChange={e=>setPaRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value,x[2],x[3]]:x))} style={{ flex:1, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                  <button onClick={()=>setPaRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                                </>
+                              ) : (
+                                <>
+                                  <input type="checkbox" checked={!!r[2]} onChange={()=>togglePaTask(i)} style={{ width:15, height:15, cursor:'pointer' }}/>
+                                  <span style={{ flex:1, fontSize:12, color: r[2] ? '#999' : '#1a1a1a', textDecoration: r[2] ? 'line-through' : 'none' }}>{r[1]}</span>
+                                  {r[3] && <span style={{ fontSize:10, color:'#aaa' }}>{r[3]}</span>}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                    {paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
+                  </div>
+                  )}
 
                   {/* ── Cab List ───────────────────────────────────────── */}
                   <div style={card}>
