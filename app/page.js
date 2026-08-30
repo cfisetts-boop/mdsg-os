@@ -145,6 +145,12 @@ export default function Home() {
   const [sowRows,         setSowRows]         = useState(null)
   const [sowEditing,      setSowEditing]      = useState(false)
   const [sowSaving,       setSowSaving]       = useState(false)
+  const [authSession,     setAuthSession]     = useState(undefined)   // undefined=checking, null=logged out
+  const [authProfile,     setAuthProfile]     = useState(null)
+  const [loginEmail,      setLoginEmail]      = useState('')
+  const [loginPw,         setLoginPw]         = useState('')
+  const [loginErr,        setLoginErr]        = useState('')
+  const [loginBusy,       setLoginBusy]       = useState(false)
   const SOW_TEMPLATE = [
     ['GC & Contact Info', ''], ['Project Address', ''], ['Bid Due Date', ''],
     ['Cabinet Specs Confirmed With GC (call/text)', ''], ['Finish Schedule', ''],
@@ -237,7 +243,19 @@ export default function Home() {
     if (Array.isArray(data)) setShipments(data)
   }, [])
 
-  useEffect(() => { loadJobs(); loadReminders(); loadAllActiveShipments() }, [loadJobs, loadReminders, loadAllActiveShipments])
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setAuthSession(data.session ?? null))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setAuthSession(s ?? null))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (!authSession?.user?.email) { setAuthProfile(null); return }
+    supabase.from('user_profiles').select('*').eq('email', authSession.user.email).single()
+      .then(({ data }) => setAuthProfile(data || { email: authSession.user.email, name: authSession.user.email.split('@')[0], role: 'sales' }))
+  }, [authSession])
+
+  useEffect(() => { if (authSession) { loadJobs(); loadReminders(); loadAllActiveShipments() } }, [authSession, loadJobs, loadReminders, loadAllActiveShipments])
 
   useEffect(() => {
     if (selectedJob) {
@@ -568,7 +586,7 @@ export default function Home() {
     const today = new Date().toISOString().split('T')[0]
     await supabase.from('jobs').update({ last_contacted_at: today }).eq('id', job.id)
     await supabase.from('activity_log').insert({ job_id: job.id, user_name: job.owner || 'Cole', action: 'Contact logged — GC follow-up' })
-    fetchJobs()
+    loadJobs()
     if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, last_contacted_at: today })
   }
 
@@ -741,14 +759,49 @@ export default function Home() {
   // Bid follow-ups: bid-stage job, due date ≥7 days past, no contact since due date
   const todayISO = new Date().toISOString().split('T')[0]
   const daysPast = (d) => Math.floor((new Date(todayISO) - new Date(d)) / 86400000)
-  const followUps = jobs.filter(j =>
-    ['Open Proposals', 'Proposal Sent', 'On Hold'].includes(j.stage) &&
-    j.bid_due_date && daysPast(j.bid_due_date) >= 7 &&
-    (!j.last_contacted_at || j.last_contacted_at < j.bid_due_date)
-  ).map(j => ({ ...j, __days: daysPast(j.bid_due_date) })).sort((a, b) => b.__days - a.__days)
+  // Milestones: 7-day, 1-month, 2-month past bid due; reappears at each unless contacted after that milestone
+  const FOLLOWUP_MILESTONES = [[7, '7-day'], [30, '1-month'], [60, '2-month']]
+  const followUps = jobs.map(j => {
+    if (!['Open Proposals', 'Proposal Sent', 'On Hold'].includes(j.stage) || !j.bid_due_date) return null
+    const days = daysPast(j.bid_due_date)
+    let active = null
+    for (const [ms, label] of FOLLOWUP_MILESTONES) {
+      if (days < ms) break
+      const msDate = new Date(new Date(j.bid_due_date).getTime() + ms * 86400000).toISOString().split('T')[0]
+      if (!j.last_contacted_at || j.last_contacted_at < msDate) active = { ms, label, msDate }
+    }
+    return active ? { ...j, __days: days, __milestone: active.label } : null
+  }).filter(Boolean).sort((a, b) => b.__days - a.__days)
   const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
   const inTransitCount = allActiveShipments.filter(s => s.status === 'In Transit').length
   const delayedCount = allActiveShipments.filter(s => s.status === 'Delayed').length
+
+  async function doLogin(e) {
+    e.preventDefault(); setLoginBusy(true); setLoginErr('')
+    const { error } = await supabase.auth.signInWithPassword({ email: loginEmail.trim(), password: loginPw })
+    if (error) setLoginErr(error.message)
+    setLoginBusy(false)
+  }
+
+  if (authSession === undefined) {
+    return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'-apple-system, sans-serif', color:'#888' }}>Loading…</div>
+  }
+  if (authSession === null) {
+    return (
+      <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f5f5f3', fontFamily:'-apple-system, sans-serif' }}>
+        <form onSubmit={doLogin} style={{ background:'#fff', borderRadius:14, padding:36, width:340, boxShadow:'0 4px 24px rgba(0,0,0,0.08)' }}>
+          <div style={{ fontSize:22, fontWeight:600, color:'#3C3489', marginBottom:4 }}>MDSG OS</div>
+          <div style={{ fontSize:12, color:'#888', marginBottom:22 }}>Sign in to continue</div>
+          <label style={{ fontSize:11, color:'#888', fontWeight:600 }}>EMAIL</label>
+          <input type="email" value={loginEmail} onChange={e2=>setLoginEmail(e2.target.value)} required style={{ width:'100%', padding:'10px 12px', border:'0.5px solid #ccc', borderRadius:8, fontSize:14, margin:'4px 0 14px', boxSizing:'border-box' }}/>
+          <label style={{ fontSize:11, color:'#888', fontWeight:600 }}>PASSWORD</label>
+          <input type="password" value={loginPw} onChange={e2=>setLoginPw(e2.target.value)} required style={{ width:'100%', padding:'10px 12px', border:'0.5px solid #ccc', borderRadius:8, fontSize:14, margin:'4px 0 18px', boxSizing:'border-box' }}/>
+          {loginErr && <div style={{ fontSize:12, color:'#A32D2D', marginBottom:12 }}>{loginErr}</div>}
+          <button type="submit" disabled={loginBusy} style={{ width:'100%', padding:'11px', background:'#3C3489', color:'#fff', border:'none', borderRadius:8, fontSize:14, fontWeight:500, cursor:'pointer' }}>{loginBusy ? 'Signing in…' : 'Sign In'}</button>
+        </form>
+      </div>
+    )
+  }
 
   const nav = (id, label) => (
     <div onClick={() => { setView(id); if (id !== 'job-detail') setSelectedJob(null) }}
@@ -795,6 +848,13 @@ export default function Home() {
           <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>Manufacturer Direct Sales</div>
         </div>
         <div style={{ padding: '8px 0', flex: 1 }}>
+          {authProfile && (
+            <div style={{ padding: '6px 16px 10px', fontSize: 11, color: '#888', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ width:22, height:22, borderRadius:'50%', background:'#3C3489', color:'#fff', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:600 }}>{(authProfile.name||'?')[0]}</span>
+              <span style={{ flex:1 }}>{authProfile.name} · {authProfile.role}</span>
+              <span onClick={() => supabase.auth.signOut()} style={{ cursor:'pointer', color:'#A32D2D' }}>Sign out</span>
+            </div>
+          )}
           {nav('dashboard', 'Dashboard')}
           {nav('jobs', 'Jobs')}
           {nav('agent-pipeline', '⚡ Agent Pipeline')}
@@ -841,7 +901,7 @@ export default function Home() {
                     <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '0.5px dotted #e8dcc0', fontSize: 12 }}>
                       <span onClick={() => { setSelectedJob(j); setView('job-detail') }} style={{ fontWeight: 600, cursor: 'pointer', color: '#1B5EA6', flex: 1 }}>{j.name}</span>
                       <span style={{ color: '#888' }}>{j.owner || '—'}</span>
-                      <span style={{ color: '#A32D2D', fontWeight: 500 }}>{j.__days}d past bid date</span>
+                      <span style={{ color: '#A32D2D', fontWeight: 500 }}>{j.__milestone} follow-up · {j.__days}d past bid</span>
                       <span style={{ color: '#aaa', fontSize: 11 }}>{j.last_contacted_at ? 'last contact ' + j.last_contacted_at : 'no contact logged'}</span>
                       <button onClick={() => logContact(j)} style={{ padding: '3px 10px', fontSize: 11, background: '#2D7A3A', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer' }}>✓ Log contact</button>
                     </div>

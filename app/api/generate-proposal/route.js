@@ -412,6 +412,10 @@ export async function POST(request) {
       py -= 14
     }
 
+    // Installation contact (Greenworks) — per Pam's proposal checklist
+    dt('INSTALLATION: Greenworks Renovations LLC — Anthony (Willy) Ramirez · 619-718-1578 · greenworksrenovationsllc@gmail.com', ML + 6, py, { size: 6.5, color: dgray })
+    py -= 12
+
     // Notes
     if (notes) {
       dt('Notes: ' + notes, ML + 6, py, { size: 7, color: gray, maxWidth: PW - 12 })
