@@ -249,6 +249,8 @@ export default function Home() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  const visibleJobs = authProfile?.scope === 'own' ? jobs.filter(j => j.owner === authProfile.name) : jobs
+
   useEffect(() => {
     if (!authSession?.user?.email) { setAuthProfile(null); return }
     supabase.from('user_profiles').select('*').eq('email', authSession.user.email).single()
