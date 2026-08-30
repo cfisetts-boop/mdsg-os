@@ -41,7 +41,7 @@ total_amount = the grand total or subtotal before tax. If installation is separa
     }
 
     if (jobId) {
-      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+      const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
       await supabase.from('activity_log').insert({
         job_id: jobId,
         user_name: 'System',
