@@ -156,6 +156,17 @@ export default function Home() {
   const [paRows,          setPaRows]          = useState(null)
   const [paEditing,       setPaEditing]       = useState(false)
   const [paSaving,        setPaSaving]        = useState(false)
+  const [emailOpen,       setEmailOpen]       = useState(false)
+  const [emailTo,         setEmailTo]         = useState('')
+  const [emailCc,         setEmailCc]         = useState('')
+  const [emailSubject,    setEmailSubject]    = useState('')
+  const [emailBody,       setEmailBody]       = useState('')
+  const [emailSending,    setEmailSending]    = useState(false)
+  const [emailResult,     setEmailResult]     = useState(null)
+  const REP_QUICKPICKS = [
+    ['Richard Knudson', ''],   // ← paste Richard's email in the quotes
+    ['Lorine Dockstader', ''], // ← paste Lorine's email in the quotes
+  ]
   const PA_TEMPLATE = [
     ['CONTRACT', 'Scope list review & schedule of deliveries'],
     ['CONTRACT', 'Review & negotiate contract changes'],
@@ -613,6 +624,47 @@ export default function Home() {
     setSelectedJob({ ...selectedJob, scope_of_work: rows })
     setSowRows(rows); setSowSaving(false); setSowEditing(false)
     await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: 'Cole', action: 'Scope of Work updated' })
+  }
+
+  function openEmailPanel() {
+    setEmailSubject(`${selectedJob.name} — Cabinet List for Pricing`)
+    setEmailBody(`Hi,\n\nPlease find attached the cabinet list for ${selectedJob.name} for pricing.\n\nProduct line: ${cabList?.product_line || 'framed'}. Please include freight and lead time with your quote.\n\nThank you,\n${authProfile?.name || ''}\nMDSG Cabinets`)
+    setEmailResult(null); setEmailOpen(true)
+  }
+
+  async function sendQuoteEmail() {
+    setEmailSending(true); setEmailResult(null)
+    try {
+      // Build the Quote export server-side, attach as base64
+      const res = await fetch('/api/export/excel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ takeoffData: cabList, mode: 'manufacturer', projectName: selectedJob.name }),
+      })
+      if (!res.ok) throw new Error('Quote export failed')
+      const blob = await res.blob()
+      const b64 = await new Promise((resolve, reject) => {
+        const r = new FileReader()
+        r.onload = () => resolve(r.result.split(',')[1])
+        r.onerror = reject
+        r.readAsDataURL(blob)
+      })
+      const to = emailTo.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+      const cc = emailCc.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+      const resp = await fetch('/api/send-email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jobId: selectedJob.id, to, cc,
+          fromEmail: authProfile?.email, fromName: authProfile?.name,
+          senderName: authProfile?.name,
+          subject: emailSubject, body: emailBody,
+          attachmentName: `${selectedJob.name.replace(/[^a-zA-Z0-9]/g, '_')}_Quote.xlsx`,
+          attachmentB64: b64,
+        }),
+      })
+      const d = await resp.json()
+      setEmailResult(d.success ? { ok: true } : { error: d.error })
+    } catch (err) { setEmailResult({ error: err.message }) }
+    setEmailSending(false)
   }
 
   async function savePa(rows) {
@@ -1567,6 +1619,7 @@ export default function Home() {
                             {jobs.filter(j => j.id !== selectedJob.id).map(j => <option key={j.id} value={j.id}>{j.name}</option>)}
                           </select>
                           {cabCopyTarget && <button onClick={copyCabListToJob} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>Copy</button>}
+                          <button onClick={openEmailPanel} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✉ Email Quote</button>
                           <button onClick={async()=>{ if(!confirm('Clear the entire cabinet list for this job? This cannot be undone.')) return; await fetch('/api/cab-list', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); setCabList(null); setQuoteCheck(null) }} style={{ padding:'4px 12px', fontSize:11, background:'#fff', color:'#A32D2D', border:'0.5px solid #e0b4b4', borderRadius:6, cursor:'pointer', marginLeft:'auto' }}>Clear List</button>
                         </div>
                       )}
@@ -1574,6 +1627,36 @@ export default function Home() {
                       <datalist id="leedo-sku-suggest">
                         {skuSuggest.map(it => <option key={it.sku} value={it.sku}>{it.description || ''}</option>)}
                       </datalist>
+                    )}
+                    {emailOpen && (
+                      <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email Quote — sends from {authProfile?.email}</div>
+                          <button onClick={()=>setEmailOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb' }}>✕</button>
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>To:</label>
+                          <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="email, email" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                          {REP_QUICKPICKS.filter(r=>r[1]).map(r => (
+                            <button key={r[0]} onClick={()=>setEmailTo(t=>t ? t + ', ' + r[1] : r[1])} style={{ padding:'3px 8px', fontSize:10, background:'#fff', border:'0.5px solid #b9cbe0', borderRadius:5, cursor:'pointer', color:'#1B5EA6' }}>{r[0].split(' ')[0]}</button>
+                          ))}
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>Cc:</label>
+                          <input value={emailCc} onChange={e=>setEmailCc(e.target.value)} placeholder="optional" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>Subject:</label>
+                          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                        </div>
+                        <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={5} style={{ width:'100%', padding:'8px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, boxSizing:'border-box', marginBottom:8, fontFamily:'inherit' }}/>
+                        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                          <button onClick={sendQuoteEmail} disabled={emailSending || !emailTo.trim()} style={{ padding:'7px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{emailSending ? 'Sending…' : 'Send with Quote attached'}</button>
+                          <span style={{ fontSize:11, color:'#888' }}>Attaches {selectedJob.name}_Quote.xlsx automatically</span>
+                          {emailResult?.ok && <span style={{ fontSize:12, color:'#2D7A3A', fontWeight:600 }}>✓ Sent & logged</span>}
+                          {emailResult?.error && <span style={{ fontSize:12, color:'#A32D2D' }}>✗ {emailResult.error}</span>}
+                        </div>
+                      </div>
                     )}
                     {cabList && cabEditing && (
                         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
