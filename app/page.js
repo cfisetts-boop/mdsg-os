@@ -153,8 +153,6 @@ export default function Home() {
   const [loginPw,         setLoginPw]         = useState('')
   const [loginErr,        setLoginErr]        = useState('')
   const [loginBusy,       setLoginBusy]       = useState(false)
-  const [ctQuoteUploading, setCtQuoteUploading] = useState(false)
-  const [ctQuoteResult,    setCtQuoteResult]    = useState(null)
   const [collapsed,        setCollapsed]        = useState({})
   const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
   const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
