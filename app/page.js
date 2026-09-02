@@ -155,6 +155,9 @@ export default function Home() {
   const [loginBusy,       setLoginBusy]       = useState(false)
   const [ctQuoteUploading, setCtQuoteUploading] = useState(false)
   const [ctQuoteResult,    setCtQuoteResult]    = useState(null)
+  const [collapsed,        setCollapsed]        = useState({})
+  const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
+  const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
   const [paRows,          setPaRows]          = useState(null)
   const [paEditing,       setPaEditing]       = useState(false)
   const [paSaving,        setPaSaving]        = useState(false)
@@ -1579,7 +1582,7 @@ export default function Home() {
                   {/* ── Scope of Work ──────────────────────────────────── */}
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                      <div style={{ fontWeight: 500 }}>Scope of Work</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="sow"/>Scope of Work</div>
                       <div style={{ display:'flex', gap:6 }}>
                         {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(sowTemplate()); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
                         {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
@@ -1588,8 +1591,8 @@ export default function Home() {
                         {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}
                       </div>
                     </div>
-                    {!sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
-                    {sowRows && (
+                    {!collapsed.sow && !sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
+                    {!collapsed.sow && sowRows && (
                       <div>
                         {sowRows.map((r, i) => (
                           <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none' }}>
@@ -1617,14 +1620,14 @@ export default function Home() {
                   {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                      <div style={{ fontWeight: 500 }}>Post-Award Checklist{paRows && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{paRows.filter(r=>r[2]).length}/{paRows.length} done</span>}</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="pa"/>Post-Award Checklist{paRows && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{paRows.filter(r=>r[2]).length}/{paRows.length} done</span>}</div>
                       <div style={{ display:'flex', gap:6 }}>
                         {!paRows && <button onClick={()=>{ const t = PA_TEMPLATE.map(r=>[r[0],r[1],false,null]); setPaRows(t); savePa(t) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start Checklist</button>}
                         {paRows && !paEditing && <button onClick={()=>setPaEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit Tasks</button>}
                         {paEditing && <button onClick={()=>savePa(paRows.filter(r=>r[1].trim()))} disabled={paSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{paSaving?'Saving...':'✓ Done Editing'}</button>}
                       </div>
                     </div>
-                    {paRows && (() => {
+                    {!collapsed.pa && paRows && (() => {
                       let lastPhase = null
                       return paRows.map((r, i) => {
                         const showPhase = r[0] !== lastPhase; lastPhase = r[0]
@@ -1650,14 +1653,14 @@ export default function Home() {
                         )
                       })
                     })()}
-                    {paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
+                    {!collapsed.pa && paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
                   </div>
                   )}
 
                   {/* ── Cab List ───────────────────────────────────────── */}
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                      <div style={{ fontWeight:500 }}>Cabinet List</div>
+                      <div style={{ fontWeight:500 }}><Chevron k="cab"/>Cabinet List</div>
                       {cabList && !cabEditing && (
                         <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
                           {['framed','frameless'].map(pl => (
@@ -1771,7 +1774,7 @@ export default function Home() {
                           {L.product_line && <span style={{ color:'#3C3489', fontWeight:600, textTransform:'capitalize' }}> · {L.product_line}</span>}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
-                        <div style={{ maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
+                        <div style={{ display: collapsed.cab ? 'none' : 'block', maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
                           {(L.unit_types || []).map((ut, ui) => (
                             <div key={ui} style={{ borderBottom:'0.5px solid #eee' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#EEEDFE', fontSize:12, fontWeight:600, position:'sticky', top:0, zIndex:1 }}>
