@@ -104,6 +104,8 @@ export default function Home() {
     setSowEditing(false)
     setPaRows(Array.isArray(selectedJob?.post_award) ? selectedJob.post_award : null)
     setPaEditing(false)
+    setSavedQuotes([])
+    if (selectedJob?.id) fetch('/api/quotes?jobId=' + selectedJob.id).then(r=>r.json()).then(d=>setSavedQuotes(d.quotes || [])).catch(()=>{})
     setProposalFreight(selectedJob?.freight_cost > 0 ? String(selectedJob.freight_cost) : '')
     setProposalMfrTax('')
     setJobFiles([])
@@ -153,6 +155,7 @@ export default function Home() {
   const [loginPw,         setLoginPw]         = useState('')
   const [loginErr,        setLoginErr]        = useState('')
   const [loginBusy,       setLoginBusy]       = useState(false)
+  const [savedQuotes,      setSavedQuotes]      = useState([])
   const [collapsed,        setCollapsed]        = useState({})
   const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
   const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
@@ -523,6 +526,7 @@ export default function Home() {
     setQuoteUploading(false)
     if (result.success) {
       setQuoteResult(result)
+      refreshSavedQuotes()
       loadJobs()
       const { data } = await supabase.from('jobs').select('*, unit_types(*), activity_log(*), reminders(*)').eq('id', selectedJob.id).single()
       if (data) setSelectedJob(data)
@@ -674,6 +678,7 @@ export default function Home() {
       const res = await fetch('/api/parse-ct-quote', { method: 'POST', headers: { 'x-job-id': selectedJob.id }, body: fd })
       const d = await res.json()
       setCtQuoteResult(d.error ? { error: d.error } : d)
+      if (!d.error) refreshSavedQuotes()
     } catch (err) { setCtQuoteResult({ error: err.message }) }
     setCtQuoteUploading(false)
     e.target.value = ''
@@ -739,6 +744,10 @@ export default function Home() {
     await supabase.from('activity_log').insert({ job_id: job.id, user_name: job.owner || 'Cole', action: 'Contact logged — GC follow-up' })
     loadJobs()
     if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, last_contacted_at: today })
+  }
+
+  function refreshSavedQuotes() {
+    if (selectedJob?.id) fetch('/api/quotes?jobId=' + selectedJob.id).then(r=>r.json()).then(d=>setSavedQuotes(d.quotes || [])).catch(()=>{})
   }
 
   async function runQuoteCheck() {
@@ -1434,7 +1443,7 @@ export default function Home() {
                     <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
                       <div style={{ color: '#555', fontSize: 13 }}>{quoteUploading ? 'Parsing with AI...' : 'Click to upload PDF quote'}</div>
                       <div style={{ color: '#999', fontSize: 11, marginTop: 4 }}>Leedo · Skyline · SMART · Ukon</div>
-                      <input type="file" accept=".pdf,.xlsx,.xlsm" onChange={handleQuoteUpload} style={{ display: 'none' }} disabled={quoteUploading} />
+                      <input type="file" accept=".pdf,.xlsx,.xls,.xlsm" onChange={handleQuoteUpload} style={{ display: 'none' }} disabled={quoteUploading} />
                     </label>
                     {quoteResult && (
                       <div style={{ marginTop: 12, padding: 12, background: '#EAF3DE', borderRadius: 8, fontSize: 12 }}>
@@ -1449,6 +1458,20 @@ export default function Home() {
                       <button onClick={runQuoteCheck} disabled={quoteChecking} style={{ padding:'6px 14px', fontSize:12, background:'#8B4513', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{quoteChecking ? 'Checking...' : '⚖ Check Quote vs Cabinet List'}</button>
                       <span style={{ fontSize:11, color:'#999', marginLeft:8 }}>Compares the latest uploaded quote against this job's cabinet list</span>
                     </div>
+                    {savedQuotes.length > 0 && (
+                      <div style={{ marginTop: 12, borderTop: '0.5px solid #eee', paddingTop: 10 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Saved Quotes ({savedQuotes.length})</div>
+                        {savedQuotes.map(q => (
+                          <div key={q.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '0.5px dotted #eee', fontSize: 12 }}>
+                            <span style={{ fontWeight: 600, width: 130 }}>{q.manufacturer}{q.quote_type === 'countertops' ? ' (CT)' : ''}</span>
+                            <span style={{ flex: 1, color: '#888', fontSize: 11 }}>{q.file_name || '—'}</span>
+                            <span style={{ fontWeight: 600 }}>{q.grand_total > 0 ? '$' + Number(q.grand_total).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
+                            <span style={{ color: '#aaa', fontSize: 11 }}>{new Date(q.created_at).toLocaleDateString()}</span>
+                            <button onClick={async()=>{ if(!confirm('Delete this saved quote from history?')) return; await fetch('/api/quotes', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: q.id, jobId: selectedJob.id }) }); refreshSavedQuotes() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>🗑</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {quoteCheck && (
                           <div style={{ marginBottom:10, border:'0.5px solid ' + (quoteCheck.error ? '#ddd' : quoteCheck.clean ? '#4caf50' : '#e0a800'), borderRadius:8, padding:'10px 12px', background: quoteCheck.error ? '#fafaf8' : quoteCheck.clean ? '#f0f9f0' : '#fdf8ec' }}>
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>

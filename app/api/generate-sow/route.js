@@ -34,8 +34,9 @@ export async function POST(request) {
 
     try {
       const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png')))
-      const lw = 110, lh = (logo.height / logo.width) * lw
-      page.drawImage(logo, { x: MR - lw, y: y - lh + 14, width: lw, height: lh })
+      // square logo: cap by height, keep fully inside the header band
+      const lh = 54, lw = (logo.width / logo.height) * lh
+      page.drawImage(logo, { x: MR - lw, y: 792 - 26 - lh, width: lw, height: lh })
     } catch {}
     dt('SCOPE OF WORK', ML, y, bold, 18, navy); y -= 16
     dt(job.name || '', ML, y, bold, 11, gray); y -= 12
