@@ -604,7 +604,7 @@ export default function Home() {
     if (!cabList) return
     setCabExporting(true)
     try {
-      const base = { takeoffData: cabList, projectName: cabList.project_name || selectedJob.name, supplierName: cabList.specs?.cabinet_line || selectedJob.manufacturer || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
+      const base = { jobSpecs: { product_line: cabList?.product_line, door_style: selectedJob.door_style, finish_color: selectedJob.finish_color, drawer_box: selectedJob.drawer_box, cabinet_construction: selectedJob.cabinet_construction, box_construction: selectedJob.box_construction, interior_color: selectedJob.interior_color, shelf_thickness: selectedJob.shelf_thickness, hinge_type: selectedJob.hinge_type }, takeoffData: cabList, projectName: cabList.project_name || selectedJob.name, supplierName: cabList.specs?.cabinet_line || selectedJob.manufacturer || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
       const safe = (cabList.project_name || selectedJob.name || 'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_')
       for (const [mode, suffix] of [['internal', 'Full_List'], ['manufacturer', 'Quote']]) {
         const res = await fetch('/api/export/excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, mode }) })
