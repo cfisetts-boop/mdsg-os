@@ -174,6 +174,8 @@ export default function Home() {
     ['CONTRACT', 'Execute contract & return to GC for signature'],
     ['COI', 'Order COI from Erin at Pacific'],
     ['COI', 'Receive COI & forward to GC'],
+    ['SUBMITTALS', 'Samples submitted — cabinets'],
+    ['SUBMITTALS', 'Samples submitted — countertops'],
     ['SHOP DRAWINGS', 'Prepare shop drawings'],
     ['SHOP DRAWINGS', 'Send to GC for approval / red-line'],
     ['SHOP DRAWINGS', 'Red-line changes made & resubmitted (if needed)'],
@@ -193,13 +195,46 @@ export default function Home() {
     ['CLOSEOUT', 'Willy punch complete — additional materials identified'],
     ['CLOSEOUT', 'Change order (if GC responsibility): prepared, executed, material ordered'],
   ]
-  const SOW_TEMPLATE = [
-    ['GC & Contact Info', ''], ['Project Address', ''], ['Bid Due Date', ''],
-    ['Cabinet Specs Confirmed With GC (call/text)', ''], ['Finish Schedule', ''],
-    ['Countertop Specs', ''], ['Unit Matrix & Amenities', ''], ['Kitchen / Bath Layout Count', ''],
-    ['Number of Floors', ''], ['Est. Delivery Dates', ''], ['Floor Sequence', ''],
-    ['CT Plans Sent to Richard/Lorine (date + return date)', ''], ['Sales Tax Notes', ''], ['Notes', ''],
-  ]
+  const sowTemplate = () => {
+    const j = selectedJob || {}
+    return [
+      ['— MDSG CONTACT —', ''],
+      ['MDSG SALES CONTACT', authProfile?.name || j.owner || ''],
+      ['TELEPHONE', ''],
+      ['EMAIL', authProfile?.email || ''],
+      ['— GENERAL CONTRACTOR —', ''],
+      ['GENERAL CONTRACTOR', j.gc_name || ''],
+      ['PROJECT MANAGER', j.gc_contact || ''],
+      ['TELEPHONE', j.gc_phone || ''],
+      ['EMAIL', j.gc_email || ''],
+      ['SITE CONTACT', ''], ['SITE TELEPHONE', ''], ['SITE EMAIL', ''],
+      ['— CABINETS —', ''],
+      ['DOOR STYLE', j.door_style || ''],
+      ['COLOR', j.finish_color || ''],
+      ['BOX CONSTRUCTION', j.cabinet_construction || j.box_construction || ''],
+      ['DRAWER BOX & GLIDE', j.drawer_box || ''],
+      ['HINGES', j.hinge_type || ''],
+      ['MANUFACTURER CONTACT', j.manufacturer || ''],
+      ['ESTIMATED DELIVERY DATE', j.est_delivery || ''],
+      ['NUMBER OF TRUCKLOADS', ''],
+      ['— COUNTERTOPS: KITCHEN —', ''],
+      ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
+      ['— COUNTERTOPS: BATH —', ''],
+      ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
+      ['— COUNTERTOPS: AMENITIES —', ''],
+      ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
+      ['CT SUPPLIER/FABRICATOR CONTACT', ''],
+      ['CT ESTIMATED DELIVERY DATE', ''],
+      ['NUMBER OF CONTAINERS/DELIVERIES', ''],
+      ['— SINKS —', ''],
+      ['UNIT KITCHEN: MANUFACTURER/MODEL', ''], ['UNIT KITCHEN: UNDERMOUNT/DROP-IN', ''],
+      ['UNIT BATHS: MANUFACTURER/MODEL', ''], ['UNIT BATHS: UNDERMOUNT/DROP-IN', ''],
+      ['AMENITIES: MANUFACTURER/MODEL', ''], ['AMENITIES: UNDERMOUNT/DROP-IN', ''],
+      ['— INSTALLATION —', ''],
+      ['INSTALLATION (YES/NO)', ''],
+      ['INSTALLER & CONTACT', 'Greenworks — Willy Ramirez · 619-718-1578'],
+    ]
+  }
   const DOOR_STYLES = {
     framed: ['CHANNING','COVINGTON','PERRYTON','ROSSER','CANYON','HARDIN','RIDGELAND','ALLIANCE 5-PC','ASHTON','AUSTIN','CONCORD SHAKER','PARKER','RIVERSIDE 5-PC','SLATON','FILLMORE','HARTFORD SHAKER','RADISSON','RAINIER','FOSTER','MIDWAY','SAVOY','TAYLOR','VANCOUVER','SHELBY','LUCINA','HUNTINGTON','SHELDON'],
     frameless: ['CHATEAU','COSTA','PRATO','RISANO','ALTO 5-PC','ASTRA','CAVA','PARC','SIENA','CORSO','FORTE','SORANO','TORANO','VITTORIA','LUCERNE'],
@@ -1529,7 +1564,9 @@ export default function Home() {
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                       <div style={{ fontWeight: 500 }}>Scope of Work</div>
                       <div style={{ display:'flex', gap:6 }}>
-                        {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(SOW_TEMPLATE.map(r=>[...r])); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
+                        {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(sowTemplate()); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
+                        {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
+                        {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map(r => { if (r[1]) return r; const m = fresh.find(f => f[0] === r[0] && f[1]); return m ? [r[0], m[1]] : r }); setSowRows(merged); saveSow(merged) }} title="Fill empty fields from job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
                         {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
                         {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}
                       </div>
@@ -1545,6 +1582,8 @@ export default function Home() {
                                 <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
                                 <button onClick={()=>setSowRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>✕</button>
                               </>
+                            ) : r[0].startsWith('— ') ? (
+                              <span style={{ flex:1, fontSize:11, fontWeight:700, color:'#3C3489', letterSpacing:0.5, background:'#f0eff9', padding:'3px 8px', borderRadius:4 }}>{r[0].replace(/—/g,'').trim()}</span>
                             ) : (
                               <>
                                 <span style={{ width:260, fontSize:12, fontWeight:600, color:'#555' }}>{r[0]}</span>
