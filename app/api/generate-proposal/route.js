@@ -127,6 +127,13 @@ export async function POST(request) {
     const taxZeroed    = taxExplicit && (Number(mfrTaxPassThrough) || 0) === 0
     const taxAmount    = (taxZeroed || mfrTax > 0) ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
     const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
+
+    // Persist OS-side financials — dashboard prefers these over Monday columns
+    await supabase.from('jobs').update({
+      os_bid_value: Math.round(totalBid * 100) / 100,
+      os_cost_value: Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100,
+      os_margin_pct: mPct > 0 && mPct < 95 ? mPct : null,
+    }).eq('id', jobId)
     // Margin kept internal only — logged to activity but never shown on PDF
     const hardwareCost = hwCost
     const margin       = mPct > 0 && mPct < 95 ? String(mPct) : (totalBid > 0 ? ((1 - netCost / (totalBid / (1 + salesTaxPct/100))) * 100).toFixed(1) : '0')

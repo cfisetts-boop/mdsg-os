@@ -638,7 +638,7 @@ export default function Home() {
       // Build the Quote export server-side, attach as base64
       const res = await fetch('/api/export/excel', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ takeoffData: cabList, mode: 'manufacturer', projectName: selectedJob.name }),
+        body: JSON.stringify({ jobSpecs: { product_line: cabList?.product_line, door_style: selectedJob.door_style, finish_color: selectedJob.finish_color, drawer_box: selectedJob.drawer_box, cabinet_construction: selectedJob.cabinet_construction, box_construction: selectedJob.box_construction, interior_color: selectedJob.interior_color, shelf_thickness: selectedJob.shelf_thickness, hinge_type: selectedJob.hinge_type }, takeoffData: cabList, mode: 'manufacturer', projectName: selectedJob.name }),
       })
       if (!res.ok) throw new Error('Quote export failed')
       const blob = await res.blob()
@@ -839,9 +839,12 @@ export default function Home() {
   }
 
   // Effective bid value: Monday TOTAL first, else derived from cost + margin
-  const effVal = (j) => (Number(j.bid_value) > 0 ? Number(j.bid_value)
+  // OS-generated proposal figures FIRST, Monday columns as fallback
+  const effVal = (j) => (Number(j.os_bid_value) > 0 ? Number(j.os_bid_value)
+    : Number(j.bid_value) > 0 ? Number(j.bid_value)
     : (Number(j.manufacturer_gross_cost) > 0 && Number(j.gross_margin_pct) > 0 && Number(j.gross_margin_pct) < 95
         ? Number(j.manufacturer_gross_cost) / (1 - Number(j.gross_margin_pct) / 100) : 0))
+  const effCost = (j) => (Number(j.os_cost_value) > 0 ? Number(j.os_cost_value) : Number(j.manufacturer_gross_cost) || 0)
   const BID_STAGES      = ['RFQ', 'Open Proposals', 'On Hold', 'Bid', 'Pricing', 'Proposal Sent']
   const CONTRACT_STAGES = ['Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
   const pipelineValue = jobs.filter(j => BID_STAGES.includes(j.stage)).reduce((s, j) => s + effVal(j), 0)
@@ -849,9 +852,9 @@ export default function Home() {
   const contractValue = jobs.filter(j => CONTRACT_STAGES.includes(j.stage)).reduce((s, j) => s + effVal(j), 0)
   const contractCount = jobs.filter(j => CONTRACT_STAGES.includes(j.stage)).length
   // Blended margin: $-weighted across jobs where both value and cost are known
-  const marginJobs = jobs.filter(j => !['Lost'].includes(j.stage) && effVal(j) > 0 && Number(j.manufacturer_gross_cost) > 0)
+  const marginJobs = jobs.filter(j => !['Lost'].includes(j.stage) && effVal(j) > 0 && effCost(j) > 0)
   const mSell = marginJobs.reduce((s, j) => s + effVal(j), 0)
-  const mCost = marginJobs.reduce((s, j) => s + Number(j.manufacturer_gross_cost), 0)
+  const mCost = marginJobs.reduce((s, j) => s + effCost(j), 0)
   const avgMargin = mSell > 0 ? Math.max(0, Math.min(1, (mSell - mCost) / mSell)) : 0
   const overdueReminders = reminders.filter(r => r.due_date <= new Date().toISOString().split('T')[0])
   // Bid follow-ups: bid-stage job, due date ≥7 days past, no contact since due date

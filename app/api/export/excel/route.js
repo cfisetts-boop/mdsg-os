@@ -827,31 +827,51 @@ function buildUkonQuoteTab(wb, unitTypes, projectName, printDate) {
 function buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, specs = {}) {
   const ws = wb.addWorksheet('Master Pricing Sheet')
   ws.columns = [
-    { width: 20 },  // SKU
-    { width: 24 },  // Cabinet Type / Drawer Box
-    { width: 13 },  // Door Style
-    { width: 13 },  // Finish
-    { width: 20 },  // Interior / Door Back
-    { width: 13 },  // Hinge Type
-    { width: 9 },   // Hinge Side
-    { width: 8 },   // Shelf
-    { width: 11 },  // TOTAL QTY
+    { width: 22 },  // SKU
+    { width: 12 },  // TOTAL QTY
     { width: 12 },  // PRICE EA
     { width: 14 },  // PRICE EXT
+    { width: 10 },  // HRDWR (pieces per cabinet)
+    { width: 12 },  // TOTAL (hardware total)
   ]
 
   let r = 1
-  ws.mergeCells(r, 1, r, 11)
+  ws.mergeCells(r, 1, r, 6)
   ws.getCell(r, 1).value = `${projectName.toUpperCase()} — MASTER PRICING SHEET`
   ws.getCell(r, 1).font = boldFont(13, COLORS.title)
   ws.getRow(r).height = 20
   r++
-  ws.mergeCells(r, 1, r, 11)
-  ws.getCell(r, 1).value = `Supplier: ${supplierName}  |  Print Date: ${printDate}  |  Enter PRICE EA per piece — PRICE EXT calculates automatically`
+  ws.mergeCells(r, 1, r, 6)
+  ws.getCell(r, 1).value = `Supplier: ${supplierName}  |  Print Date: ${printDate}  |  Enter PRICE EA — PRICE EXT calculates automatically`
   ws.getCell(r, 1).font = normalFont(9)
   r += 2
 
-  const hdrs = ['SKU', 'Cabinet Type / Drawer Box', 'Door Style', 'Finish', 'Interior / Door Back', 'Hinge Type', 'Hinge Side', 'Shelf', 'TOTAL QTY', 'PRICE EA', 'PRICE EXT']
+  // ── Cabinet specs block (from Proposal Details) ────────────────────────────
+  const specRows = [
+    ['PRODUCT LINE:',   (specs.product_line || '').toUpperCase()],
+    ['DOOR STYLE:',     specs.door_style || ''],
+    ['FINISH / COLOR:', specs.finish_color || ''],
+    ['BOX CONSTRUCTION:', specs.cabinet_construction || specs.box_construction || ''],
+    ['DRAWER BOX/GLIDE:', specs.drawer_box || ''],
+    ['INTERIOR:',       specs.interior_color || ''],
+    ['SHELF:',          specs.shelf_thickness || ''],
+    ['HINGE:',          specs.hinge_type || ''],
+  ].filter(([, v]) => v)
+  if (specRows.length) {
+    fillLabel(ws, r, 1, 6, 'CABINET SPECS', COLORS.headerBar, 'FFFFFF')
+    r++
+    specRows.forEach(([lbl, val]) => {
+      ws.getCell(r, 1).value = lbl
+      ws.getCell(r, 1).font = boldFont(9)
+      ws.mergeCells(r, 2, r, 6)
+      ws.getCell(r, 2).value = val
+      ws.getCell(r, 2).font = normalFont(9)
+      r++
+    })
+    r++
+  }
+
+  const hdrs = ['SKU', 'TOTAL QTY', 'PRICE EA', 'PRICE EXT', 'HRDWR', 'TOTAL']
   const hrow = ws.getRow(r)
   hdrs.forEach((t, i) => {
     const cell = hrow.getCell(i + 1)
@@ -859,13 +879,14 @@ function buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, 
     cell.font = boldFont(9, 'FFFFFF')
     cell.fill = fill(COLORS.headerBar)
     cell.border = thinBorder()
-    cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    cell.alignment = { horizontal: 'center', vertical: 'middle' }
   })
-  hrow.height = 24
+  hrow.height = 20
   hrow.commit()
   r++
+  const firstDataRow = r
 
-  // Aggregate unique SKUs across the whole project (reclassified fillers excluded)
+  // Aggregate unique SKUs project-wide
   const skuMap = {}
   unitTypes.forEach(ut => {
     ;[...(ut.skus || []), ...(ut.fillers || [])].forEach(item => {
@@ -875,9 +896,6 @@ function buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, 
       skuMap[key].totalQty += (Number(item.quantity_per_unit) || 1) * (ut.unit_quantity || 1)
     })
   })
-
-  const doorStyle = specs.door_style || specs.cabinet_line || ''
-  const finish    = specs.finish_color || specs.finish || ''
 
   const rows = Object.values(skuMap).sort((a, b) => {
     const sa = sectionSortIndex(getSection(a.sku)), sb = sectionSortIndex(getSection(b.sku))
@@ -889,52 +907,41 @@ function buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, 
     const section = getSection(item.sku)
     if (section !== currentSection) {
       currentSection = section
-      fillLabel(ws, r, 1, 11, `──  ${section.toUpperCase()}  ──`, COLORS.sectionBand || 'E8E8E4')
+      fillLabel(ws, r, 1, 6, `──  ${section.toUpperCase()}  ──`, COLORS.sectionBand || 'E8E8E4')
       r++
     }
+    const hwPer = Number(item.hardware_count ?? calculateHardware(item.sku).hardware ?? 0)
     const row = ws.getRow(r)
-    const vals = [
-      item.sku,
-      'Standard/PB Standard',
-      doorStyle,
-      finish,
-      '',
-      'Euro 6 Way',
-      normalizeHinge(item.hinge_side) || 'L/R',
-      '3/4',
-      item.totalQty,
-      null,  // PRICE EA — manufacturer fills
-      { formula: `I${r}*J${r}` },  // PRICE EXT = QTY × EA
-    ]
-    vals.forEach((v, i) => {
-      const cell = row.getCell(i + 1)
-      if (v !== null) cell.value = v
-      cell.border = thinBorder()
-      cell.alignment = { horizontal: i === 0 || i === 1 ? 'left' : 'center', vertical: 'middle' }
-    })
-    row.getCell(10).fill = fill('FFF9E3')
-    row.getCell(10).numFmt = '$#,##0.00'
-    row.getCell(11).numFmt = '$#,##0.00'
+    row.getCell(1).value = item.sku
+    row.getCell(2).value = item.totalQty
+    row.getCell(4).value = { formula: `B${r}*C${r}` }
+    row.getCell(5).value = hwPer
+    row.getCell(6).value = { formula: `B${r}*E${r}` }
+    for (let ci = 1; ci <= 6; ci++) {
+      row.getCell(ci).border = thinBorder()
+      row.getCell(ci).alignment = { horizontal: ci === 1 ? 'left' : 'center', vertical: 'middle' }
+    }
+    row.getCell(3).fill = fill('FFF9E3')
+    row.getCell(3).numFmt = '$#,##0.00'
+    row.getCell(4).numFmt = '$#,##0.00'
     row.commit()
     r++
   })
 
-  // Grand total row: sums the EXT column
-  r++
-  fillLabel(ws, r, 1, 8, `TOTAL  —  ${rows.length} unique SKUs  |  ${rows.reduce((s, x) => s + x.totalQty, 0).toLocaleString()} total pieces`, COLORS.grandTotal)
-  ws.getCell(r, 9).value = rows.reduce((s, x) => s + x.totalQty, 0)
-  ws.getCell(r, 9).font = boldFont(10)
-  ws.getCell(r, 9).fill = fill(COLORS.grandTotal)
-  ws.getCell(r, 11).value = { formula: `SUM(K5:K${r - 2})` }
-  ws.getCell(r, 11).font = boldFont(11)
-  ws.getCell(r, 11).fill = fill(COLORS.grandTotal)
-  ws.getCell(r, 11).numFmt = '$#,##0.00'
+  // Totals row (no blank spacer — Pam's layout is tight)
+  fillLabel(ws, r, 1, 1, 'TOTALS', COLORS.grandTotal)
+  ws.getCell(r, 2).value = { formula: `SUM(B${firstDataRow}:B${r - 1})` }
+  ws.getCell(r, 4).value = { formula: `SUM(D${firstDataRow}:D${r - 1})` }
+  ws.getCell(r, 6).value = { formula: `SUM(F${firstDataRow}:F${r - 1})` }
+  ;[2, 4, 6].forEach(ci => { ws.getCell(r, ci).font = boldFont(10); ws.getCell(r, ci).fill = fill(COLORS.grandTotal) })
+  ws.getCell(r, 4).numFmt = '$#,##0.00'
   ws.getRow(r).commit()
 }
 
 export async function POST(request) {
   try {
     const body = await request.json()
+    const jobSpecs = body.jobSpecs || null
     const {
       takeoffData,
       projectName = takeoffData?.project_name || 'MDSG Project',
@@ -968,7 +975,7 @@ export async function POST(request) {
     })
 
     if (mode === 'manufacturer') {
-      buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, takeoffData.specs || {})
+      buildPricingSheet(wb, unitTypes, projectName, supplierName, printDate, { ...(takeoffData.specs || {}), ...(jobSpecs || {}) })
     } else {
           buildMasterSummary(wb, unitTypes, projectName, supplierName, catalogRef, printDate, totalUnits, takeoffData.sheet_totals || null)
       unitTypes.forEach(ut => buildUnitTab(wb, ut, projectName, supplierName, catalogRef))
