@@ -153,6 +153,8 @@ export default function Home() {
   const [loginPw,         setLoginPw]         = useState('')
   const [loginErr,        setLoginErr]        = useState('')
   const [loginBusy,       setLoginBusy]       = useState(false)
+  const [ctQuoteUploading, setCtQuoteUploading] = useState(false)
+  const [ctQuoteResult,    setCtQuoteResult]    = useState(null)
   const [paRows,          setPaRows]          = useState(null)
   const [paEditing,       setPaEditing]       = useState(false)
   const [paSaving,        setPaSaving]        = useState(false)
@@ -659,6 +661,21 @@ export default function Home() {
     setSelectedJob({ ...selectedJob, scope_of_work: rows })
     setSowRows(rows); setSowSaving(false); setSowEditing(false)
     await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: 'Cole', action: 'Scope of Work updated' })
+  }
+
+  async function handleCtQuoteUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCtQuoteUploading(true); setCtQuoteResult(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/parse-ct-quote', { method: 'POST', headers: { 'x-job-id': selectedJob.id }, body: fd })
+      const d = await res.json()
+      setCtQuoteResult(d.error ? { error: d.error } : d)
+    } catch (err) { setCtQuoteResult({ error: err.message }) }
+    setCtQuoteUploading(false)
+    e.target.value = ''
   }
 
   function openEmailPanel() {
@@ -1989,6 +2006,23 @@ export default function Home() {
                   {/* ── Countertop Proposal Configuration ─────────────────────── */}
                   <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
                     <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}>Generate Countertop Proposal</div>
+                    <div style={{ margin:'0 0 14px', padding:'10px 12px', background:'#fbf9f4', border:'0.5px solid #e5ddc8', borderRadius:8 }}>
+                      <label style={{ padding:'5px 12px', fontSize:11, background:'#8B6914', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
+                        {ctQuoteUploading ? 'Parsing…' : '⬆ Upload CT Quote (West USA Excel)'}
+                        <input type="file" accept=".xlsx,.xls" onChange={handleCtQuoteUpload} style={{ display:'none' }} disabled={ctQuoteUploading}/>
+                      </label>
+                      {ctQuoteResult?.summary && (
+                        <div style={{ marginTop:10, fontSize:12 }}>
+                          <div style={{ fontWeight:600, color:'#3B6D11' }}>✓ Parsed — {ctQuoteResult.summary.unitTypeCount} unit types · {ctQuoteResult.summary.totalSets.toLocaleString()} sets · {ctQuoteResult.summary.totalSqft.toLocaleString()} sqft</div>
+                          {ctQuoteResult.summary.materials.map(m2 => (
+                            <div key={m2.code} style={{ fontSize:11, color:'#555', paddingTop:2 }}>{m2.code}: {m2.items} items · ${m2.total.toLocaleString()}{m2.sqft ? ` · ${m2.sqft.toLocaleString()} sqft` : ''}</div>
+                          ))}
+                          <div style={{ fontWeight:600, marginTop:4 }}>Grand total: ${ctQuoteResult.summary.grandTotal.toLocaleString()}</div>
+                          {ctQuoteResult.recorded ? <div style={{ color:'#2D7A3A', marginTop:2 }}>✓ Saved to quote history</div> : <div style={{ color:'#A32D2D', marginTop:2 }}>⚠ Quote history NOT saved</div>}
+                        </div>
+                      )}
+                      {ctQuoteResult?.error && <div style={{ marginTop:8, fontSize:12, color:'#A32D2D' }}>✗ {ctQuoteResult.error}</div>}
+                    </div>
                     <div style={{ marginBottom: 12 }}>
                       <label style={lbl}>Sender</label>
                       <select value={ctSender} onChange={e=>setCtSender(e.target.value)} style={{ ...inp, width: 180, marginBottom: 12 }}>

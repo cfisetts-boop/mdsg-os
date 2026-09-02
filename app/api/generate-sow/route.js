@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -30,6 +32,11 @@ export async function POST(request) {
     const dt = (t, x, yy, f = font, size = 9, color = rgb(0.1,0.1,0.1)) =>
       page.drawText(String(t), { x, y: yy, size, font: f, color })
 
+    try {
+      const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png')))
+      const lw = 110, lh = (logo.height / logo.width) * lw
+      page.drawImage(logo, { x: MR - lw, y: y - lh + 14, width: lw, height: lh })
+    } catch {}
     dt('SCOPE OF WORK', ML, y, bold, 18, navy); y -= 16
     dt(job.name || '', ML, y, bold, 11, gray); y -= 12
     dt(`${job.gc_name || ''}${job.address ? '  ·  ' + job.address : ''}`, ML, y, font, 9, gray); y -= 8
