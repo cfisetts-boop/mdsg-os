@@ -678,7 +678,7 @@ export default function Home() {
       const res = await fetch('/api/parse-ct-quote', { method: 'POST', headers: { 'x-job-id': selectedJob.id }, body: fd })
       const d = await res.json()
       setCtQuoteResult(d.error ? { error: d.error } : d)
-      if (!d.error) refreshSavedQuotes()
+      if (!d.error) { refreshSavedQuotes(); if (d.total_amount > 0) setCtGross(String(d.total_amount)) }
     } catch (err) { setCtQuoteResult({ error: err.message }) }
     setCtQuoteUploading(false)
     e.target.value = ''
@@ -2037,11 +2037,15 @@ export default function Home() {
                       </label>
                       {ctQuoteResult?.summary && (
                         <div style={{ marginTop:10, fontSize:12 }}>
-                          <div style={{ fontWeight:600, color:'#3B6D11' }}>✓ Parsed — {ctQuoteResult.summary.unitTypeCount} unit types · {ctQuoteResult.summary.totalSets.toLocaleString()} sets · {ctQuoteResult.summary.totalSqft.toLocaleString()} sqft</div>
+                          <div style={{ fontWeight:600, color:'#3B6D11' }}>✓ Parsed — {ctQuoteResult.summary.unitTypeCount} unit types · {ctQuoteResult.summary.totalSets.toLocaleString()} sets · {ctQuoteResult.summary.totalSqft.toLocaleString()} sqft{ctQuoteResult.summary.isOptions ? ` · ${ctQuoteResult.summary.materials.length} material OPTIONS` : ''}</div>
                           {ctQuoteResult.summary.materials.map(m2 => (
-                            <div key={m2.code} style={{ fontSize:11, color:'#555', paddingTop:2 }}>{m2.code}: {m2.items} items · ${m2.total.toLocaleString()}{m2.sqft ? ` · ${m2.sqft.toLocaleString()} sqft` : ''}</div>
+                            <div key={m2.code} style={{ display:'flex', alignItems:'center', gap:8, fontSize:11, color:'#555', paddingTop:3 }}>
+                              <span style={{ flex:1 }}>{m2.code}: {m2.items} items · ${m2.total.toLocaleString()}{m2.sqft ? ` · ${m2.sqft.toLocaleString()} sqft` : ''}</span>
+                              <button onClick={()=>setCtGross(String(m2.total))} style={{ padding:'2px 10px', fontSize:10, background: String(ctGross)===String(m2.total) ? '#2D7A3A' : '#fff', color: String(ctGross)===String(m2.total) ? '#fff' : '#2D7A3A', border:'0.5px solid #2D7A3A', borderRadius:5, cursor:'pointer' }}>{String(ctGross)===String(m2.total) ? '✓ Using' : 'Use for pricing'}</button>
+                            </div>
                           ))}
-                          <div style={{ fontWeight:600, marginTop:4 }}>Grand total: ${ctQuoteResult.summary.grandTotal.toLocaleString()}</div>
+                          {!ctQuoteResult.summary.isOptions && <div style={{ fontWeight:600, marginTop:4 }}>Grand total: ${ctQuoteResult.summary.grandTotal.toLocaleString()}</div>}
+                          {ctQuoteResult.summary.isOptions && <div style={{ fontSize:11, color:'#8B6914', marginTop:4 }}>Options are alternatives — pick one above for pricing (not summed)</div>}
                           {ctQuoteResult.recorded ? <div style={{ color:'#2D7A3A', marginTop:2 }}>✓ Saved to quote history</div> : <div style={{ color:'#A32D2D', marginTop:2 }}>⚠ Quote history NOT saved</div>}
                         </div>
                       )}

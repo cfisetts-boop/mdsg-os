@@ -64,17 +64,23 @@ export async function POST(request) {
 
     if (!materials.length) return Response.json({ error: 'No countertop pricing found — is this a West USA quote workbook?' }, { status: 422 })
 
-    const grandTotal = Math.round(materials.reduce((s, m) => s + m.total, 0) * 100) / 100
-    const totalSqft  = materials.reduce((s, m) => s + m.sqft, 0)
-    const totalSets  = materials.reduce((s, m) => s + m.items.reduce((x, i) => x + i.sets, 0), 0)
-    const unitTypes  = materials.flatMap(m => m.items.filter(i => i.unit_type).map(i => i.unit_type))
+    // Multiple sheets with near-identical sqft = ALTERNATIVE material options,
+    // not additive scopes. Never sum options.
+    const sqfts = materials.map(m => m.sqft).filter(Boolean)
+    const isOptions = materials.length > 1 && sqfts.length === materials.length &&
+      (Math.max(...sqfts) - Math.min(...sqfts)) / Math.max(...sqfts) < 0.02
+    const primary    = materials[0]
+    const grandTotal = isOptions ? primary.total : Math.round(materials.reduce((s, m) => s + m.total, 0) * 100) / 100
+    const totalSqft  = isOptions ? primary.sqft : materials.reduce((s, m) => s + m.sqft, 0)
+    const totalSets  = primary.items.reduce((x, i) => x + i.sets, 0)
+    const unitTypes  = primary.items.filter(i => i.unit_type).map(i => i.unit_type)
 
     let recorded = false
     if (jobId) {
       const { error } = await supabase.from('manufacturer_quotes').insert({
         job_id: jobId, manufacturer: 'West USA International', quote_type: 'countertops',
-        gross_amount: grandTotal, grand_total: grandTotal,
-        total_units: totalSets, raw_extracted_json: { materials, grandTotal, totalSqft },
+        gross_amount: grandTotal, grand_total: grandTotal,  // primary option when multiple
+        total_units: totalSets, raw_extracted_json: { materials, isOptions, grandTotal, totalSqft },
         file_name: file.name || 'CT Quote', parsed_at: new Date().toISOString(),
       })
       recorded = !error
@@ -84,7 +90,12 @@ export async function POST(request) {
 
     return Response.json({
       success: true, recorded,
+      // Compat fields for the fabricator-quote display block
+      fabricator: 'West USA International',
+      total_amount: grandTotal,
+      material_type: isOptions ? `${materials.length} material options` : primary.material_code,
       summary: {
+        isOptions,
         materials: materials.map(m => ({ code: m.material_code, items: m.items.length, total: m.total, sqft: m.sqft })),
         grandTotal, totalSqft, totalSets, unitTypeCount: new Set(unitTypes).size,
       },
