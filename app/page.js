@@ -152,6 +152,7 @@ export default function Home() {
   const [totalOnly,       setTotalOnly]       = useState(false)
   const [brandAs,         setBrandAs]         = useState('mdsg')
   const [kanbanSort,      setKanbanSort]      = useState('date')
+  const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
   const [sowEditing,      setSowEditing]      = useState(false)
   const [sowSaving,       setSowSaving]       = useState(false)
@@ -854,7 +855,7 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
@@ -1083,7 +1084,11 @@ export default function Home() {
               )}
               <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
                 <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-                  <span style={{ fontSize:11, color:'#888' }}>Sort columns:</span>
+                  <span style={{ fontSize:11, color:'#888' }}>Owner:</span>
+                  {['all', ...new Set(jobs.map(j=>j.owner).filter(Boolean))].map(o => (
+                    <button key={o} onClick={()=>setKanbanOwner(o)} style={{ padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:kanbanOwner===o?'#3C3489':'#f5f5f3', color:kanbanOwner===o?'#fff':'#555', border:'0.5px solid #ddd' }}>{o==='all'?'All':o}</button>
+                  ))}
+                  <span style={{ fontSize:11, color:'#888', marginLeft:12 }}>Sort columns:</span>
                   {[['date','By Date'],['az','A–Z']].map(([k,l]) => (
                     <button key={k} onClick={()=>setKanbanSort(k)} style={{ padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:kanbanSort===k?'#3C3489':'#f5f5f3', color:kanbanSort===k?'#fff':'#555', border:'0.5px solid #ddd' }}>{l}</button>
                   ))}
@@ -1156,17 +1161,17 @@ export default function Home() {
                       {stage} <span style={{ background: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>{jobs.filter(j => j.stage === stage).length}</span>
                       {(() => { const v = jobs.filter(j => j.stage === stage).reduce((s, j) => s + effVal(j), 0); return v > 0 ? <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 6, opacity: 0.75 }}>{fmt(v)}</span> : null })()}
                     </div>
-                    {jobs.filter(j => j.stage === stage).sort((a, b) => {
+                    {jobs.filter(j => j.stage === stage && (kanbanOwner==='all' || j.owner===kanbanOwner)).sort((a, b) => {
                       if (kanbanSort === 'az') return (a.name || '').localeCompare(b.name || '')
                       const key = (j) => { const ds = [j.next_followup_date, j.bid_due_date].filter(Boolean); return ds.length ? ds.sort()[0] : '9999-12-31' }
                       const ka = key(a), kb = key(b)
                       return ka !== kb ? ka.localeCompare(kb) : (a.name || '').localeCompare(b.name || '')
                     }).map(job => (
                       <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }}
-                        style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 6, padding: 10, marginBottom: 6, cursor: 'pointer' }}>
-                        <div style={{ fontWeight: 500, fontSize: 12 }}>{(job.priority==='hot') ? '🔥 ' : ''}{job.name}{job.priority==='high' && <span style={{ marginLeft:5, fontSize:9, background:'#e0a800', color:'#fff', padding:'1px 5px', borderRadius:6, fontWeight:700 }}>HIGH</span>}</div>
+                        style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 7, padding: 13, marginBottom: 8, cursor: 'pointer' }}>
+                        <div style={{ fontWeight: 500, fontSize: 13.5 }}>{(job.priority==='hot') ? '🔥 ' : ''}{job.name}{job.priority==='high' && <span style={{ marginLeft:5, fontSize:9, background:'#e0a800', color:'#fff', padding:'1px 5px', borderRadius:6, fontWeight:700 }}>HIGH</span>}</div>
                         {(job.bid_due_date || job.next_followup_date) && (
-                          <div style={{ fontSize: 10, marginTop: 2, display:'flex', gap:8 }}>
+                          <div style={{ fontSize: 11, marginTop: 3, display:'flex', gap:8 }}>
                             {job.bid_due_date && <span style={{ color: job.bid_due_date < new Date().toISOString().split('T')[0] ? '#A32D2D' : '#888' }}>📅 {job.bid_due_date}</span>}
                             {job.next_followup_date && <span style={{ color:'#8B6914' }}>⏰ {job.next_followup_date}</span>}
                           </div>
@@ -2175,6 +2180,17 @@ export default function Home() {
                       </div>
                       <div style={{ display:'flex', gap:6, marginBottom:10 }}>
                         {[15,20,25,30,35].map(m=><button key={m} onClick={()=>setCtMargin(m)} style={{ padding:'3px 9px', fontSize:11, borderRadius:6, cursor:'pointer', background:Number(ctMargin)===m?'#2D7A3A':'#f5f5f3', color:Number(ctMargin)===m?'#fff':'#555', border:'0.5px solid #ddd' }}>{m}%</button>)}
+                      </div>
+                      <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginBottom:10 }}>
+                        <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>
+                          <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:14, height:14 }}/> Hide unit breakdown
+                        </label>
+                        <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>
+                          <input type="checkbox" checked={totalOnly} onChange={e=>setTotalOnly(e.target.checked)} style={{ width:14, height:14 }}/> Grand total only
+                        </label>
+                        <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>
+                          <input type="checkbox" checked={brandAs==='greenworks'} onChange={e=>setBrandAs(e.target.checked?'greenworks':'mdsg')} style={{ width:14, height:14 }}/> Greenworks umbrella
+                        </label>
                       </div>
                       <label style={lbl}>Notes (appears on proposal)</label>
                       <textarea value={ctNotes} onChange={e=>setCtNotes(e.target.value)} style={{ width:'100%', padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11, height:52, resize:'vertical', fontFamily:'inherit', marginBottom:4 }}/>
