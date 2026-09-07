@@ -105,7 +105,11 @@ export default function Home() {
     setPaRows(Array.isArray(selectedJob?.post_award) ? selectedJob.post_award : null)
     setPaEditing(false)
     setSavedQuotes([])
-    if (selectedJob?.id) fetch('/api/quotes?jobId=' + selectedJob.id).then(r=>r.json()).then(d=>setSavedQuotes(d.quotes || [])).catch(()=>{})
+    if (selectedJob?.id) fetch('/api/quotes?jobId=' + selectedJob.id).then(r=>r.json()).then(d=>{
+      setSavedQuotes(d.quotes || [])
+      const wq = (d.quotes || []).find(q => q.id === selectedJob.working_quote_id)
+      if (wq) applyQuoteToProposal(wq)
+    }).catch(()=>{})
     setProposalFreight(selectedJob?.freight_cost > 0 ? String(selectedJob.freight_cost) : '')
     setProposalMfrTax('')
     setJobFiles([])
@@ -146,6 +150,7 @@ export default function Home() {
   const [productLine,     setProductLine]     = useState('framed')
   const [hideUnitPricing, setHideUnitPricing] = useState(false)
   const [totalOnly,       setTotalOnly]       = useState(false)
+  const [brandAs,         setBrandAs]         = useState('mdsg')
   const [sowRows,         setSowRows]         = useState(null)
   const [sowEditing,      setSowEditing]      = useState(false)
   const [sowSaving,       setSowSaving]       = useState(false)
@@ -868,7 +873,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, hideUnitPricing, totalOnly, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -937,6 +942,8 @@ export default function Home() {
   const daysPast = (d) => Math.floor((new Date(todayISO) - new Date(d)) / 86400000)
   // Milestones: 7-day, 1-month, 2-month past bid due; reappears at each unless contacted after that milestone
   const FOLLOWUP_MILESTONES = [[7, '7-day'], [30, '1-month'], [60, '2-month']]
+  const customFollowUps = jobs.filter(j => j.next_followup_date && j.next_followup_date <= todayISO && !['Lost','Closeout'].includes(j.stage))
+    .map(j => ({ ...j, __days: daysPast(j.next_followup_date), __milestone: 'scheduled' }))
   const followUps = jobs.map(j => {
     if (!['Open Proposals', 'Proposal Sent', 'On Hold'].includes(j.stage) || !j.bid_due_date) return null
     const days = daysPast(j.bid_due_date)
@@ -947,7 +954,10 @@ export default function Home() {
       if (!j.last_contacted_at || j.last_contacted_at < msDate) active = { ms, label, msDate }
     }
     return active ? { ...j, __days: days, __milestone: active.label } : null
-  }).filter(Boolean).sort((a, b) => b.__days - a.__days)
+  }).filter(Boolean)
+    .concat(customFollowUps)
+    .filter((j, i, arr) => arr.findIndex(x => x.id === j.id) === i)
+    .sort((a, b) => b.__days - a.__days)
   const marginPricePreview = Number(proposalGross) > 0 && Number(proposalMargin) > 0 && Number(proposalMargin) < 95 ? '$' + Math.round(Number(proposalGross) / (1 - Number(proposalMargin) / 100)).toLocaleString() : null
   const inTransitCount = allActiveShipments.filter(s => s.status === 'In Transit').length
   const delayedCount = allActiveShipments.filter(s => s.status === 'Delayed').length
@@ -1480,6 +1490,9 @@ export default function Home() {
                             <span style={{ flex: 1, color: '#888', fontSize: 11 }}>{q.file_name || '—'}</span>
                             <span style={{ fontWeight: 600 }}>{q.grand_total > 0 ? '$' + Number(q.grand_total).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                             <span style={{ color: '#aaa', fontSize: 11 }}>{new Date(q.created_at).toLocaleDateString()}</span>
+                            {q.quote_type !== 'countertops' && (
+                              <button title="Set as working quote" onClick={async()=>{ await supabase.from('jobs').update({ working_quote_id: q.id }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, working_quote_id: q.id }); applyQuoteToProposal(q) }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, color: selectedJob.working_quote_id===q.id ? '#e0a800' : '#ccc' }}>★</button>
+                            )}
                             {q.quote_type !== 'countertops'
                               ? <button onClick={()=>applyQuoteToProposal(q)} style={{ padding:'3px 10px', fontSize:10, background: propQuoteId===q.id ? '#2D7A3A' : '#fff', color: propQuoteId===q.id ? '#fff' : '#2D7A3A', border:'0.5px solid #2D7A3A', borderRadius:5, cursor:'pointer', fontWeight:500 }}>{propQuoteId===q.id ? '✓ In Proposal' : '→ Proposal'}</button>
                               : <button onClick={()=>setCtGross(String(q.gross_amount || q.grand_total || ''))} style={{ padding:'3px 10px', fontSize:10, background:'#fff', color:'#8B6914', border:'0.5px solid #8B6914', borderRadius:5, cursor:'pointer', fontWeight:500 }}>→ CT Pricing</button>}
@@ -1510,7 +1523,14 @@ export default function Home() {
                   </div>
 
                   <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 14 }}>Generate Proposal PDF</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: 14 }}>
+                      <div style={{ fontWeight: 500 }}>Generate Proposal PDF</div>
+                      {selectedJob.proposal_status === 'sent' && <span style={{ fontSize:10, fontWeight:700, background:'#2D7A3A', color:'#fff', padding:'2px 8px', borderRadius:10 }}>SENT {selectedJob.proposal_sent_at || ''}</span>}
+                      {selectedJob.proposal_status === 'final' && <span style={{ fontSize:10, fontWeight:700, background:'#e0a800', color:'#fff', padding:'2px 8px', borderRadius:10 }}>FINAL</span>}
+                      <button onClick={async()=>{ const st = selectedJob.proposal_status === 'sent' ? 'draft' : (selectedJob.proposal_status === 'final' ? 'sent' : 'final'); const upd2 = { proposal_status: st, proposal_sent_at: st==='sent' ? new Date().toISOString().split('T')[0] : selectedJob.proposal_sent_at }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal marked ' + st.toUpperCase() }) }} style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
+                        {selectedJob.proposal_status === 'sent' ? '↺ Back to Draft' : selectedJob.proposal_status === 'final' ? '✉ Mark SENT' : '★ Mark FINAL'}
+                      </button>
+                    </div>
                     <div style={{ marginBottom: 14 }}>
                       {savedQuotes.filter(q => q.quote_type !== 'countertops').length > 0 && (
                         <div style={{ marginBottom: 10 }}>
@@ -1547,6 +1567,10 @@ export default function Home() {
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={totalOnly} onChange={e=>setTotalOnly(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Grand total only — hide Base/Freight/Tax/Hardware lines, show one TOTAL
+                      </label>
+                      <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
+                        <input type="checkbox" checked={brandAs==='greenworks'} onChange={e=>setBrandAs(e.target.checked?'greenworks':'mdsg')} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        Bid under Greenworks umbrella (turnkey from Willy — no MDSG branding)
                       </label>
                       <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:12 }}>
                         <div>
@@ -1625,6 +1649,37 @@ export default function Home() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
                       <span style={{ color: '#888' }}>Gross Margin</span>
                       <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
+                    </div>
+                  </div>
+
+                  <div style={card}>
+                    <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                      <div style={{ fontWeight:500 }}>Tracking</div>
+                      <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'#888' }}>Priority:</span>
+                        {['low','normal','high','hot'].map(pr => (
+                          <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
+                        ))}
+                      </div>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'#888' }}>Next follow-up:</span>
+                        <input type="date" value={selectedJob.next_followup_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ next_followup_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, next_followup_date: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      </div>
+                    </div>
+                    <div style={{ marginTop:10 }}>
+                      <div style={{ fontSize:11, color:'#888', fontWeight:600, marginBottom:4 }}>KEY DATES</div>
+                      {(selectedJob.key_dates || []).map((kd, i) => (
+                        <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                          <span style={{ width:220, fontWeight:600, color:'#555' }}>{kd[0]}</span>
+                          <span>{kd[1] || '—'}</span>
+                          <button onClick={async()=>{ const kds = (selectedJob.key_dates||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                        <input id="kd-label" placeholder="Label (e.g. Samples due, Walk-through)" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <input id="kd-date" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <button onClick={async()=>{ const l = document.getElementById('kd-label'); const d = document.getElementById('kd-date'); if(!l.value.trim()) return; const kds = [...(selectedJob.key_dates||[]), [l.value.trim(), d.value || '']]; await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }); l.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
+                      </div>
                     </div>
                   </div>
 

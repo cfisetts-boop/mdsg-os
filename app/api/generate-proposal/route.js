@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg' } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -83,7 +83,9 @@ export async function POST(request) {
     const displayUnits = sortedUnits.slice(0, 13)
     const unitPriceSum = mergedUnits.reduce((s, u) => s + (u.manufacturer_price || 0), 0)
 
-    const senderInfo   = SENDERS[sender] || SENDERS.Cole
+    const senderInfo   = brandAs === 'greenworks'
+      ? { name: 'Anthony (Willy) Ramirez', title: 'Greenworks Renovations LLC', phone: '619-718-1578', email: 'greenworksrenovationsllc@gmail.com' }
+      : (SENDERS[sender] || SENDERS.Cole)
     // Auto-pull Leedo quote figures from the job's imported cab list when the
     // UI didn't supply them — makes the proposal correct even with empty inputs.
     const leedo        = job.cab_list?.leedo || {}
@@ -143,7 +145,7 @@ export async function POST(request) {
     validUntil.setDate(validUntil.getDate() + 90)
     const fmtDate  = (d) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const fmtMoney = (n) => '$' + Math.round(n || 0).toLocaleString()
-    const proposalNum = `MDSG-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}-${(job.name || 'JOB').substring(0, 3).toUpperCase()}`
+    const proposalNum = `${brandAs === 'greenworks' ? 'GW' : 'MDSG'}-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}-${(job.name || 'JOB').substring(0, 3).toUpperCase()}`
 
     const boxConst = job.box_construction || ''
     const isPlywood = /plywood/i.test(boxConst) || true
@@ -158,9 +160,10 @@ export async function POST(request) {
     const regular = await pdfDoc.embedFont(StandardFonts.Helvetica)
 
     // Logo (white-background PNG — placed in white area above colored bar)
+    const isGW = brandAs === 'greenworks'
     let logo = null
     try {
-      logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png')))
+      if (!isGW) logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png')))
     } catch {}
 
     // ── MDSG brand colors (sage green from logo) ──────────────────────────
@@ -216,8 +219,9 @@ export async function POST(request) {
     }
 
     // Company name right of logo
-    dt('MANUFACTURER DIRECT SALES GROUP, LLC', ML + 118, 780, { bold: true, size: 11.5, color: darkGreen })
-    dt('23463 E. Moraine Pl., Aurora, CO 80016  |  mdsgcabinets.com', ML + 118, 767, { size: 7.5, color: brandGreen })
+    const coX = isGW ? ML + 6 : ML + 118
+    dt(isGW ? 'GREENWORKS RENOVATIONS LLC' : 'MANUFACTURER DIRECT SALES GROUP, LLC', coX, 780, { bold: true, size: 11.5, color: darkGreen })
+    dt(isGW ? 'Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com' : '23463 E. Moraine Pl., Aurora, CO 80016  |  mdsgcabinets.com', coX, 767, { size: 7.5, color: brandGreen })
 
     // Dark green accent bar (y=744–762, 18pt)
     drect(ML, 744, PW, 18, darkGreen)
@@ -420,8 +424,10 @@ export async function POST(request) {
     }
 
     // Installation contact (Greenworks) — per Pam's proposal checklist
-    dt('INSTALLATION: Greenworks Renovations LLC — Anthony (Willy) Ramirez · 619-718-1578 · greenworksrenovationsllc@gmail.com', ML + 6, py, { size: 6.5, color: dgray })
-    py -= 12
+    if (!isGW) {
+      dt('INSTALLATION: Greenworks Renovations LLC — Anthony (Willy) Ramirez · 619-718-1578 · greenworksrenovationsllc@gmail.com', ML + 6, py, { size: 6.5, color: dgray })
+      py -= 12
+    }
 
     // Notes
     if (notes) {
