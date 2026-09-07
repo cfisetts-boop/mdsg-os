@@ -151,6 +151,7 @@ export default function Home() {
   const [hideUnitPricing, setHideUnitPricing] = useState(false)
   const [totalOnly,       setTotalOnly]       = useState(false)
   const [brandAs,         setBrandAs]         = useState('mdsg')
+  const [kanbanSort,      setKanbanSort]      = useState('date')
   const [sowRows,         setSowRows]         = useState(null)
   const [sowEditing,      setSowEditing]      = useState(false)
   const [sowSaving,       setSowSaving]       = useState(false)
@@ -1080,6 +1081,14 @@ export default function Home() {
                   {delayedCount > 0 && <span>🚚 {delayedCount} shipment{delayedCount > 1 ? 's' : ''} delayed — <span onClick={() => setView('shipments')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>view</span></span>}
                 </div>
               )}
+              <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
+                <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                  <span style={{ fontSize:11, color:'#888' }}>Sort columns:</span>
+                  {[['date','By Date'],['az','A–Z']].map(([k,l]) => (
+                    <button key={k} onClick={()=>setKanbanSort(k)} style={{ padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:kanbanSort===k?'#3C3489':'#f5f5f3', color:kanbanSort===k?'#fff':'#555', border:'0.5px solid #ddd' }}>{l}</button>
+                  ))}
+                </div>
+              </div>
               {followUps.length > 0 && (
                 <div style={{ background: '#FDF8EC', border: '0.5px solid #e0c98a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#8B6914', marginBottom: 8 }}>⏰ Bid Follow-Ups Needed ({followUps.length})</div>
@@ -1147,10 +1156,21 @@ export default function Home() {
                       {stage} <span style={{ background: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>{jobs.filter(j => j.stage === stage).length}</span>
                       {(() => { const v = jobs.filter(j => j.stage === stage).reduce((s, j) => s + effVal(j), 0); return v > 0 ? <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 6, opacity: 0.75 }}>{fmt(v)}</span> : null })()}
                     </div>
-                    {jobs.filter(j => j.stage === stage).sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(job => (
+                    {jobs.filter(j => j.stage === stage).sort((a, b) => {
+                      if (kanbanSort === 'az') return (a.name || '').localeCompare(b.name || '')
+                      const key = (j) => { const ds = [j.next_followup_date, j.bid_due_date].filter(Boolean); return ds.length ? ds.sort()[0] : '9999-12-31' }
+                      const ka = key(a), kb = key(b)
+                      return ka !== kb ? ka.localeCompare(kb) : (a.name || '').localeCompare(b.name || '')
+                    }).map(job => (
                       <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }}
                         style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 6, padding: 10, marginBottom: 6, cursor: 'pointer' }}>
-                        <div style={{ fontWeight: 500, fontSize: 12 }}>{job.name}</div>
+                        <div style={{ fontWeight: 500, fontSize: 12 }}>{(job.priority==='hot') ? '🔥 ' : ''}{job.name}{job.priority==='high' && <span style={{ marginLeft:5, fontSize:9, background:'#e0a800', color:'#fff', padding:'1px 5px', borderRadius:6, fontWeight:700 }}>HIGH</span>}</div>
+                        {(job.bid_due_date || job.next_followup_date) && (
+                          <div style={{ fontSize: 10, marginTop: 2, display:'flex', gap:8 }}>
+                            {job.bid_due_date && <span style={{ color: job.bid_due_date < new Date().toISOString().split('T')[0] ? '#A32D2D' : '#888' }}>📅 {job.bid_due_date}</span>}
+                            {job.next_followup_date && <span style={{ color:'#8B6914' }}>⏰ {job.next_followup_date}</span>}
+                          </div>
+                        )}
                         <div style={{ fontSize: 11, color: '#888' }}>{job.gc_name || '—'}</div>
                         <div style={{ fontSize: 12, fontWeight: 500, color: '#3C3489', marginTop: 4 }}>{fmt(job.bid_value)}</div>
                       </div>
