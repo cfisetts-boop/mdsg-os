@@ -17,68 +17,83 @@ export async function POST(request) {
     if (!pdfBuffer || pdfBuffer.byteLength === 0) {
       return Response.json({ error: 'No PDF data received' }, { status: 400 })
     }
-    // ── Deterministic NexGen branch: known container-pricing layout ──────────
+    // ── Deterministic NexGen branch: exact 'Price List' layout ───────────────
     if (isExcel) {
       try {
         const wbN = new ExcelJS.Workbook()
         await wbN.xlsx.load(Buffer.from(pdfBuffer))
         const val = (ws, r, cx) => { const v = ws.getCell(r, cx).value; if (v == null) return ''; if (typeof v === 'object') return v.result ?? v.text ?? ''; return v }
         const num = (x) => { const n = parseFloat(String(x).replace(/[^0-9.\-]/g, '')); return isNaN(n) ? 0 : n }
-        let items = [], seaFreight = 0, landFreight = 0, tariff = 0, isNexGen = false
+        const adjacent = (ws, r, cx) => { for (let k = 1; k <= 3; k++) { const n = num(val(ws, r, cx + k)); if (n > 0) return n } return 0 }
+
+        let target = null, hr = 0, colSku = 0
         wbN.eachSheet(ws => {
-          if (items.length) return
-          let hr = 0, colSku = 0, colPcs = 0, colTotal = 0
-          for (let r = 1; r <= Math.min(ws.rowCount, 25) && !hr; r++) {
-            for (let cx = 1; cx <= Math.min(ws.columnCount, 22); cx++) {
-              if (String(val(ws, r, cx)).toUpperCase().includes('NEXGEN')) { hr = r; colSku = cx; isNexGen = true }
+          if (target) return
+          for (let r = 1; r <= Math.min(ws.rowCount, 40); r++) {
+            for (let cx = 1; cx <= Math.min(ws.columnCount, 20); cx++) {
+              if (String(val(ws, r, cx)).replace(/\s+/g, '').toUpperCase() === 'NEXGENSKU') { target = ws; hr = r; colSku = cx; return }
             }
           }
-          if (!hr) return
+        })
+
+        if (target) {
+          const ws = target
+          // column map from the header row (+1 subheader)
+          let colPcs = 0, colExt = 0
           for (let cx = 1; cx <= Math.min(ws.columnCount, 24); cx++) {
-            const hh = (String(val(ws, hr, cx)) + ' ' + String(val(ws, hr + 1, cx))).replace(/\s+/g, ' ').toUpperCase()
-            if (hh.includes('PCS')) colPcs = cx
-            if (!colTotal && (hh.includes('TOTAL AMOUNT') || (hh.includes('TOTAL') && hh.includes('USD')))) colTotal = cx
+            const hh = (String(val(ws, hr, cx)) + ' ' + String(val(ws, hr + 1, cx))).toUpperCase()
+            if (!colPcs && (hh.includes('PCS') || hh.includes('QTY'))) colPcs = cx
+            if (!colExt && hh.includes('TOTAL AMOUNT')) colExt = cx
           }
-          if (!colPcs) colPcs = colSku + 5
-          if (!colTotal) colTotal = colPcs + 2
-          for (let r = hr + 1; r <= ws.rowCount; r++) {
+          if (!colPcs) colPcs = colSku + 4
+          if (!colExt) colExt = colSku + 6
+
+          const items = []
+          let footerPcs = 0, footerGross = 0
+          for (let r = hr + 2; r <= ws.rowCount; r++) {
+            const c2 = String(val(ws, r, colSku - 1)).trim().toUpperCase()
+            if (c2 === 'TOTAL') { footerPcs = num(val(ws, r, colPcs)); footerGross = num(val(ws, r, colExt)); break }
             const sku = String(val(ws, r, colSku)).trim()
             const pcs = num(val(ws, r, colPcs))
-            const ext = num(val(ws, r, colTotal))
+            const ext = num(val(ws, r, colExt))
             if (sku && sku !== '-' && pcs > 0 && ext > 0) items.push([sku.toUpperCase(), pcs, Math.round(ext * 100) / 100])
           }
-          for (let r = 1; r <= Math.min(ws.rowCount, 30); r++) {
-            let rowText = []
-            for (let cx = 1; cx <= Math.min(ws.columnCount, 24); cx++) rowText.push(String(val(ws, r, cx)))
-            const joined = rowText.join(' ').toUpperCase()
-            const rowMax = Math.max(0, ...rowText.map(num))
-            if (joined.includes('SEA FREIGHT')) seaFreight = rowMax
-            else if (joined.includes('LAND FREIGHT')) landFreight = rowMax
-            else if (joined.includes('TARRIF') || joined.includes('TARIFF')) tariff = rowMax
+
+          // freight / tariff / containers: label cell → first number to its right
+          let seaFreight = 0, landFreight = 0, tariff = 0, containers = ''
+          for (let r = 1; r <= Math.min(ws.rowCount, 20); r++) {
+            for (let cx = 1; cx <= Math.min(ws.columnCount, 12); cx++) {
+              const lbl = String(val(ws, r, cx)).trim().toUpperCase()
+              if (lbl.startsWith('SEA FREIGHT')) seaFreight = adjacent(ws, r, cx)
+              else if (lbl.startsWith('LAND FREIGHT')) landFreight = adjacent(ws, r, cx)
+              else if (lbl.startsWith('TARRIF') || lbl.startsWith('TARIFF')) tariff = adjacent(ws, r, cx)
+              else if (lbl.startsWith('CONTAINER QTY')) containers = `${adjacent(ws, r, cx)} × ${String(val(ws, r, cx + 2)).trim()}`
+            }
           }
-        })
-        if (isNexGen && items.length) {
-          const gross = Math.round(items.reduce((s, [, , e]) => s + e, 0) * 100) / 100
-          const freightTotal = Math.round((seaFreight + landFreight) * 100) / 100
-          const grand = Math.round((gross + freightTotal + tariff) * 100) / 100
-          const totalPieces = items.reduce((s, [, q]) => s + q, 0)
-          const quoteShape = { manufacturer: 'NexGen', quote_number: '', totals: { gross_amount: gross, freight_amount: freightTotal, tax_amount: tariff, grand_total: grand }, unit_types: [{ unit_type_name: 'ALL UNITS', unit_quantity: 1, line_items: items }] }
-          let histErrN = null
-          if (jobId) {
-            const ins = await supabase.from('manufacturer_quotes').insert({
-              job_id: jobId, manufacturer: 'NexGen', quote_type: 'cabinets', raw_extracted_json: quoteShape,
-              gross_amount: gross, freight_amount: freightTotal, tax_amount: tariff, grand_total: grand,
-              total_cabinets: totalPieces, file_name: fileName, parsed_at: new Date().toISOString(),
+
+          if (items.length) {
+            const gross = footerGross > 0 ? Math.round(footerGross * 100) / 100 : Math.round(items.reduce((s, [, , e]) => s + e, 0) * 100) / 100
+            const freightTotal = Math.round((seaFreight + landFreight) * 100) / 100
+            const grand = Math.round((gross + freightTotal + tariff) * 100) / 100
+            const totalPieces = footerPcs || items.reduce((s, [, q]) => s + q, 0)
+            const quoteShape = { manufacturer: 'NexGen', quote_number: '', totals: { gross_amount: gross, freight_amount: freightTotal, tax_amount: tariff, grand_total: grand, containers }, unit_types: [{ unit_type_name: 'ALL UNITS', unit_quantity: 1, line_items: items }] }
+            let histErrN = null
+            if (jobId) {
+              const ins = await supabase.from('manufacturer_quotes').insert({
+                job_id: jobId, manufacturer: 'NexGen', quote_type: 'cabinets', raw_extracted_json: quoteShape,
+                gross_amount: gross, freight_amount: freightTotal, tax_amount: tariff, grand_total: grand,
+                total_cabinets: totalPieces, file_name: fileName, parsed_at: new Date().toISOString(),
+              })
+              histErrN = ins.error
+              if (histErrN) console.error('NexGen quote insert FAILED:', histErrN.message)
+              await supabase.from('jobs').update({ manufacturer_gross_cost: gross }).eq('id', jobId)
+              await supabase.from('activity_log').insert({ job_id: jobId, user_name: 'MDSG', action: `NexGen quote parsed — ${items.length} SKUs · ${totalPieces.toLocaleString()} pcs · $${grand.toLocaleString()}${containers ? ' · ' + containers : ''}` })
+            }
+            return Response.json({
+              success: true, quote_recorded: !histErrN, quote_record_error: histErrN?.message || null,
+              summary: { manufacturer: 'NexGen', unit_type_count: items.length, total_cabinets: totalPieces, grand_total: grand, gross_amount: gross, freight_amount: freightTotal, tariff, containers },
             })
-            histErrN = ins.error
-            if (histErrN) console.error('NexGen quote insert FAILED:', histErrN.message)
-            await supabase.from('jobs').update({ manufacturer_gross_cost: gross }).eq('id', jobId)
-            await supabase.from('activity_log').insert({ job_id: jobId, user_name: 'MDSG', action: `NexGen quote parsed — ${items.length} SKUs · ${totalPieces.toLocaleString()} pcs · $${grand.toLocaleString()}` })
           }
-          return Response.json({
-            success: true, quote_recorded: !histErrN, quote_record_error: histErrN?.message || null,
-            summary: { manufacturer: 'NexGen', unit_type_count: items.length, total_cabinets: totalPieces, grand_total: grand },
-          })
         }
       } catch (e) { console.error('NexGen deterministic parse skipped:', e.message) }
     }

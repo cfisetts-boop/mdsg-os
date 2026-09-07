@@ -1480,6 +1480,9 @@ export default function Home() {
                             <span style={{ flex: 1, color: '#888', fontSize: 11 }}>{q.file_name || '—'}</span>
                             <span style={{ fontWeight: 600 }}>{q.grand_total > 0 ? '$' + Number(q.grand_total).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                             <span style={{ color: '#aaa', fontSize: 11 }}>{new Date(q.created_at).toLocaleDateString()}</span>
+                            {q.quote_type !== 'countertops'
+                              ? <button onClick={()=>applyQuoteToProposal(q)} style={{ padding:'3px 10px', fontSize:10, background: propQuoteId===q.id ? '#2D7A3A' : '#fff', color: propQuoteId===q.id ? '#fff' : '#2D7A3A', border:'0.5px solid #2D7A3A', borderRadius:5, cursor:'pointer', fontWeight:500 }}>{propQuoteId===q.id ? '✓ In Proposal' : '→ Proposal'}</button>
+                              : <button onClick={()=>setCtGross(String(q.gross_amount || q.grand_total || ''))} style={{ padding:'3px 10px', fontSize:10, background:'#fff', color:'#8B6914', border:'0.5px solid #8B6914', borderRadius:5, cursor:'pointer', fontWeight:500 }}>→ CT Pricing</button>}
                             <button onClick={async()=>{ if(!confirm('Delete this saved quote from history?')) return; await fetch('/api/quotes', { method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: q.id, jobId: selectedJob.id }) }); refreshSavedQuotes() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>🗑</button>
                           </div>
                         ))}
