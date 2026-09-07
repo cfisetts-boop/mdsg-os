@@ -156,6 +156,7 @@ export default function Home() {
   const [loginErr,        setLoginErr]        = useState('')
   const [loginBusy,       setLoginBusy]       = useState(false)
   const [savedQuotes,      setSavedQuotes]      = useState([])
+  const [propQuoteId,      setPropQuoteId]      = useState('')
   const [collapsed,        setCollapsed]        = useState({})
   const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
   const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
@@ -591,6 +592,7 @@ export default function Home() {
       if (result.success && result.cabList) {
         const v = result.cabList.verification || {}
         await saveCabList({ ...result.cabList, product_line: productLine }, 'Leedo summary import')
+        refreshSavedQuotes()
         const msg = v.leedoUnits != null
           ? `Imported ${result.cabList.unit_types.length} unit types.\nLeedo summary says: ${v.leedoUnits} units / ${v.leedoCabinets} cabinets.\nParsed: ${v.parsedUnits} units / ${v.parsedCabs} total pieces (incl. accessories).${v.unitsMatch ? '\n✓ Unit counts match.' : '\n⚠ UNIT COUNT MISMATCH — review before sending for pricing.'}${v.quoteRecorded === false ? '\n⚠ Quote history NOT recorded — quote check will not see this import.' : v.quoteRecorded ? '\n✓ Recorded in quote history.' : ''}`
           : `Imported ${result.cabList.unit_types.length} unit types.`
@@ -744,6 +746,17 @@ export default function Home() {
     await supabase.from('activity_log').insert({ job_id: job.id, user_name: job.owner || 'Cole', action: 'Contact logged — GC follow-up' })
     loadJobs()
     if (selectedJob?.id === job.id) setSelectedJob({ ...selectedJob, last_contacted_at: today })
+  }
+
+  function applyQuoteToProposal(q) {
+    if (!q) return
+    setPropQuoteId(q.id)
+    if (q.gross_amount > 0) setProposalGross(String(q.gross_amount))
+    setProposalFreight(q.freight_amount > 0 ? String(q.freight_amount) : '')
+    // Leedo rows: tax = grand − gross − freight; NexGen: tariff in tax_amount
+    const tax = q.tax_amount > 0 ? q.tax_amount
+      : (q.grand_total > 0 && q.gross_amount > 0 ? Math.max(0, Math.round((q.grand_total - q.gross_amount - (q.freight_amount || 0)) * 100) / 100) : 0)
+    setProposalMfrTax(tax > 0 ? String(tax) : '')
   }
 
   function refreshSavedQuotes() {
@@ -1496,6 +1509,18 @@ export default function Home() {
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 14 }}>Generate Proposal PDF</div>
                     <div style={{ marginBottom: 14 }}>
+                      {savedQuotes.filter(q => q.quote_type !== 'countertops').length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={lbl}>Price From Saved Quote</label>
+                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                            {savedQuotes.filter(q => q.quote_type !== 'countertops').map(q => (
+                              <button key={q.id} onClick={()=>applyQuoteToProposal(q)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', background: propQuoteId===q.id ? '#3C3489' : '#f5f5f3', color: propQuoteId===q.id ? '#fff' : '#555', border:'0.5px solid #ddd' }}>
+                                {propQuoteId===q.id ? '✓ ' : ''}{q.manufacturer} · ${Number(q.gross_amount||0).toLocaleString(undefined,{maximumFractionDigits:0})} · {new Date(q.created_at).toLocaleDateString()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <label style={lbl}>Manufacturer Gross Cost ($ — from Leedo printable summary)</label>
                       <input type="number" min="0" value={proposalGross} placeholder="e.g. 140000" onChange={e => setProposalGross(e.target.value)} style={{ width: 160, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13, marginBottom: 10 }} />
                       <div style={{ display:'flex', gap:10, marginBottom:10 }}>
