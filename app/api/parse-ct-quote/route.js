@@ -1,5 +1,8 @@
+import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import ExcelJS from 'exceljs'
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -14,6 +17,68 @@ export async function POST(request) {
     const formData = await request.formData()
     const file = formData.get('file')
     if (!file) return Response.json({ error: 'No file' }, { status: 400 })
+
+    const fileNameL = (file.name || '').toLowerCase()
+
+    // ── PDF path: fabricator estimates (Capo etc.) read by AI ────────────────
+    if (fileNameL.endsWith('.pdf')) {
+      const b64 = Buffer.from(await file.arrayBuffer()).toString('base64')
+      const stream = anthropic.messages.stream({
+        model: 'claude-opus-4-5',
+        max_tokens: 4000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } },
+            { type: 'text', text: `This is a countertop fabricator estimate/quote. Extract as JSON only (no prose, no markdown fences):
+{
+  "fabricator": "company name",
+  "quote_number": "estimate/quote number or empty",
+  "sections": [{ "name": "e.g. Slabs / Kitchens / Vanities", "total": 0 }],
+  "subtotal": 0,
+  "tax": 0,
+  "grand_total": 0,
+  "total_sqft": 0
+}
+Rules: numbers as plain numbers without commas or $. If a value is absent use 0 or "". sections = the document's own groupings with their printed totals. grand_total = the final total including tax.` },
+          ],
+        }],
+      })
+      const msg = await stream.finalMessage()
+      const raw = msg.content.filter(b => b.type === 'text').map(b => b.text).join('')
+      let q
+      try { q = JSON.parse(raw.replace(/```json|```/g, '').trim()) }
+      catch { return Response.json({ error: 'Could not read this PDF as a countertop quote — is it a fabricator estimate?' }, { status: 422 }) }
+      const grand = Number(q.grand_total) || 0
+      const gross = Number(q.subtotal) || grand
+      const tax   = Number(q.tax) || 0
+      if (!grand) return Response.json({ error: 'No total found in PDF' }, { status: 422 })
+
+      let recorded = false
+      if (jobId) {
+        const { error } = await supabase.from('manufacturer_quotes').insert({
+          job_id: jobId, manufacturer: q.fabricator || 'CT Fabricator', quote_type: 'countertops',
+          quote_number: q.quote_number || null,
+          gross_amount: gross, tax_amount: tax, grand_total: grand,
+          raw_extracted_json: q,
+          file_name: file.name || 'CT Quote.pdf', parsed_at: new Date().toISOString(),
+        })
+        recorded = !error
+        if (error) console.error('CT PDF quote insert FAILED:', error.message)
+        await supabase.from('activity_log').insert({ job_id: jobId, user_name: 'MDSG', action: `CT quote parsed (PDF) — ${q.fabricator || 'Fabricator'} · ${fmtM(grand)}` })
+      }
+      return Response.json({
+        success: true, recorded,
+        fabricator: q.fabricator || 'CT Fabricator',
+        total_amount: grand,
+        material_type: (q.sections || []).map(s => s.name).join(', '),
+        summary: {
+          isOptions: false,
+          materials: (q.sections || []).map(s => ({ code: s.name, items: 0, total: Number(s.total) || 0, sqft: 0 })),
+          grandTotal: grand, totalSqft: Number(q.total_sqft) || 0, totalSets: 0, unitTypeCount: 0,
+        },
+      })
+    }
 
     const wb = new ExcelJS.Workbook()
     await wb.xlsx.load(Buffer.from(await file.arrayBuffer()))

@@ -2240,12 +2240,12 @@ export default function Home() {
                     {!collapsed.ctp && (<>
                     <div style={{ margin:'0 0 14px', padding:'10px 12px', background:'#fbf9f4', border:'0.5px solid #e5ddc8', borderRadius:8 }}>
                       <label style={{ padding:'5px 12px', fontSize:11, background:'#8B6914', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
-                        {ctQuoteUploading ? 'Parsing…' : '⬆ Upload CT Quote (West USA Excel)'}
-                        <input type="file" accept=".xlsx,.xls" onChange={handleCtQuoteUpload} style={{ display:'none' }} disabled={ctQuoteUploading}/>
+                        {ctQuoteUploading ? 'Parsing…' : '⬆ Upload CT Quote (Excel or PDF)'}
+                        <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleCtQuoteUpload} style={{ display:'none' }} disabled={ctQuoteUploading}/>
                       </label>
                       {ctQuoteResult?.summary && (
                         <div style={{ marginTop:10, fontSize:12 }}>
-                          <div style={{ fontWeight:600, color:'#3B6D11' }}>✓ Parsed — {ctQuoteResult.summary.unitTypeCount} unit types · {ctQuoteResult.summary.totalSets.toLocaleString()} sets · {ctQuoteResult.summary.totalSqft.toLocaleString()} sqft{ctQuoteResult.summary.isOptions ? ` · ${ctQuoteResult.summary.materials.length} material OPTIONS` : ''}</div>
+                          <div style={{ fontWeight:600, color:'#3B6D11' }}>✓ Parsed{ctQuoteResult.fabricator ? ' — ' + ctQuoteResult.fabricator : ''}{ctQuoteResult.summary.unitTypeCount > 0 ? ` — ${ctQuoteResult.summary.unitTypeCount} unit types · ${ctQuoteResult.summary.totalSets.toLocaleString()} sets` : ''}{ctQuoteResult.summary.totalSqft > 0 ? ` · ${ctQuoteResult.summary.totalSqft.toLocaleString()} sqft` : ''}{ctQuoteResult.summary.isOptions ? ` · ${ctQuoteResult.summary.materials.length} material OPTIONS` : ''}</div>
                           {ctQuoteResult.summary.materials.map(m2 => (
                             <div key={m2.code} style={{ display:'flex', alignItems:'center', gap:8, fontSize:11, color:'#555', paddingTop:3 }}>
                               <span style={{ flex:1 }}>{m2.code}: {m2.items} items · ${m2.total.toLocaleString()}{m2.sqft ? ` · ${m2.sqft.toLocaleString()} sqft` : ''}</span>
