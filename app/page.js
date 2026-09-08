@@ -1355,7 +1355,7 @@ export default function Home() {
 
                   <div style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                      <div style={{ fontWeight: 500 }}>Proposal Details</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="pd"/>Proposal Details</div>
                       {!editingProposal
                         ? <button onClick={() => setEditingProposal(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
                         : <div style={{ display: 'flex', gap: 6 }}>
@@ -1364,6 +1364,7 @@ export default function Home() {
                           </div>
                       }
                     </div>
+                    {!collapsed.pd && (<>
                     {!editingProposal ? (
                       <div>
                         {[['Door Style', selectedJob.door_style], ['Finish / Color', selectedJob.finish_color], ['Drawer Box', selectedJob.drawer_box], ['Construction', selectedJob.cabinet_construction], ['Interior', selectedJob.interior_color], ['Shelf', selectedJob.shelf_thickness], ['Hinge', selectedJob.hinge_type], ['Box Construction', selectedJob.box_construction], ['Hardware Allowance', selectedJob.hardware_allowance ? fmt(selectedJob.hardware_allowance) : null], ['Scope Notes', selectedJob.scope_notes]].filter(([, v]) => v).map(([label, value]) => (
@@ -1466,11 +1467,12 @@ export default function Home() {
                         </div>
                       </div>
                     )}
-                  </div>
+                  </>)}
+                    </div>
 
                   <div style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}>Cabinet Schedule</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="cs"/>Cabinet Schedule</div>
                       {selectedJob.total_cabinet_count > 0 && (
                         <button onClick={async () => {
                             try {
@@ -1498,6 +1500,7 @@ export default function Home() {
                         </button>
                       )}
                     </div>
+                    {!collapsed.cs && (<>
                     {selectedJob.total_cabinet_count > 0 ? (
                       <div>
                         <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
@@ -1514,10 +1517,12 @@ export default function Home() {
                     ) : (
                       <div style={{ color: '#aaa', fontSize: 12 }}>No cabinet data saved yet — use the <span style={{ color: '#3C3489', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setView('agent-pipeline')}>⚡ Agent Pipeline</span> to extract and save</div>
                     )}
-                  </div>
+                  </>)}
+                    </div>
 
                   <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 12 }}>Upload Manufacturer Quote PDF</div>
+                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="uq"/>Upload Manufacturer Quote PDF</div>
+                    {!collapsed.uq && (<>
                     <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
                       <div style={{ color: '#555', fontSize: 13 }}>{quoteUploading ? 'Parsing with AI...' : 'Click to upload PDF quote'}</div>
                       <div style={{ color: '#999', fontSize: 11, marginTop: 4 }}>Leedo · Skyline · SMART · Ukon</div>
@@ -1575,11 +1580,12 @@ export default function Home() {
                             )}
                           </div>
                         )}
-                  </div>
+                  </>)}
+                    </div>
 
                   <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: 14 }}>
-                      <div style={{ fontWeight: 500 }}>Generate Proposal PDF</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="gp"/>Generate Proposal PDF</div>
                       {selectedJob.proposal_status === 'sent' && <span style={{ fontSize:10, fontWeight:700, background:'#2D7A3A', color:'#fff', padding:'2px 8px', borderRadius:10 }}>SENT {selectedJob.proposal_sent_at || ''}</span>}
                       {selectedJob.proposal_status === 'final' && <span style={{ fontSize:10, fontWeight:700, background:'#e0a800', color:'#fff', padding:'2px 8px', borderRadius:10 }}>FINAL</span>}
                       <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
@@ -1587,6 +1593,7 @@ export default function Home() {
                         <button onClick={async()=>{ const st = selectedJob.proposal_status === 'sent' ? 'final' : 'sent'; const upd2 = { proposal_status: st, proposal_sent_at: st==='sent' ? new Date().toISOString().split('T')[0] : null }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal ' + (st==='sent' ? 'marked SENT' : 'SENT removed') }) }} style={{ padding:'4px 12px', fontSize:11, background: selectedJob.proposal_status === 'sent' ? '#2D7A3A' : '#f5f5f3', color: selectedJob.proposal_status === 'sent' ? '#fff' : '#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer', fontWeight:600 }}>✉ SENT</button>
                       </div>
                     </div>
+                    {!collapsed.gp && (<>
                     <div style={{ marginBottom: 14 }}>
                       {savedQuotes.filter(q => q.quote_type !== 'countertops').length > 0 && (
                         <div style={{ marginBottom: 10 }}>
@@ -1700,12 +1707,14 @@ export default function Home() {
                     <button onClick={generateProposal} disabled={proposalLoading} style={{ width: '100%', padding: 10, background: proposalLoading ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: proposalLoading ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
                       {proposalLoading ? 'Generating PDF...' : 'Generate & Download Proposal PDF'}
                     </button>
-                  </div>
+                  </>)}
+                    </div>
                 </div>
 
                 <div>
                   <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 16 }}>Pricing Summary</div>
+                    <div style={{ fontWeight: 500, marginBottom: 16 }}><Chevron k="ps"/>Pricing Summary</div>
+                    {!collapsed.ps && (<>
                     {[['Manufacturer Gross', selectedJob.manufacturer_gross_cost], ['Freight', selectedJob.freight_cost]].map(([label, value]) => (
                       <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec' }}>
                         <span style={{ color: '#555' }}>{label}</span><span style={{ fontWeight: 500 }}>{fmt(value)}</span>
@@ -1722,11 +1731,12 @@ export default function Home() {
                       <span style={{ color: '#888' }}>Gross Margin</span>
                       <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
                     </div>
-                  </div>
+                  </>)}
+                    </div>
 
                   <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-                      <div style={{ fontWeight:500 }}>Tracking</div>
+                      <div style={{ fontWeight:500 }}><Chevron k="trk"/>Tracking</div>
                       <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                         <span style={{ fontSize:11, color:'#888' }}>Priority:</span>
                         {['low','normal','high','hot'].map(pr => (
@@ -1738,6 +1748,7 @@ export default function Home() {
                         <input type="date" value={selectedJob.next_followup_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ next_followup_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, next_followup_date: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
                       </div>
                     </div>
+                    {!collapsed.trk && (<>
                     <div style={{ marginTop:10 }}>
                       <div style={{ fontSize:11, color:'#888', fontWeight:600, marginBottom:4 }}>KEY DATES</div>
                       {(selectedJob.key_dates || []).map((kd, i) => (
@@ -1753,7 +1764,8 @@ export default function Home() {
                         <button onClick={async()=>{ const l = document.getElementById('kd-label'); const d = document.getElementById('kd-date'); if(!l.value.trim()) return; const kds = [...(selectedJob.key_dates||[]), [l.value.trim(), d.value || '']]; await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }); l.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
                       </div>
                     </div>
-                  </div>
+                  </>)}
+                    </div>
 
                   {/* ── Scope of Work ──────────────────────────────────── */}
                   <div style={card}>
@@ -2107,9 +2119,10 @@ export default function Home() {
 
                   <div style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                      <div style={{ fontWeight: 500 }}>Shipments</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="shp"/>Shipments</div>
                       <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
                     </div>
+                    {!collapsed.shp && (<>
                     {showShipmentForm && (
                       <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 14, marginBottom: 14 }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -2176,13 +2189,15 @@ export default function Home() {
                         )}
                       </div>
                     ))}
-                  </div>
+                  </>)}
+                    </div>
 
                   <div style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}>Reminders</div>
+                      <div style={{ fontWeight: 500 }}><Chevron k="rem"/>Reminders</div>
                       <button onClick={() => setShowReminderForm(true)} style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>+ Add</button>
                     </div>
+                    {!collapsed.rem && (<>
                     {showReminderForm && (
                       <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 12, marginBottom: 12 }}>
                         <input type="date" value={newReminder.due_date} onChange={e => setNewReminder(p => ({ ...p, due_date: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
@@ -2203,7 +2218,8 @@ export default function Home() {
                       </div>
                     ))}
                     {(selectedJob.reminders || []).filter(r => !r.completed).length === 0 && !showReminderForm && <div style={{ color: '#888', fontSize: 12 }}>No open reminders</div>}
-                  </div>
+                  </>)}
+                    </div>
 
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="log"/>Activity Log</div>
@@ -2220,7 +2236,8 @@ export default function Home() {
 
                   {/* ── Countertop Proposal Configuration ─────────────────────── */}
                   <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
-                    <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}>Generate Countertop Proposal</div>
+                    <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}><Chevron k="ctp"/>Generate Countertop Proposal</div>
+                    {!collapsed.ctp && (<>
                     <div style={{ margin:'0 0 14px', padding:'10px 12px', background:'#fbf9f4', border:'0.5px solid #e5ddc8', borderRadius:8 }}>
                       <label style={{ padding:'5px 12px', fontSize:11, background:'#8B6914', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
                         {ctQuoteUploading ? 'Parsing…' : '⬆ Upload CT Quote (West USA Excel)'}
@@ -2293,7 +2310,8 @@ export default function Home() {
                       <button onClick={generateCtProposal} disabled={ctGenerating} style={{ width: '100%', padding: 10, marginTop: 12, background: ctGenerating ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
                         {ctGenerating ? 'Generating…' : '⬇ Generate Countertop Proposal PDF'}
                       </button>
-                  </div>
+                  </>)}
+                    </div>
 
                   
                 </div>
