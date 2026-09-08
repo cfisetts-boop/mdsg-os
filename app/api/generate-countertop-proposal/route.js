@@ -138,7 +138,7 @@ export async function POST(request) {
       rAlign(fmtMoney(sell), MR-8, y, { size:8.5 })
       y -= 13
       dt(`Includes ${wastePct}% waste factor on ordered quantities`, ML+8, y, { size:6.5, color:dgray })
-      y -= 12
+      y -= 20
       drect(ML, y-8, PW, 20, darkGreen)
       dt('TOTAL', ML+10, y-2, { bold:true, size:9, color:white })
       rAlign(fmtMoney(sell), MR-10, y-2, { bold:true, size:11, color:white })

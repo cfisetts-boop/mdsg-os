@@ -823,23 +823,24 @@ export default function Home() {
     setJobFiles(f => f.filter(x => x.path !== path))
   }
   async function generateCtProposal() {
-    if (!selectedJob || !ctSavedData) return alert('No countertop takeoff data saved for this job yet')
+    if (!selectedJob) return
+    if (!(Number(ctGross) > 0)) return alert('Enter or pick a countertop material cost first (upload a CT quote or type the cost)')
     setCtGenerating(true)
     try {
       const quoteTotal   = ctQuoteResult?.total_amount || 0
       const ctBidToGC    = quoteTotal * ctMarkup
-      const unitTypesPayload = ctSavedData.unitTypes || []
+      const unitTypesPayload = ctSavedData?.unitTypes || []
       const totalsPayload = {
-        kSF:       ctSavedData.kSF       || 0,
-        vSF:       ctSavedData.vSF       || 0,
-        kLF:       ctSavedData.kLF       || 0,
-        vLF:       ctSavedData.vLF       || 0,
-        backLF:    ctSavedData.backLF    || 0,
-        sideSF:    ctSavedData.sideSF    || 0,
-        sidesLF:   ctSavedData.sidesLF   || 0,
-        cuts:      ctSavedData.cuts      || 0,
-        materialSF: (ctSavedData.kSF||0) + (ctSavedData.vSF||0) + (ctSavedData.sideSF||0),
-        totalLF:   (ctSavedData.kLF||0) + (ctSavedData.vLF||0),
+        kSF:       ctSavedData?.kSF       || 0,
+        vSF:       ctSavedData?.vSF       || 0,
+        kLF:       ctSavedData?.kLF       || 0,
+        vLF:       ctSavedData?.vLF       || 0,
+        backLF:    ctSavedData?.backLF    || 0,
+        sideSF:    ctSavedData?.sideSF    || 0,
+        sidesLF:   ctSavedData?.sidesLF   || 0,
+        cuts:      ctSavedData?.cuts      || 0,
+        materialSF: (ctSavedData?.kSF||0) + (ctSavedData?.vSF||0) + (ctSavedData?.sideSF||0),
+        totalLF:   (ctSavedData?.kLF||0) + (ctSavedData?.vLF||0),
       }
       const propConfig = {
         material_type: ctQuoteResult?.material_type || 'Countertop',
@@ -2207,69 +2208,12 @@ export default function Home() {
                       </div>
                     ))}
                     <button onClick={()=>setCtBidSections(DEFAULT_CT_BID_SECTIONS)} style={{ marginBottom:10, padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd' }}>↺ Reset to defaults</button>
+                      <button onClick={generateCtProposal} disabled={ctGenerating} style={{ width: '100%', padding: 10, marginTop: 12, background: ctGenerating ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
+                        {ctGenerating ? 'Generating…' : '⬇ Generate Countertop Proposal PDF'}
+                      </button>
                   </div>
 
-                  <div style={{ ...card, borderColor: ctSavedData ? '#2D7A3A' : '#e5e5e0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}>Countertop</div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                        <button onClick={() => setCtIncludeCabinets(p => !p)} style={{ padding: '3px 10px', fontSize: 10, borderRadius: 10, cursor: 'pointer', fontWeight: 500, background: ctIncludeCabinets ? '#e8f5e9' : '#f5f5f3', color: ctIncludeCabinets ? '#2D7A3A' : '#888', border: ctIncludeCabinets ? '0.5px solid #2D7A3A' : '0.5px solid #ccc' }}>
-                          {ctIncludeCabinets ? '✓ Cabinets in Proposal' : 'Cabinets Excluded'}
-                        </button>
-                        {ctSavedData && (
-                          <button onClick={generateCtProposal} disabled={ctGenerating} style={{ padding: '4px 12px', fontSize: 11, background: ctGenerating ? '#888' : '#2D7A3A', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontWeight: 500 }}>
-                            {ctGenerating ? 'Generating...' : '⬇ CT Proposal PDF'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    {ctSavedData ? (
-                      <div style={{ background: '#f5fdf6', border: '0.5px solid #b2dfb4', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, color: '#2D7A3A', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>Saved Takeoff</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-                          {[['Kitchen SF', ((ctSavedData.kSF)||0).toFixed(1)], ['Vanity SF', ((ctSavedData.vSF)||0).toFixed(1)], ['Total Material SF', ((ctSavedData.kSF||0)+(ctSavedData.vSF||0)+(ctSavedData.sideSF||0)).toFixed(1)], ['Kitchen LF', ((ctSavedData.kLF)||0).toFixed(1)], ['Vanity LF', ((ctSavedData.vLF)||0).toFixed(1)], ['Backsplash LF', ((ctSavedData.backLF)||0).toFixed(1)]].map(([l,v]) => (
-                            <div key={l}><div style={{ fontSize: 9, color: '#888', textTransform: 'uppercase' }}>{l}</div><div style={{ fontSize: 16, fontWeight: 700, color: '#2D7A3A' }}>{v}</div></div>
-                          ))}
-                        </div>
-                        {ctSavedData.cuts > 0 && <div style={{ fontSize: 11, color: '#888', marginTop: 6 }}>Sink Cutouts: <strong>{ctSavedData.cuts}</strong></div>}
-                      </div>
-                    ) : (
-                      <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12, padding: '10px 0' }}>
-                        No countertop takeoff saved yet — use the <span style={{ color: '#3C3489', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setView('agent-pipeline')}>⚡ Agent Pipeline</span> to run a takeoff and save
-                      </div>
-                    )}
-                    <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 6 }}>Fabricator Quote</div>
-                      <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 14, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
-                        <div style={{ color: '#555', fontSize: 12 }}>{ctQuoteUploading ? '⏳ Reading quote...' : ctQuoteResult ? `✓ ${ctQuoteResult.fabricator || 'Quote'} — $${Math.round(ctQuoteResult.total_amount).toLocaleString()}` : 'Click to upload fabricator quote PDF'}</div>
-                        {!ctQuoteResult && <div style={{ color: '#aaa', fontSize: 10, marginTop: 2 }}>CAPO · SFI · Hilton · any fabricator</div>}
-                        <input type="file" accept=".pdf" onChange={handleCtQuoteUpload} style={{ display: 'none' }} disabled={ctQuoteUploading} />
-                      </label>
-                      {ctQuoteResult && (
-                        <div style={{ marginTop: 8, padding: '8px 12px', background: '#f0f9f0', borderRadius: 6, fontSize: 11 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: '#888' }}>Fabricator cost:</span><span style={{ fontWeight: 500 }}>${Math.round(ctQuoteResult.total_amount).toLocaleString()}</span></div>
-                          {ctQuoteResult.material_type && <div style={{ color: '#888', fontSize: 10, marginTop: 2 }}>{ctQuoteResult.material_type} · {ctQuoteResult.color || ''}</div>}
-                        </div>
-                      )}
-                    </div>
-                    {ctQuoteResult && (
-                      <div style={{ borderTop: '0.5px solid #eee', paddingTop: 12 }}>
-                        <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 8 }}>Markup & Pricing</div>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                          <label style={{ ...lbl, marginBottom: 0, minWidth: 110 }}>Markup Multiplier</label>
-                          <input type="number" step="0.01" min="1.00" max="2.00" value={ctMarkup} onChange={e => setCtMarkup(Number(e.target.value))} style={{ width: 72, padding: '5px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
-                          <span style={{ fontSize: 11, color: '#3B6D11', fontWeight: 500 }}>{ctMarkup > 1 ? ((1 - 1/Number(ctMarkup))*100).toFixed(1) : '0.0'}% margin</span>
-                        </div>
-                        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-                          {[1.20, 1.25, 1.30, 1.35].map(m => (<button key={m} onClick={() => setCtMarkup(m)} style={{ padding: '3px 9px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: Number(ctMarkup) === m ? '#3C3489' : '#f5f5f3', color: Number(ctMarkup) === m ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{m}×</button>))}
-                        </div>
-                        <div style={{ background: '#1a1a2e', borderRadius: 8, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div><div style={{ fontSize: 9, color: '#666', textTransform: 'uppercase', letterSpacing: 0.4 }}>Bid to GC — Countertop</div><div style={{ fontSize: 20, fontWeight: 700, color: '#fff' }}>${Math.round((ctQuoteResult.total_amount || 0) * ctMarkup).toLocaleString()}</div></div>
-                          <div style={{ textAlign: 'right' }}><div style={{ fontSize: 9, color: '#666' }}>Gross Profit</div><div style={{ fontSize: 14, fontWeight: 600, color: '#4a9' }}>${Math.round((ctQuoteResult.total_amount || 0) * (ctMarkup - 1)).toLocaleString()}</div></div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                  
                 </div>
               </div>
             </div>
