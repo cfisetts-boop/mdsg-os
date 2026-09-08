@@ -55,6 +55,8 @@ const SHIPMENT_STATUS_COLORS = {
 }
 
 const STAGES = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout', 'Lost']
+const FRONT_STAGES = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded']
+const PRODUCTION_STAGES = ['Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
 const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics', 'Estes Express', 'R+L Carriers', 'Other']
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
 const fmtPct = (n) => n ? (n * 100).toFixed(1) + '%' : '—'
@@ -1155,8 +1157,31 @@ export default function Home() {
               )}
 
               <div style={{ marginBottom: 8, fontWeight: 500, fontSize: 13 }}>Job Pipeline</div>
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${STAGES.length - 1},1fr)`, gap: 8, overflowX: 'auto' }}>
-                {STAGES.filter(s => s !== 'Lost').map(stage => (
+              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ width: 230, flexShrink: 0 }}>
+                <div style={{ background: '#f0eff9', borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#3C3489', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Production — Post Award</div>
+                  {PRODUCTION_STAGES.map(ps => {
+                    const rows = jobs.filter(j => j.stage === ps && (kanbanOwner==='all' || j.owner===kanbanOwner))
+                    return (
+                      <div key={ps} style={{ marginBottom: 10 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{ps}</span><span>{rows.length}{(() => { const v = rows.reduce((s, j) => s + effVal(j), 0); return v > 0 ? ' · ' + fmt(v) : '' })()}</span>
+                        </div>
+                        {rows.map(job => (
+                          <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }} style={{ background: '#fff', borderRadius: 6, padding: '6px 9px', marginTop: 4, cursor: 'pointer', fontSize: 11.5, fontWeight: 500 }}>
+                            {(job.priority==='hot') ? '🔥 ' : ''}{job.name}
+                            {job.est_delivery && <div style={{ fontSize: 9.5, color: '#888', fontWeight: 400 }}>ETA {job.est_delivery}</div>}
+                          </div>
+                        ))}
+                        {rows.length === 0 && <div style={{ fontSize: 10, color: '#bbb', marginTop: 3 }}>—</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${FRONT_STAGES.length},1fr)`, gap: 8, overflowX: 'auto' }}>
+                {FRONT_STAGES.map(stage => (
                   <div key={stage} style={{ background: '#f5f5f3', borderRadius: 8, padding: 10, minHeight: 80 }}>
                     <div style={{ fontSize: 10, fontWeight: 500, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8, display: 'flex', justifyContent: 'space-between' }}>
                       {stage} <span style={{ background: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>{jobs.filter(j => j.stage === stage).length}</span>
@@ -1183,6 +1208,7 @@ export default function Home() {
                     ))}
                   </div>
                 ))}
+              </div>
               </div>
 
               {jobs.filter(j => j.stage === 'Lost').length > 0 && (
