@@ -1833,6 +1833,40 @@ export default function Home() {
                   </div>
                   )}
 
+                  {['Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
+                  <div style={card}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                      <div style={{ fontWeight:500 }}><Chevron k="punch"/>Punch List{Array.isArray(selectedJob.punch_list) && selectedJob.punch_list.length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.punch_list.filter(i=>i[1]).length}/{selectedJob.punch_list.length} done</span>}</div>
+                      <button onClick={async()=>{
+                        let tok = selectedJob.share_token
+                        if (!tok) {
+                          tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g,'')
+                          await supabase.from('jobs').update({ share_token: tok }).eq('id', selectedJob.id)
+                          setSelectedJob({ ...selectedJob, share_token: tok })
+                        }
+                        const url = window.location.origin + '/punch/' + tok
+                        try { await navigator.clipboard.writeText(url); alert('Share link copied!\n\n' + url + '\n\nAnyone with this link can view and check off punch items for this job — send it to Willy or the GC super.') } catch { prompt('Copy this link:', url) }
+                      }} style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🔗 Share Link</button>
+                    </div>
+                    {!collapsed.punch && (
+                      <div>
+                        {(selectedJob.punch_list || []).map((it, i) => (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', fontSize:12 }}>
+                            <input type="checkbox" checked={!!it[1]} onChange={async()=>{ const items = (selectedJob.punch_list||[]).map((x,j)=> j===i ? [x[0], !x[1], !x[1] ? new Date().toISOString().split('T')[0] : null, !x[1] ? (authProfile?.name||'') : ''] : x); await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }) }} style={{ width:15, height:15, cursor:'pointer' }}/>
+                            <span style={{ flex:1, textDecoration: it[1] ? 'line-through' : 'none', color: it[1] ? '#999' : '#1a1a1a' }}>{it[0]}</span>
+                            {it[2] && <span style={{ fontSize:10, color:'#aaa' }}>{it[3] ? it[3] + ' · ' : ''}{it[2]}</span>}
+                            <button onClick={async()=>{ const items = (selectedJob.punch_list||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                          </div>
+                        ))}
+                        <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                          <input id="punch-new" placeholder="Add punch item…" style={{ flex:1, padding:'5px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                          <button onClick={async()=>{ const el = document.getElementById('punch-new'); if(!el.value.trim()) return; const items = [...(selectedJob.punch_list||[]), [el.value.trim(), false, null, '']]; await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }); el.value='' }} style={{ padding:'5px 14px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  )}
+
                   {/* ── Cab List ───────────────────────────────────────── */}
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
