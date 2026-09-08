@@ -1580,9 +1580,10 @@ export default function Home() {
                       <div style={{ fontWeight: 500 }}>Generate Proposal PDF</div>
                       {selectedJob.proposal_status === 'sent' && <span style={{ fontSize:10, fontWeight:700, background:'#2D7A3A', color:'#fff', padding:'2px 8px', borderRadius:10 }}>SENT {selectedJob.proposal_sent_at || ''}</span>}
                       {selectedJob.proposal_status === 'final' && <span style={{ fontSize:10, fontWeight:700, background:'#e0a800', color:'#fff', padding:'2px 8px', borderRadius:10 }}>FINAL</span>}
-                      <button onClick={async()=>{ const st = selectedJob.proposal_status === 'sent' ? 'draft' : (selectedJob.proposal_status === 'final' ? 'sent' : 'final'); const upd2 = { proposal_status: st, proposal_sent_at: st==='sent' ? new Date().toISOString().split('T')[0] : selectedJob.proposal_sent_at }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal marked ' + st.toUpperCase() }) }} style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>
-                        {selectedJob.proposal_status === 'sent' ? '↺ Back to Draft' : selectedJob.proposal_status === 'final' ? '✉ Mark SENT' : '★ Mark FINAL'}
-                      </button>
+                      <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
+                        <button onClick={async()=>{ const st = selectedJob.proposal_status === 'draft' ? 'final' : 'draft'; const upd2 = { proposal_status: st }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal ' + (st==='final' ? 'marked FINAL' : 'FINAL removed') }) }} style={{ padding:'4px 12px', fontSize:11, background: selectedJob.proposal_status !== 'draft' ? '#e0a800' : '#f5f5f3', color: selectedJob.proposal_status !== 'draft' ? '#fff' : '#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer', fontWeight:600 }}>★ FINAL</button>
+                        <button onClick={async()=>{ const st = selectedJob.proposal_status === 'sent' ? 'final' : 'sent'; const upd2 = { proposal_status: st, proposal_sent_at: st==='sent' ? new Date().toISOString().split('T')[0] : null }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal ' + (st==='sent' ? 'marked SENT' : 'SENT removed') }) }} style={{ padding:'4px 12px', fontSize:11, background: selectedJob.proposal_status === 'sent' ? '#2D7A3A' : '#f5f5f3', color: selectedJob.proposal_status === 'sent' ? '#fff' : '#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer', fontWeight:600 }}>✉ SENT</button>
+                      </div>
                     </div>
                     <div style={{ marginBottom: 14 }}>
                       {savedQuotes.filter(q => q.quote_type !== 'countertops').length > 0 && (
@@ -1677,6 +1678,22 @@ export default function Home() {
                     <div style={{ marginBottom: 16 }}>
                       <label style={lbl}>Notes (optional)</label>
                       <textarea value={proposalNotes} onChange={e => setProposalNotes(e.target.value)} placeholder="Any additional notes..." style={{ width: '100%', padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, height: 60, resize: 'vertical' }} />
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                        <span style={{ fontSize:11, fontWeight:600, color:'#888', textTransform:'uppercase', letterSpacing:0.4 }}>Saved Proposal Sets</span>
+                        <button onClick={async()=>{ const nm = prompt('Name this proposal set (e.g. CD Set, Permit Set, Addendum 1):'); if(!nm || !nm.trim()) return; const entry = [nm.trim(), new Date().toISOString().split('T')[0], Number(selectedJob.os_bid_value)||0, selectedJob.proposal_status||'draft', authProfile?.name||'']; const sets = [...(selectedJob.proposal_sets||[]), entry]; await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ padding:'3px 10px', fontSize:10, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>💾 Save Current as Set</button>
+                      </div>
+                      {(selectedJob.proposal_sets||[]).map((ps, i) => (
+                        <div key={i} style={{ display:'flex', gap:10, alignItems:'center', fontSize:11.5, padding:'3px 0', borderTop:'0.5px dotted #eee' }}>
+                          <span style={{ fontWeight:600, width:160 }}>{ps[0]}</span>
+                          <span style={{ color:'#888' }}>{ps[1]}</span>
+                          <span style={{ fontWeight:600 }}>{ps[2] > 0 ? '$' + Number(ps[2]).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
+                          <span style={{ fontSize:9, fontWeight:700, color: ps[3]==='sent' ? '#2D7A3A' : ps[3]==='final' ? '#e0a800' : '#999', textTransform:'uppercase' }}>{ps[3]}</span>
+                          <span style={{ color:'#aaa', fontSize:10 }}>{ps[4]}</span>
+                          <button onClick={async()=>{ if(!confirm('Remove this saved set?')) return; const sets = (selectedJob.proposal_sets||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
+                        </div>
+                      ))}
                     </div>
                     <button onClick={generateProposal} disabled={proposalLoading} style={{ width: '100%', padding: 10, background: proposalLoading ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: proposalLoading ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
                       {proposalLoading ? 'Generating PDF...' : 'Generate & Download Proposal PDF'}
@@ -2153,11 +2170,13 @@ export default function Home() {
                   </div>
 
                   <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 12 }}>Activity Log</div>
-                    {(selectedJob.activity_log || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 8).map(log => (
+                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="log"/>Activity Log</div>
+                    {!collapsed.log && (selectedJob.activity_log || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12).map(log => (
                       <div key={log.id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: '0.5px solid #f0f0ec', fontSize: 12 }}>
                         <div>{log.action}</div>
-                        <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{log.user_name} · {new Date(log.created_at).toLocaleDateString()}</div>
+                        <div style={{ color: '#888', fontSize: 11, marginTop: 2, display:'flex', alignItems:'center' }}>{log.user_name} · {new Date(log.created_at).toLocaleDateString()}
+                          <button onClick={async()=>{ if(!confirm('Remove this log entry?')) return; await supabase.from('activity_log').delete().eq('id', log.id); setSelectedJob({ ...selectedJob, activity_log: (selectedJob.activity_log||[]).filter(l=>l.id!==log.id) }) }} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:11 }}>✕</button>
+                        </div>
                       </div>
                     ))}
                     {(selectedJob.activity_log || []).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
