@@ -1048,6 +1048,7 @@ export default function Home() {
           )}
           {nav('dashboard', 'Dashboard')}
           {nav('jobs', 'Jobs')}
+          {nav('contacts', 'Contractors')}
           {nav('agent-pipeline', '⚡ Agent Pipeline')}
           {nav('takeoff', 'Upload Mfr Quote')}
           {nav('shipments', `Shipments${inTransitCount > 0 ? ` (${inTransitCount})` : ''}`)}
@@ -1065,6 +1066,7 @@ export default function Home() {
           <div style={{ fontWeight: 500, fontSize: 16 }}>
             {view === 'dashboard' && 'Dashboard'}
             {view === 'jobs' && 'Jobs'}
+            {view === 'contacts' && 'Contractors'}
             {view === 'takeoff' && 'Upload Manufacturer Quote'}
             {view === 'agent-pipeline' && '⚡ Agent Pipeline'}
             {view === 'shipments' && 'Shipments'}
@@ -2262,6 +2264,59 @@ export default function Home() {
                   
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* CONTRACTORS VIEW */}
+          {view === 'contacts' && (
+            <div>
+              {(() => {
+                const BIDDING = ['RFQ', 'Open Proposals', 'On Hold']
+                const WONISH  = ['Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
+                const groups = {}
+                jobs.forEach(j => {
+                  const gc = (j.gc_name || '').trim() || '(No GC on record)'
+                  groups[gc] = groups[gc] || []
+                  groups[gc].push(j)
+                })
+                const rows = Object.entries(groups).map(([gc, js]) => {
+                  const won = js.filter(j => WONISH.includes(j.stage))
+                  const lost = js.filter(j => j.stage === 'Lost')
+                  const bidding = js.filter(j => BIDDING.includes(j.stage))
+                  const awardedVal = won.reduce((s, j) => s + effVal(j), 0)
+                  const pipelineVal = bidding.reduce((s, j) => s + effVal(j), 0)
+                  const contacts = [...new Set(js.map(j => j.gc_contact).filter(Boolean))]
+                  const phones   = [...new Set(js.map(j => j.gc_phone).filter(Boolean))]
+                  const emails   = [...new Set(js.map(j => j.gc_email).filter(Boolean))]
+                  const lastContact = js.map(j => j.last_contacted_at).filter(Boolean).sort().pop() || null
+                  const winDen = won.length + lost.length
+                  return { gc, js, won, lost, bidding, awardedVal, pipelineVal, contacts, phones, emails, lastContact, winRate: winDen > 0 ? Math.round(100 * won.length / winDen) : null }
+                }).sort((a, b) => (b.awardedVal + b.pipelineVal) - (a.awardedVal + a.pipelineVal))
+                return rows.map(r => (
+                  <div key={r.gc} style={{ ...card, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: 600, fontSize: 15 }}>{r.gc}</div>
+                      <span style={{ fontSize: 11, color: '#888' }}>{r.contacts.join(' · ')}</span>
+                      <span style={{ fontSize: 11, color: '#888' }}>{r.phones.join(' · ')}</span>
+                      <span style={{ fontSize: 11, color: '#1B5EA6' }}>{r.emails.join(' · ')}</span>
+                    </div>
+                    <div style={{ display: 'flex', gap: 20, marginTop: 8, fontSize: 12, flexWrap: 'wrap' }}>
+                      <span><b>{r.bidding.length}</b> bidding {r.pipelineVal > 0 ? `(${fmt(r.pipelineVal)})` : ''}</span>
+                      <span><b>{r.won.length}</b> won {r.awardedVal > 0 ? `(${fmt(r.awardedVal)})` : ''}</span>
+                      <span><b>{r.lost.length}</b> lost</span>
+                      {r.winRate !== null && <span>win rate <b>{r.winRate}%</b></span>}
+                      {r.lastContact && <span style={{ color: '#888' }}>last contact {r.lastContact}</span>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                      {r.js.sort((a, b) => (a.stage === 'Lost') - (b.stage === 'Lost')).map(j => (
+                        <button key={j.id} onClick={() => { setSelectedJob(j); setView('job-detail') }} style={{ padding: '4px 10px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '0.5px solid #ddd', background: j.stage === 'Lost' ? '#faf5f5' : '#f5f5f3', color: j.stage === 'Lost' ? '#A32D2D' : '#333' }}>
+                          {(j.priority === 'hot') ? '🔥 ' : ''}{j.name} <span style={{ color: '#999' }}>· {j.stage}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              })()}
             </div>
           )}
 
