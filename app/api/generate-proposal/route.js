@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg' } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -109,7 +109,12 @@ export async function POST(request) {
     // Hardware allowance: pieces × $/piece at OUR cost, marked up with the same margin
     const hwCost       = effHwPieces * (Number(hwRate) || 0)
     const hardware     = 0  // legacy flat allowance replaced by hwCost path below
-    const discount     = applyDealerDiscount ? (job.dealer_discount_pct || 0.05) : 0
+    const discountPctIn = dealerDiscountPct !== null && dealerDiscountPct !== '' && !isNaN(Number(dealerDiscountPct))
+      ? Math.min(Math.max(Number(dealerDiscountPct) / 100, 0), 0.5) : null
+    const discount     = applyDealerDiscount ? (discountPctIn ?? job.dealer_discount_pct ?? 0.05) : 0
+    if (applyDealerDiscount && discountPctIn !== null && discountPctIn !== job.dealer_discount_pct) {
+      await supabase.from('jobs').update({ dealer_discount_pct: discountPctIn }).eq('id', jobId)
+    }
     // Cost basis priority: explicit override from UI → job field → Σ unit mfr prices
     const grossCost    = (Number(grossCostOverride) > 0 ? Number(grossCostOverride) : 0)
                        || job.manufacturer_gross_cost || unitPriceSum

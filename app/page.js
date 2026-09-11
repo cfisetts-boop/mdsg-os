@@ -153,6 +153,8 @@ export default function Home() {
   const [hideUnitPricing, setHideUnitPricing] = useState(false)
   const [totalOnly,       setTotalOnly]       = useState(false)
   const [brandAs,         setBrandAs]         = useState('mdsg')
+  const [discountPct,     setDiscountPct]     = useState('')
+  const [rfqImporting,    setRfqImporting]    = useState(false)
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -351,6 +353,17 @@ export default function Home() {
   }, [authSession])
 
   useEffect(() => { if (authSession) { loadJobs(); loadReminders(); loadAllActiveShipments() } }, [authSession, loadJobs, loadReminders, loadAllActiveShipments])
+  useEffect(() => {
+    if (!authSession) return
+    const id = setInterval(() => { loadJobs() }, 60000)
+    return () => clearInterval(id)
+  }, [authSession, loadJobs])
+  useEffect(() => {
+    if (!selectedJob) return
+    if (editingProposal || cabEditing || sowEditing || paEditing || emailOpen) return
+    const fresh = jobs.find(j => j.id === selectedJob.id)
+    if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedJob)) setSelectedJob(fresh)
+  }, [jobs])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (selectedJob) {
@@ -803,12 +816,11 @@ export default function Home() {
   async function uploadJobFile(e) {
     const file = e.target.files?.[0]; if (!file) return
     setFileUploading(true)
-    const fd = new FormData()
-    fd.append('jobId', selectedJob.id)
-    fd.append('category', fileCategory)
-    fd.append('file', file)
     try {
-      await fetch('/api/job-files', { method: 'POST', body: fd })
+      const clean = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `${selectedJob.id}/${fileCategory}__${Date.now()}_${clean}`
+      const { error } = await supabase.storage.from('job-files').upload(path, file)
+      if (error) { alert('Upload failed: ' + error.message); setFileUploading(false); e.target.value = ''; return }
       const r = await fetch('/api/job-files?jobId=' + selectedJob.id)
       const d = await r.json(); setJobFiles(d.files || [])
     } catch {}
@@ -878,7 +890,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1074,6 +1086,20 @@ export default function Home() {
             {view === 'job-detail' && selectedJob?.name}
           </div>
           <button onClick={() => setShowNewJob(true)} style={{ padding: '6px 14px', fontSize: 12, background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ New Job</button>
+                <label style={{ padding: '6px 14px', fontSize: 12, background: '#1B5EA6', color: '#fff', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
+                  {rfqImporting ? 'Reading RFQ…' : '⬆ Import RFQ (PDF)'}
+                  <input type="file" accept=".pdf" style={{ display:'none' }} disabled={rfqImporting} onChange={async e=>{
+                    const f = e.target.files?.[0]; if (!f) return
+                    setRfqImporting(true)
+                    try {
+                      const res = await fetch('/api/parse-rfq', { method:'POST', headers:{ 'Content-Type':'application/octet-stream', 'x-file-name': f.name, 'x-user-name': authProfile?.name || '' }, body: f })
+                      const d = await res.json()
+                      if (d.error) alert('RFQ import failed: ' + d.error)
+                      else { await loadJobs(); setSelectedJob(d.job); setView('job-detail') }
+                    } catch (err) { alert(err.message) }
+                    setRfqImporting(false); e.target.value = ''
+                  }}/>
+                </label>
         </div>
 
         <div style={{ padding: view === 'agent-pipeline' ? 0 : 24, flex: 1 }}>
@@ -1421,7 +1447,7 @@ export default function Home() {
                             </select></div>
                           <div><label style={lbl}>Cabinet Construction</label>
                             <select value={editFields.cabinet_construction} onChange={e => setEditFields(pv => ({ ...pv, cabinet_construction: e.target.value }))} style={inp}>
-                              <option value="">— select —</option><option>Standard</option><option>Plywood</option>
+                              <option value="">— select —</option><option>Framed</option><option>Frameless</option><option>Standard</option><option>Plywood</option>
                             </select></div>
                           <div><label style={lbl}>Interior Color</label><input value={editFields.interior_color} placeholder="White" onChange={e => setEditFields(pv => ({ ...pv, interior_color: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Shelf Thickness</label><input value={editFields.shelf_thickness} placeholder={'3/4"'} onChange={e => setEditFields(pv => ({ ...pv, shelf_thickness: e.target.value }))} style={inp} /></div>
@@ -1621,7 +1647,8 @@ export default function Home() {
                       </div>
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={applyDiscount} onChange={e=>setApplyDiscount(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
-                        Apply dealer discount ({((selectedJob?.dealer_discount_pct || 0.05)*100).toFixed(0)}%) to gross cost
+                        Apply dealer discount of
+                        <input type="number" step="0.5" min="0" max="50" value={discountPct !== '' ? discountPct : ((selectedJob?.dealer_discount_pct || 0.05)*100)} onChange={e=>setDiscountPct(e.target.value)} onClick={e=>e.stopPropagation()} style={{ width:55, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:5, fontSize:12, margin:'0 4px' }}/>% to gross cost
                       </label>
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
@@ -1746,6 +1773,16 @@ export default function Home() {
                       <div style={{ display:'flex', gap:6, alignItems:'center' }}>
                         <span style={{ fontSize:11, color:'#888' }}>Next follow-up:</span>
                         <input type="date" value={selectedJob.next_followup_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ next_followup_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, next_followup_date: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      </div>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'#888' }}>Ship:</span>
+                        <input type="date" value={selectedJob.ship_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ ship_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ship_date: v }) }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <span style={{ fontSize:11, color:'#888' }}>Delivery:</span>
+                        <input type="date" value={selectedJob.est_delivery || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ est_delivery: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, est_delivery: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: selectedJob.notify_delivery ? '#2D7A3A' : '#888', cursor:'pointer', fontWeight: selectedJob.notify_delivery ? 600 : 400 }}>
+                          <input type="checkbox" checked={!!selectedJob.notify_delivery} onChange={async e=>{ const v = e.target.checked; if (v && !selectedJob.est_delivery) { alert('Set a delivery date first'); return } if (v && !selectedJob.gc_email) { if(!confirm('No GC email on this job — notices will go to Willy only. Continue?')) return } await supabase.from('jobs').update({ notify_delivery: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, notify_delivery: v }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: v ? 'Auto delivery notices ON (GC + Willy, weekly + 2-day)' : 'Auto delivery notices OFF' }) }} style={{ width:14, height:14, cursor:'pointer' }}/>
+                          📣 Auto-notify GC + Willy
+                        </label>
                       </div>
                     </div>
                     {!collapsed.trk && (<>
@@ -2085,7 +2122,7 @@ export default function Home() {
                         </select>
                         <label style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', borderRadius:6, cursor:fileUploading?'wait':'pointer', fontWeight:500 }}>
                           {fileUploading ? 'Uploading...' : '+ Upload'}
-                          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.csv" onChange={uploadJobFile} style={{ display:'none' }} disabled={fileUploading}/>
+                          <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.png,.jpg,.jpeg,.csv,.zip,.txt,.eml,.msg,.dwg" onChange={uploadJobFile} style={{ display:'none' }} disabled={fileUploading}/>
                         </label>
                       </div>
                     </div>

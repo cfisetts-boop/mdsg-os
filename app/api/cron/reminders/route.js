@@ -45,6 +45,53 @@ export async function GET() {
         add(j.owner, '📋 Weekly GC check (Fridays)', `${j.name} — ${j.stage}${j.gc_name ? ' · ' + j.gc_name : ''}`)
     }
 
+    // ── External delivery notices: GC + Willy, weekly (Mon) + 2 days prior ──
+    const isMonday = new Date().getDay() === 1
+    const tMinus2 = new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0]
+    let deliveryNotices = 0
+    for (const j of jobs) {
+      if (!j.notify_delivery || !j.est_delivery) continue
+      if (['Delivered', 'Closeout', 'Lost'].includes(j.stage)) continue
+      if (j.last_delivery_notice === today) continue
+      const twoDayHit = j.est_delivery === tMinus2
+      if (!isMonday && !twoDayHit) continue
+      const to = []
+      if (j.gc_email) to.push(j.gc_email)
+      to.push('greenworksrenovationsllc@gmail.com')
+      const ownerProf = profiles.find(pr => pr.name === j.owner)
+      const subject = twoDayHit
+        ? `Delivery in 2 days — ${j.name} (${j.est_delivery})`
+        : `Delivery schedule update — ${j.name}`
+      const bodyLines = [
+        `Project: ${j.name}`,
+        j.address ? `Address: ${[j.address, j.city, j.state].filter(Boolean).join(', ')}` : null,
+        j.ship_date ? `Ship date: ${j.ship_date}` : null,
+        `Estimated delivery: ${j.est_delivery}`,
+        '',
+        twoDayHit
+          ? 'Delivery is scheduled in 2 days. Willy — please confirm crew scheduling and site access. Call-ahead requested.'
+          : 'Weekly delivery schedule confirmation. Reply to this email with any changes to site readiness or timing.',
+        '',
+        `MDSG Cabinets${ownerProf ? ' — ' + ownerProf.name + ' (' + ownerProf.email + ')' : ''}`,
+      ].filter(l => l !== null)
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: 'MDSG Cabinets <csr@mdsgcabinets.com>',
+          to,
+          ...(ownerProf ? { cc: [ownerProf.email] } : {}),
+          subject,
+          text: bodyLines.join('\n'),
+        }),
+      })
+      if (res.ok) {
+        deliveryNotices++
+        await supabase.from('jobs').update({ last_delivery_notice: today }).eq('id', j.id)
+        await supabase.from('activity_log').insert({ job_id: j.id, user_name: 'MDSG OS', action: `Delivery notice emailed to ${to.join(', ')} (${twoDayHit ? '2-day' : 'weekly'})` })
+      }
+    }
+
     let sent = 0
     for (const prof of profiles) {
       const sections = byOwner[prof.name]
@@ -64,7 +111,7 @@ export async function GET() {
       })
       if (res.ok) sent++
     }
-    return Response.json({ sent, owners: Object.keys(byOwner) })
+    return Response.json({ sent, deliveryNotices, owners: Object.keys(byOwner) })
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 })
   }
