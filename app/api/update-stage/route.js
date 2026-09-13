@@ -19,6 +19,10 @@ export async function POST(request) {
     }
 
     const updateData = { stage }
+    if (stage === 'Awarded') {
+      const { data: cur } = await supabase.from('jobs').select('awarded_at').eq('id', jobId).single()
+      if (cur && !cur.awarded_at) updateData.awarded_at = new Date().toISOString().split('T')[0]
+    }
 
     const { data, error } = await supabase
       .from('jobs')

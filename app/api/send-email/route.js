@@ -34,6 +34,12 @@ export async function POST(request) {
         action: `✉ Emailed ${to.join(', ')}${cc.length ? ' (cc: ' + cc.join(', ') + ')' : ''} — "${subject}"${attachmentName ? ' + ' + attachmentName : ''}`,
       })
     }
+    try {
+      await supabase.from('email_events').insert({
+        email_id: json.id, event: 'sent', job_id: jobId || null,
+        subject, recipients: [...to, ...cc].join(', '),
+      })
+    } catch {}
     return Response.json({ success: true, id: json.id })
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 })

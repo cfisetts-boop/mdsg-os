@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import TakeoffEngine from './components/TakeoffEngine'
 import CountertopCalc from './components/CountertopCalc'
@@ -1072,6 +1072,7 @@ export default function Home() {
           {nav('dashboard', 'Dashboard')}
           {nav('jobs', 'Jobs')}
           {nav('contacts', 'Contractors')}
+          {nav('reports', 'Reports')}
           {nav('agent-pipeline', '⚡ Agent Pipeline')}
           {nav('takeoff', 'Upload Mfr Quote')}
           {nav('shipments', `Shipments${inTransitCount > 0 ? ` (${inTransitCount})` : ''}`)}
@@ -1090,6 +1091,7 @@ export default function Home() {
             {view === 'dashboard' && 'Dashboard'}
             {view === 'jobs' && 'Jobs'}
             {view === 'contacts' && 'Contractors'}
+            {view === 'reports' && 'Reports'}
             {view === 'takeoff' && 'Upload Manufacturer Quote'}
             {view === 'agent-pipeline' && '⚡ Agent Pipeline'}
             {view === 'shipments' && 'Shipments'}
@@ -2366,6 +2368,96 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* REPORTS VIEW */}
+          {view === 'reports' && (() => {
+            const OPEN_ST = ['RFQ', 'Open Proposals', 'On Hold']
+            const WON_ST  = ['Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
+            const monthKey = (d) => d ? String(d).substring(0, 7) : null
+            const months = []
+            for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().substring(0, 7)) }
+            const byMonth = months.map(m => ({
+              m,
+              won:  jobs.filter(j => WON_ST.includes(j.stage) && monthKey(j.awarded_at) === m),
+              bids: jobs.filter(j => monthKey(j.bid_due_date) === m),
+            }))
+            const maxBar = Math.max(1, ...byMonth.map(x => Math.max(x.won.reduce((s,j)=>s+effVal(j),0), x.bids.reduce((s,j)=>s+effVal(j),0))))
+            const owners = [...new Set(jobs.map(j => j.owner).filter(Boolean))]
+            const ownerRows = owners.map(o => {
+              const js = jobs.filter(j => j.owner === o)
+              const won = js.filter(j => WON_ST.includes(j.stage)), lost = js.filter(j => j.stage === 'Lost')
+              return { o, open: js.filter(j => OPEN_ST.includes(j.stage)), won, lost,
+                openVal: js.filter(j => OPEN_ST.includes(j.stage)).reduce((s,j)=>s+effVal(j),0),
+                wonVal: won.reduce((s,j)=>s+effVal(j),0),
+                wr: (won.length+lost.length) > 0 ? Math.round(100*won.length/(won.length+lost.length)) : null }
+            }).sort((a,b)=>b.wonVal-a.wonVal)
+            const marginRows = jobs.filter(j => Number(j.os_margin_pct) > 0 && !['Lost'].includes(j.stage))
+              .sort((a,b)=>Number(b.os_bid_value||0)-Number(a.os_bid_value||0)).slice(0, 12)
+            const aging = jobs.filter(j => OPEN_ST.includes(j.stage) && j.bid_due_date && j.bid_due_date < todayISO)
+              .map(j => ({ ...j, __d: daysPast(j.bid_due_date) })).sort((a,b)=>b.__d-a.__d).slice(0, 10)
+            const emailStats = null
+            return (
+              <div>
+                <div style={card}>
+                  <div style={{ fontWeight: 500, marginBottom: 12 }}>Won $ vs Bid $ — last 6 months <span style={{ fontSize:10, color:'#999', fontWeight:400 }}>(won by award date · bids by bid-due date — award dates start counting from today forward)</span></div>
+                  {byMonth.map(x => {
+                    const wonV = x.won.reduce((s,j)=>s+effVal(j),0), bidV = x.bids.reduce((s,j)=>s+effVal(j),0)
+                    return (
+                      <div key={x.m} style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 11, color:'#888', marginBottom: 2 }}>{x.m}</div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <div style={{ height: 12, width: `${Math.round(70*bidV/maxBar)}%`, minWidth: bidV>0?4:0, background:'#b9cbe0', borderRadius: 3 }}/>
+                          <span style={{ fontSize: 10, color:'#1B5EA6' }}>{bidV>0?fmt(bidV):''} bid ({x.bids.length})</span>
+                        </div>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:2 }}>
+                          <div style={{ height: 12, width: `${Math.round(70*wonV/maxBar)}%`, minWidth: wonV>0?4:0, background:'#2D7A3A', borderRadius: 3 }}/>
+                          <span style={{ fontSize: 10, color:'#2D7A3A' }}>{wonV>0?fmt(wonV):''} won ({x.won.length})</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={card}>
+                  <div style={{ fontWeight: 500, marginBottom: 10 }}>Team Performance</div>
+                  <div style={{ display:'grid', gridTemplateColumns:'120px 1fr 1fr 1fr 60px', gap:6, fontSize:12 }}>
+                    <div style={{ fontWeight:600, color:'#888', fontSize:10 }}>OWNER</div><div style={{ fontWeight:600, color:'#888', fontSize:10 }}>OPEN PIPELINE</div><div style={{ fontWeight:600, color:'#888', fontSize:10 }}>WON</div><div style={{ fontWeight:600, color:'#888', fontSize:10 }}>LOST</div><div style={{ fontWeight:600, color:'#888', fontSize:10 }}>WIN %</div>
+                    {ownerRows.map(r => (
+                      <React.Fragment key={r.o}>
+                        <div style={{ fontWeight:600 }}>{r.o}</div>
+                        <div>{r.open.length} · {fmt(r.openVal)}</div>
+                        <div style={{ color:'#2D7A3A' }}>{r.won.length} · {fmt(r.wonVal)}</div>
+                        <div style={{ color:'#A32D2D' }}>{r.lost.length}</div>
+                        <div>{r.wr !== null ? r.wr + '%' : '—'}</div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+                <div style={card}>
+                  <div style={{ fontWeight: 500, marginBottom: 10 }}>Margin Leaders <span style={{ fontSize:10, color:'#999', fontWeight:400 }}>(OS-generated proposals, active jobs)</span></div>
+                  {marginRows.map(j => (
+                    <div key={j.id} onClick={()=>{ setSelectedJob(j); setView('job-detail') }} style={{ display:'flex', gap:10, fontSize:12, padding:'4px 0', borderTop:'0.5px dotted #eee', cursor:'pointer' }}>
+                      <span style={{ flex:1, fontWeight:500 }}>{j.name}</span>
+                      <span style={{ color:'#888' }}>{j.gc_name || ''}</span>
+                      <span style={{ fontWeight:600 }}>{fmt(Number(j.os_bid_value)||0)}</span>
+                      <span style={{ fontWeight:700, color: Number(j.os_margin_pct) >= 0.2 ? '#2D7A3A' : '#e0a800', width:52, textAlign:'right' }}>{fmtPct(Number(j.os_margin_pct))}</span>
+                    </div>
+                  ))}
+                  {marginRows.length === 0 && <div style={{ fontSize:12, color:'#999' }}>Generate proposals to populate — margins record automatically.</div>}
+                </div>
+                <div style={card}>
+                  <div style={{ fontWeight: 500, marginBottom: 10 }}>Stale Open Bids <span style={{ fontSize:10, color:'#999', fontWeight:400 }}>(past bid due date)</span></div>
+                  {aging.map(j => (
+                    <div key={j.id} onClick={()=>{ setSelectedJob(j); setView('job-detail') }} style={{ display:'flex', gap:10, fontSize:12, padding:'4px 0', borderTop:'0.5px dotted #eee', cursor:'pointer' }}>
+                      <span style={{ flex:1, fontWeight:500 }}>{(j.priority==='hot')?'🔥 ':''}{j.name}</span>
+                      <span style={{ color:'#888' }}>{j.gc_name || ''}</span>
+                      <span style={{ color:'#A32D2D', fontWeight:600 }}>{j.__d}d overdue</span>
+                    </div>
+                  ))}
+                  {aging.length === 0 && <div style={{ fontSize:12, color:'#2D7A3A' }}>✓ Nothing stale — every open bid is inside its due date.</div>}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* CONTRACTORS VIEW */}
           {view === 'contacts' && (
