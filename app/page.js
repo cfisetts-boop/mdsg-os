@@ -189,8 +189,8 @@ export default function Home() {
   const [emailSending,    setEmailSending]    = useState(false)
   const [emailResult,     setEmailResult]     = useState(null)
   const REP_QUICKPICKS = [
-    ['Richard Knudson', ''],   // ← paste Richard's email in the quotes
-    ['Lorine Dockstader', ''], // ← paste Lorine's email in the quotes
+    ['Richard Knudson', 'rk@eclipsesalesgroup.com'],
+    ['Lorine Dockstader', 'ld@eclipsesalesgroup.com'],
   ]
   const PA_TEMPLATE = [
     ['CONTRACT', 'Scope list review & schedule of deliveries'],
