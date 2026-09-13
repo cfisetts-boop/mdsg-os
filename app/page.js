@@ -1126,6 +1126,21 @@ export default function Home() {
                   {delayedCount > 0 && <span>🚚 {delayedCount} shipment{delayedCount > 1 ? 's' : ''} delayed — <span onClick={() => setView('shipments')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>view</span></span>}
                 </div>
               )}
+              {jobs.filter(j => j.pending_review).length > 0 && (
+                <div style={{ background:'#fdf8ee', border:'0.5px solid #e8d9b0', borderRadius:10, padding:14, marginBottom:12 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#8B6914', marginBottom:8 }}>📥 Inbound RFQs — awaiting review ({jobs.filter(j => j.pending_review).length})</div>
+                  {jobs.filter(j => j.pending_review).map(j => (
+                    <div key={j.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'6px 0', borderTop:'0.5px dotted #e8d9b0', fontSize:12 }}>
+                      <span style={{ fontWeight:600, flex:1 }}>{j.name}</span>
+                      <span style={{ color:'#888' }}>{j.gc_name || '—'}</span>
+                      {j.bid_due_date && <span style={{ color:'#8B6914' }}>due {j.bid_due_date}</span>}
+                      <button onClick={()=>{ setSelectedJob(j); setView('job-detail') }} style={{ padding:'3px 10px', fontSize:10, background:'#fff', border:'0.5px solid #ccc', borderRadius:5, cursor:'pointer' }}>Review</button>
+                      <button onClick={async()=>{ await supabase.from('jobs').update({ pending_review: false, owner: authProfile?.name || null }).eq('id', j.id); await supabase.from('activity_log').insert({ job_id: j.id, user_name: authProfile?.name || 'MDSG', action: 'Inbound RFQ approved to pipeline' }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:5, cursor:'pointer', fontWeight:600 }}>✓ Approve</button>
+                      <button onClick={async()=>{ if(!confirm('Dismiss and delete this inbound RFQ?')) return; await supabase.from('jobs').delete().eq('id', j.id); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, background:'#fff', color:'#A32D2D', border:'0.5px solid #A32D2D', borderRadius:5, cursor:'pointer' }}>✕ Dismiss</button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
                 <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                   <span style={{ fontSize:11, color:'#888' }}>Owner:</span>
@@ -1206,7 +1221,7 @@ export default function Home() {
                       {stage} <span style={{ background: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: 10 }}>{jobs.filter(j => j.stage === stage).length}</span>
                       {(() => { const v = jobs.filter(j => j.stage === stage).reduce((s, j) => s + effVal(j), 0); return v > 0 ? <span style={{ fontSize: 10, fontWeight: 400, marginLeft: 6, opacity: 0.75 }}>{fmt(v)}</span> : null })()}
                     </div>
-                    {jobs.filter(j => j.stage === stage && (kanbanOwner==='all' || j.owner===kanbanOwner)).sort((a, b) => {
+                    {jobs.filter(j => j.stage === stage && !j.pending_review && (kanbanOwner==='all' || j.owner===kanbanOwner)).sort((a, b) => {
                       if (kanbanSort === 'az') return (a.name || '').localeCompare(b.name || '')
                       const key = (j) => { const ds = [j.next_followup_date, j.bid_due_date].filter(Boolean); return ds.length ? ds.sort()[0] : '9999-12-31' }
                       const ka = key(a), kb = key(b)
@@ -1232,7 +1247,7 @@ export default function Home() {
                 <div style={{ background: '#f0eff9', borderRadius: 8, padding: 12 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: '#3C3489', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Production — Post Award</div>
                   {PRODUCTION_STAGES.map(ps => {
-                    const rows = jobs.filter(j => j.stage === ps && (kanbanOwner==='all' || j.owner===kanbanOwner))
+                    const rows = jobs.filter(j => j.stage === ps && !j.pending_review && (kanbanOwner==='all' || j.owner===kanbanOwner))
                     return (
                       <div key={ps} style={{ marginBottom: 10 }}>
                         <div style={{ fontSize: 10, fontWeight: 600, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, display: 'flex', justifyContent: 'space-between' }}>

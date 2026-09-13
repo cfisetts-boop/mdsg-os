@@ -87,6 +87,7 @@ export async function GET() {
       })
       if (res.ok) {
         deliveryNotices++
+        try { const rj = await res.json(); await supabase.from('email_events').insert({ email_id: rj.id, event: 'sent', job_id: j.id, subject, recipients: to.join(', ') }) } catch {}
         await supabase.from('jobs').update({ last_delivery_notice: today }).eq('id', j.id)
         await supabase.from('activity_log').insert({ job_id: j.id, user_name: 'MDSG OS', action: `Delivery notice emailed to ${to.join(', ')} (${twoDayHit ? '2-day' : 'weekly'})` })
       }
@@ -109,7 +110,7 @@ export async function GET() {
           text: `Good morning ${prof.name},\n\n${bodyText}\n\nOpen the OS: https://mdsg-os.vercel.app`,
         }),
       })
-      if (res.ok) sent++
+      if (res.ok) { sent++; try { const rj = await res.json(); await supabase.from('email_events').insert({ email_id: rj.id, event: 'sent', job_id: null, subject: 'Daily digest', recipients: prof.email }) } catch {} }
     }
     return Response.json({ sent, deliveryNotices, owners: Object.keys(byOwner) })
   } catch (err) {
