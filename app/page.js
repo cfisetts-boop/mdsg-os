@@ -106,6 +106,13 @@ export default function Home() {
     setSowEditing(false)
     setPaRows(Array.isArray(selectedJob?.post_award) ? selectedJob.post_award : null)
     setPaEditing(false)
+    if (selectedJob?.id && selectedJob.activity_log === undefined) {
+      Promise.all([
+        supabase.from('activity_log').select('*').eq('job_id', selectedJob.id),
+        supabase.from('reminders').select('*').eq('job_id', selectedJob.id),
+      ]).then(([a, r]) => setSelectedJob(prev => prev && prev.id === selectedJob.id
+        ? { ...prev, activity_log: a.data || [], reminders: r.data || [] } : prev))
+    }
     setSavedQuotes([])
     if (selectedJob?.id) fetch('/api/quotes?jobId=' + selectedJob.id).then(r=>r.json()).then(d=>{
       setSavedQuotes(d.quotes || [])
@@ -314,7 +321,7 @@ export default function Home() {
     setLoading(true)
     const { data } = await supabase
       .from('jobs')
-      .select('*, unit_types(*), activity_log(*), reminders(*)')
+      .select('*, unit_types(*)')
       .order('created_at', { ascending: false })
     if (data) setJobs(data)
     setLoading(false)
@@ -362,7 +369,9 @@ export default function Home() {
     if (!selectedJob) return
     if (editingProposal || cabEditing || sowEditing || paEditing || emailOpen) return
     const fresh = jobs.find(j => j.id === selectedJob.id)
-    if (fresh && JSON.stringify(fresh) !== JSON.stringify(selectedJob)) setSelectedJob(fresh)
+    if (!fresh) return
+    const { activity_log, reminders: rem, ...bare } = selectedJob
+    if (JSON.stringify(fresh) !== JSON.stringify(bare)) setSelectedJob({ ...fresh, activity_log, reminders: rem })
   }, [jobs])  // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -672,10 +681,12 @@ export default function Home() {
     try {
       const base = { jobSpecs: { product_line: cabList?.product_line, door_style: selectedJob.door_style, finish_color: selectedJob.finish_color, drawer_box: selectedJob.drawer_box, cabinet_construction: selectedJob.cabinet_construction, box_construction: selectedJob.box_construction, interior_color: selectedJob.interior_color, shelf_thickness: selectedJob.shelf_thickness, hinge_type: selectedJob.hinge_type }, takeoffData: cabList, projectName: cabList.project_name || selectedJob.name, supplierName: cabList.specs?.cabinet_line || selectedJob.manufacturer || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }
       const safe = (cabList.project_name || selectedJob.name || 'Cabinet_Schedule').replace(/[^a-zA-Z0-9_-]/g, '_')
-      for (const [mode, suffix] of [['internal', 'Full_List'], ['manufacturer', 'Quote']]) {
+      const results = await Promise.all([['internal', 'Full_List'], ['manufacturer', 'Quote']].map(async ([mode, suffix]) => {
         const res = await fetch('/api/export/excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...base, mode }) })
         if (!res.ok) throw new Error('Export failed (' + mode + ')')
-        const blob = await res.blob()
+        return [suffix, await res.blob()]
+      }))
+      for (const [suffix, blob] of results) {
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a'); a.href = url; a.download = safe + '_' + suffix + '.xlsx'; a.click(); URL.revokeObjectURL(url)
         await new Promise(r => setTimeout(r, 400))
