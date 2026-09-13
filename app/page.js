@@ -1447,7 +1447,7 @@ export default function Home() {
                             </select></div>
                           <div><label style={lbl}>Cabinet Construction</label>
                             <select value={editFields.cabinet_construction} onChange={e => setEditFields(pv => ({ ...pv, cabinet_construction: e.target.value }))} style={inp}>
-                              <option value="">— select —</option><option>Framed</option><option>Frameless</option><option>Standard</option><option>Plywood</option>
+                              <option value="">— select —</option><option>Framed-Particle Board</option><option>Framed-Plywood</option><option>Frameless-Particle Board</option><option>Frameless-Plywood</option>
                             </select></div>
                           <div><label style={lbl}>Interior Color</label><input value={editFields.interior_color} placeholder="White" onChange={e => setEditFields(pv => ({ ...pv, interior_color: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Shelf Thickness</label><input value={editFields.shelf_thickness} placeholder={'3/4"'} onChange={e => setEditFields(pv => ({ ...pv, shelf_thickness: e.target.value }))} style={inp} /></div>
