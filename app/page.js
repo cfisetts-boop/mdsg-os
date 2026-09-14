@@ -59,6 +59,7 @@ const FRONT_STAGES = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded']
 const PRODUCTION_STAGES = ['Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
 const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics', 'Estes Express', 'R+L Carriers', 'Other']
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
+const fmtD = (d) => { if (!d) return '—'; const [y, m, dd] = String(d).split('T')[0].split('-'); return y && m && dd ? `${Number(m)}/${Number(dd)}/${y.substring(2)}` : d }
 const fmtPct = (n) => n ? (n * 100).toFixed(1) + '%' : '—'
 
 const emptyShipment = {
@@ -1133,7 +1134,7 @@ export default function Home() {
                     <div key={j.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'6px 0', borderTop:'0.5px dotted #e8d9b0', fontSize:12 }}>
                       <span style={{ fontWeight:600, flex:1 }}>{j.name}</span>
                       <span style={{ color:'#888' }}>{j.gc_name || '—'}</span>
-                      {j.bid_due_date && <span style={{ color:'#8B6914' }}>due {j.bid_due_date}</span>}
+                      {j.bid_due_date && <span style={{ color:'#8B6914' }}>due {fmtD(j.bid_due_date)}</span>}
                       <button onClick={()=>{ setSelectedJob(j); setView('job-detail') }} style={{ padding:'3px 10px', fontSize:10, background:'#fff', border:'0.5px solid #ccc', borderRadius:5, cursor:'pointer' }}>Review</button>
                       <button onClick={async()=>{ await supabase.from('jobs').update({ pending_review: false, owner: authProfile?.name || null }).eq('id', j.id); await supabase.from('activity_log').insert({ job_id: j.id, user_name: authProfile?.name || 'MDSG', action: 'Inbound RFQ approved to pipeline' }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:5, cursor:'pointer', fontWeight:600 }}>✓ Approve</button>
                       <button onClick={async()=>{ if(!confirm('Dismiss and delete this inbound RFQ?')) return; await supabase.from('jobs').delete().eq('id', j.id); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, background:'#fff', color:'#A32D2D', border:'0.5px solid #A32D2D', borderRadius:5, cursor:'pointer' }}>✕ Dismiss</button>
@@ -1232,8 +1233,8 @@ export default function Home() {
                         <div style={{ fontWeight: 500, fontSize: 13.5 }}>{(job.priority==='hot') ? '🔥 ' : ''}{job.name}{job.priority==='high' && <span style={{ marginLeft:5, fontSize:9, background:'#e0a800', color:'#fff', padding:'1px 5px', borderRadius:6, fontWeight:700 }}>HIGH</span>}</div>
                         {(job.bid_due_date || job.next_followup_date) && (
                           <div style={{ fontSize: 11, marginTop: 3, display:'flex', gap:8 }}>
-                            {job.bid_due_date && <span style={{ color: job.bid_due_date < new Date().toISOString().split('T')[0] ? '#A32D2D' : '#888' }}>📅 {job.bid_due_date}</span>}
-                            {job.next_followup_date && <span style={{ color:'#8B6914' }}>⏰ {job.next_followup_date}</span>}
+                            {job.bid_due_date && <span style={{ color: job.bid_due_date < new Date().toISOString().split('T')[0] ? '#A32D2D' : '#888' }}>📅 {fmtD(job.bid_due_date)}</span>}
+                            {job.next_followup_date && <span style={{ color:'#8B6914' }}>⏰ {fmtD(job.next_followup_date)}</span>}
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: '#888' }}>{job.gc_name || '—'}</div>
@@ -1256,7 +1257,7 @@ export default function Home() {
                         {rows.map(job => (
                           <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }} style={{ background: '#fff', borderRadius: 6, padding: '6px 9px', marginTop: 4, cursor: 'pointer', fontSize: 11.5, fontWeight: 500 }}>
                             {(job.priority==='hot') ? '🔥 ' : ''}{job.name}
-                            {job.est_delivery && <div style={{ fontSize: 9.5, color: '#888', fontWeight: 400 }}>ETA {job.est_delivery}</div>}
+                            {job.est_delivery && <div style={{ fontSize: 9.5, color: '#888', fontWeight: 400 }}>ETA {fmtD(job.est_delivery)}</div>}
                           </div>
                         ))}
                         {rows.length === 0 && <div style={{ fontSize: 10, color: '#bbb', marginTop: 3 }}>—</div>}
@@ -1399,10 +1400,17 @@ export default function Home() {
                 <div>
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 16 }}>{selectedJob.name}</div>
-                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', selectedJob.bid_due_date], ['Owner', selectedJob.owner]].filter(([, v]) => v).map(([label, value]) => (
+                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', fmtD(selectedJob.bid_due_date)], ['Owner', '__OWNER_SELECT__']].filter(([label, v]) => v || label === 'Owner').map(([label, value]) => (
                       <div key={label} style={{ marginBottom: 10 }}>
                         <div style={lbl}>{label}</div>
-                        <div style={{ fontSize: 13 }}>{value}</div>
+                        {value === '__OWNER_SELECT__' ? (
+                          <select value={selectedJob.owner || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ owner: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, owner: v }); loadJobs() }} style={{ fontSize: 13, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:6, background:'#fff' }}>
+                            <option value="">— unassigned —</option>
+                            {['Cole','Pam','Vicki','Blake','Tabetha'].map(o => <option key={o}>{o}</option>)}
+                          </select>
+                        ) : (
+                          <div style={{ fontSize: 13 }}>{value}</div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1640,7 +1648,7 @@ export default function Home() {
                   <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: 14 }}>
                       <div style={{ fontWeight: 500 }}><Chevron k="gp"/>Generate Proposal PDF</div>
-                      {selectedJob.proposal_status === 'sent' && <span style={{ fontSize:10, fontWeight:700, background:'#2D7A3A', color:'#fff', padding:'2px 8px', borderRadius:10 }}>SENT {selectedJob.proposal_sent_at || ''}</span>}
+                      {selectedJob.proposal_status === 'sent' && <span style={{ fontSize:10, fontWeight:700, background:'#2D7A3A', color:'#fff', padding:'2px 8px', borderRadius:10 }}>SENT {fmtD(selectedJob.proposal_sent_at)}</span>}
                       {selectedJob.proposal_status === 'final' && <span style={{ fontSize:10, fontWeight:700, background:'#e0a800', color:'#fff', padding:'2px 8px', borderRadius:10 }}>FINAL</span>}
                       <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
                         <button onClick={async()=>{ const st = selectedJob.proposal_status === 'draft' ? 'final' : 'draft'; const upd2 = { proposal_status: st }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal ' + (st==='final' ? 'marked FINAL' : 'FINAL removed') }) }} style={{ padding:'4px 12px', fontSize:11, background: selectedJob.proposal_status !== 'draft' ? '#e0a800' : '#f5f5f3', color: selectedJob.proposal_status !== 'draft' ? '#fff' : '#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer', fontWeight:600 }}>★ FINAL</button>
@@ -1751,7 +1759,7 @@ export default function Home() {
                       {(selectedJob.proposal_sets||[]).map((ps, i) => (
                         <div key={i} style={{ display:'flex', gap:10, alignItems:'center', fontSize:11.5, padding:'3px 0', borderTop:'0.5px dotted #eee' }}>
                           <span style={{ fontWeight:600, width:160 }}>{ps[0]}</span>
-                          <span style={{ color:'#888' }}>{ps[1]}</span>
+                          <span style={{ color:'#888' }}>{fmtD(ps[1])}</span>
                           <span style={{ fontWeight:600 }}>{ps[2] > 0 ? '$' + Number(ps[2]).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                           <span style={{ fontSize:9, fontWeight:700, color: ps[3]==='sent' ? '#2D7A3A' : ps[3]==='final' ? '#e0a800' : '#999', textTransform:'uppercase' }}>{ps[3]}</span>
                           <span style={{ color:'#aaa', fontSize:10 }}>{ps[4]}</span>
@@ -1819,7 +1827,7 @@ export default function Home() {
                       {(selectedJob.key_dates || []).map((kd, i) => (
                         <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
                           <span style={{ width:220, fontWeight:600, color:'#555' }}>{kd[0]}</span>
-                          <span>{kd[1] || '—'}</span>
+                          <span>{fmtD(kd[1])}</span>
                           <button onClick={async()=>{ const kds = (selectedJob.key_dates||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
                         </div>
                       ))}

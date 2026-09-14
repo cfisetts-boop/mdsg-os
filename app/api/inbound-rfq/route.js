@@ -37,7 +37,7 @@ export async function POST(request) {
 
     const content = []
     if (attachment_b64) content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: attachment_b64 } })
-    content.push({ type: 'text', text: `This is a bid invitation / RFQ / ITB email received by a commercial cabinet supplier.
+    content.push({ type: 'text', text: `This is a bid invitation / RFQ / ITB email received by a commercial cabinet supplier. Today's date is ${new Date().toISOString().split('T')[0]} — resolve any 2-digit years or relative dates against it (bid dates are in the future).
 FROM: ${from}
 SUBJECT: ${subject}
 BODY:
