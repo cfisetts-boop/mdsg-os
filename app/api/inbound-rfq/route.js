@@ -16,7 +16,23 @@ export async function POST(request) {
     if (!process.env.INBOUND_RFQ_KEY || searchParams.get('key') !== process.env.INBOUND_RFQ_KEY)
       return Response.json({ error: 'unauthorized' }, { status: 401 })
 
-    const { subject = '', from = '', body = '', attachment_b64 = null } = await request.json()
+    // Accept JSON or plain text (SUBJECT:/FROM:/BODY: delimited) — plain text
+    // sidesteps all JSON-escaping problems with HTML email bodies.
+    let subject = '', from = '', body = '', attachment_b64 = null
+    const rawText = await request.text()
+    try {
+      const j = JSON.parse(rawText)
+      subject = j.subject || ''; from = j.from || ''; body = j.body || ''; attachment_b64 = j.attachment_b64 || null
+    } catch {
+      const sm = rawText.match(/^SUBJECT:\s*(.*)$/m)
+      const fm = rawText.match(/^FROM:\s*(.*)$/m)
+      const bi = rawText.indexOf('BODY:')
+      subject = sm ? sm[1].trim() : ''
+      from = fm ? fm[1].trim() : ''
+      body = bi > -1 ? rawText.substring(bi + 5).trim() : rawText
+    }
+    // strip HTML to text for the parser
+    body = String(body).replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim()
     if (!subject && !body) return Response.json({ error: 'empty message' }, { status: 400 })
 
     const content = []
