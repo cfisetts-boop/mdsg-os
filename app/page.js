@@ -1075,6 +1075,7 @@ export default function Home() {
           {nav('jobs', 'Jobs')}
           {nav('contacts', 'Contractors')}
           {nav('reports', 'Reports')}
+          {nav('financials', 'Financials')}
           {nav('agent-pipeline', '⚡ Agent Pipeline')}
           {nav('takeoff', 'Upload Mfr Quote')}
           {nav('shipments', `Shipments${inTransitCount > 0 ? ` (${inTransitCount})` : ''}`)}
@@ -1094,6 +1095,7 @@ export default function Home() {
             {view === 'jobs' && 'Jobs'}
             {view === 'contacts' && 'Contractors'}
             {view === 'reports' && 'Reports'}
+            {view === 'financials' && 'Financials'}
             {view === 'takeoff' && 'Upload Manufacturer Quote'}
             {view === 'agent-pipeline' && '⚡ Agent Pipeline'}
             {view === 'shipments' && 'Shipments'}
@@ -1128,6 +1130,23 @@ export default function Home() {
                   {delayedCount > 0 && <span>🚚 {delayedCount} shipment{delayedCount > 1 ? 's' : ''} delayed — <span onClick={() => setView('shipments')} style={{ textDecoration: 'underline', cursor: 'pointer' }}>view</span></span>}
                 </div>
               )}
+              {(() => {
+                const mine = jobs.flatMap(j => (Array.isArray(j.tasks) ? j.tasks : []).map((t, i) => ({ j, t, i }))).filter(x => !x.t[3] && x.t[1] === authProfile?.name)
+                if (!mine.length) return null
+                return (
+                  <div style={{ background:'#f0f6f1', border:'0.5px solid #c4dcc8', borderRadius:10, padding:14, marginBottom:12 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#2D7A3A', marginBottom:6 }}>✔ My Tasks ({mine.length})</div>
+                    {mine.sort((a,b)=>String(a.t[2]||'9999').localeCompare(String(b.t[2]||'9999'))).map((x, k) => (
+                      <div key={k} style={{ display:'flex', gap:10, alignItems:'center', padding:'4px 0', borderTop:'0.5px dotted #c4dcc8', fontSize:12 }}>
+                        <input type="checkbox" onChange={async()=>{ const nv = (x.j.tasks||[]).map((tt,jj)=> jj===x.i ? [tt[0],tt[1],tt[2],true,new Date().toISOString().split('T')[0]] : tt); await supabase.from('jobs').update({ tasks: nv }).eq('id', x.j.id); loadJobs() }} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        <span style={{ flex:1 }}>{x.t[0]}</span>
+                        <span onClick={()=>{ setSelectedJob(x.j); setView('job-detail') }} style={{ color:'#1B5EA6', cursor:'pointer', textDecoration:'underline' }}>{x.j.name}</span>
+                        {x.t[2] && <span style={{ fontSize:11, color: x.t[2] < todayISO ? '#A32D2D' : '#888', fontWeight: x.t[2] < todayISO ? 700 : 400 }}>{fmtD(x.t[2])}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
               {jobs.filter(j => j.pending_review).length > 0 && (
                 <div style={{ background:'#fdf8ee', border:'0.5px solid #e8d9b0', borderRadius:10, padding:14, marginBottom:12 }}>
                   <div style={{ fontSize:12, fontWeight:700, color:'#8B6914', marginBottom:8 }}>📥 Inbound RFQs — awaiting review ({jobs.filter(j => j.pending_review).length})</div>
@@ -1613,7 +1632,20 @@ export default function Home() {
                             <span style={{ flex: 1, color: '#888', fontSize: 11 }}>{q.file_name || '—'}</span>
                             <span style={{ fontWeight: 600 }}>{q.grand_total > 0 ? '$' + Number(q.grand_total).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                             <span style={{ color: '#aaa', fontSize: 11 }}>{new Date(q.created_at).toLocaleDateString()}</span>
-                            <button title="Edit quote amounts" onClick={async()=>{ const g = prompt('Gross amount ($):', q.gross_amount || ''); if (g === null) return; const gr = prompt('Grand total ($) — leave same as gross if no freight/tax:', q.grand_total || g); if (gr === null) return; const res = await fetch('/api/quotes', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: q.id, jobId: selectedJob.id, gross_amount: Number(g)||0, grand_total: Number(gr)||Number(g)||0 }) }); const d = await res.json(); if (d.error) alert(d.error); else refreshSavedQuotes() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#888', fontSize:12 }}>✎</button>
+                            <button title="Edit quote amounts" onClick={async()=>{
+                              const g = prompt('Gross amount ($):', q.gross_amount || ''); if (g === null) return
+                              let body
+                              if (q.quote_type !== 'countertops') {
+                                const f = prompt('Freight ($):', q.freight_amount || 0); if (f === null) return
+                                const t = prompt('Tax / tariff ($):', q.tax_amount || 0); if (t === null) return
+                                body = { id: q.id, jobId: selectedJob.id, gross_amount: Number(g)||0, freight_amount: Number(f)||0, tax_amount: Number(t)||0, grand_total: (Number(g)||0)+(Number(f)||0)+(Number(t)||0) }
+                              } else {
+                                const gr = prompt('Grand total ($) — same as gross if no tax:', q.grand_total || g); if (gr === null) return
+                                body = { id: q.id, jobId: selectedJob.id, gross_amount: Number(g)||0, grand_total: Number(gr)||Number(g)||0 }
+                              }
+                              const res = await fetch('/api/quotes', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) })
+                              const d = await res.json(); if (d.error) alert(d.error); else { refreshSavedQuotes(); if (propQuoteId === q.id) applyQuoteToProposal({ ...q, ...body }) }
+                            }} style={{ background:'none', border:'none', cursor:'pointer', color:'#888', fontSize:12 }}>✎</button>
                             {q.quote_type !== 'countertops' && (
                               <button title="Set as working quote" onClick={async()=>{ await supabase.from('jobs').update({ working_quote_id: q.id }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, working_quote_id: q.id }); applyQuoteToProposal(q) }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, color: selectedJob.working_quote_id===q.id ? '#e0a800' : '#ccc' }}>★</button>
                             )}
@@ -1800,6 +1832,31 @@ export default function Home() {
                     </div>
 
                   <div style={card}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                      <div style={{ fontWeight:500 }}><Chevron k="tsk"/>Tasks{Array.isArray(selectedJob.tasks) && selectedJob.tasks.filter(t=>!t[3]).length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.tasks.filter(t=>!t[3]).length} open</span>}</div>
+                    </div>
+                    {!collapsed.tsk && (<>
+                    {(selectedJob.tasks || []).map((t, i) => (
+                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                        <input type="checkbox" checked={!!t[3]} onChange={async()=>{ const nv = (selectedJob.tasks||[]).map((x,j)=> j===i ? [x[0],x[1],x[2],!x[3], !x[3] ? new Date().toISOString().split('T')[0] : null] : x); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        <span style={{ flex:1, textDecoration: t[3] ? 'line-through' : 'none', color: t[3] ? '#999' : '#1a1a1a' }}>{t[0]}</span>
+                        <span style={{ fontSize:10, fontWeight:600, color:'#3C3489', background:'#f0eff9', padding:'1px 8px', borderRadius:8 }}>{t[1] || '—'}</span>
+                        {t[2] && <span style={{ fontSize:10, color: !t[3] && t[2] < todayISO ? '#A32D2D' : '#aaa' }}>{fmtD(t[2])}</span>}
+                        <button onClick={async()=>{ const nv = (selectedJob.tasks||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                      </div>
+                    ))}
+                    <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                      <input id="task-text" placeholder="Task…" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      <select id="task-who" defaultValue={authProfile?.name || ''} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}>
+                        {['Cole','Pam','Vicki','Blake','Tabetha'].map(o => <option key={o}>{o}</option>)}
+                      </select>
+                      <input id="task-due" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      <button onClick={async()=>{ const tx = document.getElementById('task-text'), w = document.getElementById('task-who'), d = document.getElementById('task-due'); if(!tx.value.trim()) return; const nv = [...(selectedJob.tasks||[]), [tx.value.trim(), w.value, d.value || null, false, null]]; await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs(); tx.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Assign</button>
+                    </div>
+                    </>)}
+                  </div>
+
+                  <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
                       <div style={{ fontWeight:500 }}><Chevron k="trk"/>ORDER TRACKING</div>
                       <div style={{ display:'flex', gap:4, alignItems:'center' }}>
@@ -1882,6 +1939,63 @@ export default function Home() {
                       </div>
                     )}
                   </div>
+
+                  {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
+                  <div style={card}>
+                    {(() => {
+                      const inv = selectedJob.invoices || []
+                      const cos = selectedJob.change_orders || []
+                      const contract = Number(selectedJob.os_bid_value) || Number(selectedJob.bid_value) || 0
+                      const coApproved = cos.filter(c => c[3] === 'approved').reduce((s, c) => s + (Number(c[2]) || 0), 0)
+                      const revised = contract + coApproved
+                      const billed = inv.reduce((s, i) => s + (Number(i[2]) || 0), 0)
+                      const paid = inv.filter(i => i[3] === 'paid').reduce((s, i) => s + (Number(i[2]) || 0), 0)
+                      const saveFin = async (patch) => { await supabase.from('jobs').update(patch).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...patch }) }
+                      return (
+                        <div>
+                          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                            <div style={{ fontWeight:500 }}><Chevron k="fin"/>Billing & Change Orders</div>
+                            <span style={{ fontSize:11, color:'#888' }}>Contract {fmt(contract)}{coApproved > 0 ? ` + COs ${fmt(coApproved)} = ${fmt(revised)}` : ''} · Billed {fmt(billed)} · Paid {fmt(paid)}{billed - paid > 0 ? ` · AR ${fmt(billed - paid)}` : ''}</span>
+                          </div>
+                          {!collapsed.fin && (<>
+                          <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>INVOICES / PAY APPS</div>
+                          {inv.map((r, i) => (
+                            <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                              <span style={{ width:90, fontWeight:600 }}>{r[0]}</span>
+                              <span style={{ width:70, color:'#888' }}>{fmtD(r[1])}</span>
+                              <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
+                              <button onClick={()=>{ const nv = inv.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='paid'?'unpaid':'paid'] : x); saveFin({ invoices: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='paid' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='paid' ? '#fff' : '#7a5c00' }}>{r[3]==='paid' ? '✓ PAID' : 'UNPAID'}</button>
+                              <button onClick={()=>{ if(!confirm('Remove invoice?')) return; saveFin({ invoices: inv.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                            </div>
+                          ))}
+                          <div style={{ display:'flex', gap:6, margin:'4px 0 10px' }}>
+                            <input id="inv-num" placeholder="Inv/App #" style={{ width:90, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="inv-date" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="inv-amt" type="number" placeholder="$" style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <button onClick={()=>{ const n = document.getElementById('inv-num'), d = document.getElementById('inv-date'), a = document.getElementById('inv-amt'); if(!n.value.trim() || !(Number(a.value)>0)) return; saveFin({ invoices: [...inv, [n.value.trim(), d.value || new Date().toISOString().split('T')[0], Number(a.value), 'unpaid']] }); n.value=''; d.value=''; a.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Invoice</button>
+                          </div>
+                          <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>CHANGE ORDERS</div>
+                          {cos.map((r, i) => (
+                            <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                              <span style={{ width:60, fontWeight:600 }}>{r[0]}</span>
+                              <span style={{ flex:1, color:'#555' }}>{r[1]}</span>
+                              <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
+                              <button onClick={()=>{ const nv = cos.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='approved'?'pending':'approved', x[4]] : x); saveFin({ change_orders: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='approved' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='approved' ? '#fff' : '#7a5c00' }}>{r[3]==='approved' ? '✓ APPROVED' : 'PENDING'}</button>
+                              <button onClick={()=>{ if(!confirm('Remove change order?')) return; saveFin({ change_orders: cos.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                            </div>
+                          ))}
+                          <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                            <input id="co-num" placeholder="CO #" style={{ width:60, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="co-desc" placeholder="Description" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="co-amt" type="number" placeholder="$ (± ok)" style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <button onClick={()=>{ const n = document.getElementById('co-num'), ds = document.getElementById('co-desc'), a = document.getElementById('co-amt'); if(!n.value.trim() || !a.value) return; saveFin({ change_orders: [...cos, [n.value.trim(), ds.value.trim(), Number(a.value), 'pending', new Date().toISOString().split('T')[0]]] }); n.value=''; ds.value=''; a.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ CO</button>
+                          </div>
+                          </>)}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  )}
 
                   {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
                   <div style={card}>
@@ -2396,6 +2510,51 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* FINANCIALS VIEW */}
+          {view === 'financials' && (() => {
+            const rows = jobs.filter(j => !j.is_test && ['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(j.stage)).map(j => {
+              const inv = j.invoices || [], cos = j.change_orders || []
+              const contract = Number(j.os_bid_value) || Number(j.bid_value) || 0
+              const coA = cos.filter(c => c[3]==='approved').reduce((s,c)=>s+(Number(c[2])||0),0)
+              const coP = cos.filter(c => c[3]==='pending').reduce((s,c)=>s+(Number(c[2])||0),0)
+              const revised = contract + coA
+              const billed = inv.reduce((s,i)=>s+(Number(i[2])||0),0)
+              const paid = inv.filter(i=>i[3]==='paid').reduce((s,i)=>s+(Number(i[2])||0),0)
+              return { j, contract, coA, coP, revised, billed, paid, ar: billed-paid, toBill: revised-billed }
+            }).sort((a,b)=>b.revised-a.revised)
+            const T = (k) => rows.reduce((s,r)=>s+r[k],0)
+            return (
+              <div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:14 }}>
+                  {[['Under Contract (revised)', T('revised'), '#3C3489'], ['Billed to Date', T('billed'), '#1B5EA6'], ['Collected', T('paid'), '#2D7A3A'], ['AR Outstanding', T('ar'), T('ar') > 0 ? '#A32D2D' : '#2D7A3A'], ['Left to Bill (backlog)', T('toBill'), '#8B6914']].map(([l, v, c2]) => (
+                    <div key={l} style={{ ...card, marginBottom:0, textAlign:'center' }}>
+                      <div style={{ fontSize:10, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.3 }}>{l}</div>
+                      <div style={{ fontSize:19, fontWeight:700, color:c2, marginTop:4 }}>{fmt(v)}</div>
+                    </div>
+                  ))}
+                </div>
+                {T('coP') > 0 && <div style={{ fontSize:12, color:'#8B6914', marginBottom:10 }}>⏳ {fmt(T('coP'))} in pending change orders (not counted until approved)</div>}
+                <div style={card}>
+                  <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap:6, fontSize:12 }}>
+                    {['JOB','CONTRACT','+COs','BILLED','PAID','AR','TO BILL'].map(h => <div key={h} style={{ fontWeight:600, color:'#888', fontSize:10 }}>{h}</div>)}
+                    {rows.map(r => (
+                      <React.Fragment key={r.j.id}>
+                        <div onClick={()=>{ setSelectedJob(r.j); setView('job-detail') }} style={{ fontWeight:600, cursor:'pointer', color:'#1B5EA6' }}>{r.j.name}</div>
+                        <div>{fmt(r.contract)}</div>
+                        <div style={{ color: r.coA > 0 ? '#2D7A3A' : '#bbb' }}>{r.coA !== 0 ? fmt(r.coA) : '—'}</div>
+                        <div>{fmt(r.billed)}</div>
+                        <div style={{ color:'#2D7A3A' }}>{fmt(r.paid)}</div>
+                        <div style={{ color: r.ar > 0 ? '#A32D2D' : '#bbb', fontWeight: r.ar > 0 ? 700 : 400 }}>{r.ar > 0 ? fmt(r.ar) : '—'}</div>
+                        <div style={{ color:'#8B6914' }}>{r.toBill > 0 ? fmt(r.toBill) : '—'}</div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  {rows.length === 0 && <div style={{ fontSize:12, color:'#999' }}>No jobs under contract yet — awarded jobs appear here with their billing.</div>}
+                </div>
+              </div>
+            )
+          })()}
 
           {/* REPORTS VIEW */}
           {view === 'reports' && (() => {

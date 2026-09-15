@@ -19,10 +19,12 @@ export async function GET(request) {
 
 // PATCH /api/quotes { id, jobId, gross_amount, grand_total } → edit amounts after upload
 export async function PATCH(request) {
-  const { id, jobId, gross_amount, grand_total } = await request.json()
+  const { id, jobId, gross_amount, freight_amount, tax_amount, grand_total } = await request.json()
   if (!id) return Response.json({ error: 'id required' }, { status: 400 })
   const upd = {}
   if (gross_amount !== undefined) upd.gross_amount = gross_amount
+  if (freight_amount !== undefined) upd.freight_amount = freight_amount
+  if (tax_amount !== undefined) upd.tax_amount = tax_amount
   if (grand_total !== undefined) upd.grand_total = grand_total
   const { error } = await supabase.from('manufacturer_quotes').update(upd).eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
