@@ -971,6 +971,7 @@ export default function Home() {
   const daysPast = (d) => Math.floor((new Date(todayISO) - new Date(d)) / 86400000)
   // Milestones: 7-day, 1-month, 2-month past bid due; reappears at each unless contacted after that milestone
   const FOLLOWUP_MILESTONES = [[7, '7-day'], [30, '1-month'], [60, '2-month']]
+  const visibleReminders = reminders.filter(r => !r.job_id || jobs.some(j => j.id === r.job_id))
   const customFollowUps = jobs.filter(j => j.next_followup_date && j.next_followup_date <= todayISO && !['Lost','Closeout'].includes(j.stage))
     .map(j => ({ ...j, __days: daysPast(j.next_followup_date), __milestone: 'scheduled' }))
   const followUps = jobs.map(j => {
@@ -1077,7 +1078,7 @@ export default function Home() {
           {nav('agent-pipeline', '⚡ Agent Pipeline')}
           {nav('takeoff', 'Upload Mfr Quote')}
           {nav('shipments', `Shipments${inTransitCount > 0 ? ` (${inTransitCount})` : ''}`)}
-          {nav('reminders', `Reminders${reminders.length > 0 ? ` (${reminders.length})` : ''}`)}
+          {nav('reminders', `Reminders${visibleReminders.length > 0 ? ` (${visibleReminders.length})` : ''}`)}
         </div>
         <div style={{ padding: '12px 16px', borderTop: '0.5px solid #e5e5e0' }}>
           <div style={{ fontWeight: 500, fontSize: 12 }}>Cole Isetts</div>
@@ -1419,7 +1420,7 @@ export default function Home() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                       <div style={{ fontWeight: 500 }}><Chevron k="pd"/>Proposal Details</div>
                       {!editingProposal
-                        ? <button onClick={() => setEditingProposal(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
+                        ? <div style={{ display:'flex', gap:6 }}><button onClick={async()=>{ if(!confirm('Duplicate this job as a new RFQ? Copies GC info, specs, cab list, and scope — not quotes or history.')) return; const src = selectedJob; const copyFields = ['gc_name','gc_contact','gc_email','gc_phone','address','city','state','zip','manufacturer','door_style','finish_color','cabinet_construction','box_construction','drawer_box','interior_color','shelf_thickness','hinge_type','notes','owner','cab_list','scope_of_work','dealer_discount_pct']; const ins = { name: src.name + ' (Copy)', stage: 'RFQ' }; copyFields.forEach(k => { if (src[k] !== undefined && src[k] !== null) ins[k] = src[k] }); const { data: nj, error } = await supabase.from('jobs').insert(ins).select().single(); if (error) { alert(error.message); return } await supabase.from('activity_log').insert({ job_id: nj.id, user_name: authProfile?.name || 'MDSG', action: 'Duplicated from ' + src.name }); await loadJobs(); setSelectedJob(nj) }} style={{ fontSize: 11, padding: '4px 12px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>⧉ Duplicate</button><button onClick={() => setEditingProposal(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button></div>
                         : <div style={{ display: 'flex', gap: 6 }}>
                             <button onClick={saveProposalEdits} disabled={savingEdits} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>{savingEdits ? 'Saving...' : 'Save'}</button>
                             <button onClick={() => setEditingProposal(false)} style={{ fontSize: 11, padding: '4px 12px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Cancel</button>
@@ -1612,6 +1613,7 @@ export default function Home() {
                             <span style={{ flex: 1, color: '#888', fontSize: 11 }}>{q.file_name || '—'}</span>
                             <span style={{ fontWeight: 600 }}>{q.grand_total > 0 ? '$' + Number(q.grand_total).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                             <span style={{ color: '#aaa', fontSize: 11 }}>{new Date(q.created_at).toLocaleDateString()}</span>
+                            <button title="Edit quote amounts" onClick={async()=>{ const g = prompt('Gross amount ($):', q.gross_amount || ''); if (g === null) return; const gr = prompt('Grand total ($) — leave same as gross if no freight/tax:', q.grand_total || g); if (gr === null) return; const res = await fetch('/api/quotes', { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ id: q.id, jobId: selectedJob.id, gross_amount: Number(g)||0, grand_total: Number(gr)||Number(g)||0 }) }); const d = await res.json(); if (d.error) alert(d.error); else refreshSavedQuotes() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#888', fontSize:12 }}>✎</button>
                             {q.quote_type !== 'countertops' && (
                               <button title="Set as working quote" onClick={async()=>{ await supabase.from('jobs').update({ working_quote_id: q.id }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, working_quote_id: q.id }); applyQuoteToProposal(q) }} style={{ background:'none', border:'none', cursor:'pointer', fontSize:14, color: selectedJob.working_quote_id===q.id ? '#e0a800' : '#ccc' }}>★</button>
                             )}
@@ -1799,13 +1801,16 @@ export default function Home() {
 
                   <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-                      <div style={{ fontWeight:500 }}><Chevron k="trk"/>Tracking</div>
+                      <div style={{ fontWeight:500 }}><Chevron k="trk"/>ORDER TRACKING</div>
                       <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                         <span style={{ fontSize:11, color:'#888' }}>Priority:</span>
                         {['low','normal','high','hot'].map(pr => (
                           <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
                         ))}
                       </div>
+                      <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_test ? '#8B6914' : '#bbb', cursor:'pointer' }}>
+                        <input type="checkbox" checked={!!selectedJob.is_test} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_test: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_test: v }); loadJobs() }} style={{ width:13, height:13 }}/>🧪 Test job
+                      </label>
                       <div style={{ display:'flex', gap:6, alignItems:'center' }}>
                         <span style={{ fontSize:11, color:'#888' }}>Next follow-up:</span>
                         <input type="date" value={selectedJob.next_followup_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ next_followup_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, next_followup_date: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
@@ -2394,6 +2399,7 @@ export default function Home() {
 
           {/* REPORTS VIEW */}
           {view === 'reports' && (() => {
+            const jobs_all = jobs; const jobsR = jobs.filter(j => !j.is_test)
             const OPEN_ST = ['RFQ', 'Open Proposals', 'On Hold']
             const WON_ST  = ['Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
             const monthKey = (d) => d ? String(d).substring(0, 7) : null
@@ -2401,22 +2407,22 @@ export default function Home() {
             for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().substring(0, 7)) }
             const byMonth = months.map(m => ({
               m,
-              won:  jobs.filter(j => WON_ST.includes(j.stage) && monthKey(j.awarded_at) === m),
-              bids: jobs.filter(j => monthKey(j.bid_due_date) === m),
+              won:  jobsR.filter(j => WON_ST.includes(j.stage) && monthKey(j.awarded_at) === m),
+              bids: jobsR.filter(j => monthKey(j.bid_due_date) === m),
             }))
             const maxBar = Math.max(1, ...byMonth.map(x => Math.max(x.won.reduce((s,j)=>s+effVal(j),0), x.bids.reduce((s,j)=>s+effVal(j),0))))
-            const owners = [...new Set(jobs.map(j => j.owner).filter(Boolean))]
+            const owners = [...new Set(jobsR.map(j => j.owner).filter(Boolean))]
             const ownerRows = owners.map(o => {
-              const js = jobs.filter(j => j.owner === o)
+              const js = jobsR.filter(j => j.owner === o)
               const won = js.filter(j => WON_ST.includes(j.stage)), lost = js.filter(j => j.stage === 'Lost')
               return { o, open: js.filter(j => OPEN_ST.includes(j.stage)), won, lost,
                 openVal: js.filter(j => OPEN_ST.includes(j.stage)).reduce((s,j)=>s+effVal(j),0),
                 wonVal: won.reduce((s,j)=>s+effVal(j),0),
                 wr: (won.length+lost.length) > 0 ? Math.round(100*won.length/(won.length+lost.length)) : null }
             }).sort((a,b)=>b.wonVal-a.wonVal)
-            const marginRows = jobs.filter(j => Number(j.os_margin_pct) > 0 && !['Lost'].includes(j.stage))
+            const marginRows = jobsR.filter(j => Number(j.os_margin_pct) > 0 && !['Lost'].includes(j.stage))
               .sort((a,b)=>Number(b.os_bid_value||0)-Number(a.os_bid_value||0)).slice(0, 12)
-            const aging = jobs.filter(j => OPEN_ST.includes(j.stage) && j.bid_due_date && j.bid_due_date < todayISO)
+            const aging = jobsR.filter(j => OPEN_ST.includes(j.stage) && j.bid_due_date && j.bid_due_date < todayISO)
               .map(j => ({ ...j, __d: daysPast(j.bid_due_date) })).sort((a,b)=>b.__d-a.__d).slice(0, 10)
             const emailStats = null
             return (
@@ -2612,9 +2618,9 @@ export default function Home() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {reminders.length === 0
+                  {visibleReminders.length === 0
                     ? <tr><td colSpan={6} style={{ padding: 24, textAlign: 'center', color: '#888' }}>No upcoming reminders</td></tr>
-                    : reminders.map(r => {
+                    : visibleReminders.map(r => {
                         const isOverdue = r.due_date <= new Date().toISOString().split('T')[0]
                         return (
                           <tr key={r.id} style={{ borderBottom: '0.5px solid #f0f0ec', background: isOverdue ? '#FCEBEB' : '' }}>
