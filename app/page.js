@@ -176,6 +176,7 @@ export default function Home() {
   const [rfqImporting,    setRfqImporting]    = useState(false)
   const [specLib,         setSpecLib]         = useState([])
   const [libUploading,    setLibUploading]    = useState(false)
+  const [libDragIdx,      setLibDragIdx]      = useState(null)
   const [litSelected,     setLitSelected]     = useState([])
   const [reportOwner,     setReportOwner]     = useState('all')
   const [reportGc,        setReportGc]        = useState('all')
@@ -384,7 +385,7 @@ export default function Home() {
   }, [authSession])
 
   const loadSpecLib = useCallback(async () => {
-    const { data } = await supabase.from('spec_library').select('*').order('title')
+    const { data } = await supabase.from('spec_library').select('*').order('sort_order', { ascending: true, nullsFirst: false }).order('title')
     setSpecLib(data || [])
   }, [])
   useEffect(() => { if (authSession) { loadJobs(); loadReminders(); loadAllActiveShipments(); loadSpecLib() } }, [authSession, loadJobs, loadReminders, loadAllActiveShipments, loadSpecLib])
@@ -2649,8 +2650,14 @@ export default function Home() {
                 </label>
               </div>
               <div style={card}>
-                {specLib.map(r => (
-                  <div key={r.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'5px 0', borderTop:'0.5px dotted #eee', fontSize:12 }}>
+                {specLib.map((r, ri) => (
+                  <div key={r.id} draggable
+                    onDragStart={()=>setLibDragIdx(ri)}
+                    onDragOver={e=>e.preventDefault()}
+                    onDrop={async e=>{ e.preventDefault(); if (libDragIdx === null || libDragIdx === ri) return; const arr = [...specLib]; const [moved] = arr.splice(libDragIdx, 1); arr.splice(ri, 0, moved); setSpecLib(arr); setLibDragIdx(null); await Promise.all(arr.map((row, i2) => supabase.from('spec_library').update({ sort_order: i2 + 1 }).eq('id', row.id))) }}
+                    onDragEnd={()=>setLibDragIdx(null)}
+                    style={{ display:'flex', gap:8, alignItems:'center', padding:'5px 0', borderTop:'0.5px dotted #eee', fontSize:12, background: libDragIdx === ri ? '#f0eff9' : 'transparent', cursor:'grab' }}>
+                    <span style={{ color:'#bbb', fontSize:13, cursor:'grab', userSelect:'none' }}>☰</span>
                     <input defaultValue={r.title} onBlur={async e=>{ if (e.target.value !== r.title) { await supabase.from('spec_library').update({ title: e.target.value }).eq('id', r.id); loadSpecLib() } }} style={{ flex:1, padding:'4px 8px', border:'0.5px solid #e5e5e5', borderRadius:5, fontSize:12, fontWeight:600 }}/>
                     <input defaultValue={r.tags} placeholder="tags: Shaker, Framed, dovetail…" onBlur={async e=>{ if (e.target.value !== r.tags) { await supabase.from('spec_library').update({ tags: e.target.value }).eq('id', r.id); loadSpecLib() } }} style={{ flex:1.4, padding:'4px 8px', border:'0.5px solid #e5e5e5', borderRadius:5, fontSize:11, color:'#3C3489' }}/>
                     <button onClick={async()=>{ const { data } = await supabase.storage.from('job-files').createSignedUrl(r.file_path, 300); if (data?.signedUrl) window.open(data.signedUrl, '_blank') }} style={{ padding:'3px 10px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer' }}>View</button>
