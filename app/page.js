@@ -1613,53 +1613,27 @@ export default function Home() {
                   </>)}
                     </div>
 
+                  
+
                   <div style={card}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}><Chevron k="cs"/>Cabinet Schedule</div>
-                      {selectedJob.total_cabinet_count > 0 && (
-                        <button onClick={async () => {
-                            try {
-                              const { data: uts } = await supabase.from('unit_types').select('*, cabinet_line_items(*)').eq('job_id', selectedJob.id).order('sort_order')
-                              if (!uts?.length) return alert('No cabinet data saved yet')
-                              const takeoffData = {
-                                project_name: selectedJob.name,
-                                unit_types: uts.map(ut => ({
-                                  unit_type_name: ut.unit_type_name, unit_quantity: ut.unit_quantity || 1, cabinet_count: ut.cabinet_count || 0,
-                                  skus:    (ut.cabinet_line_items || []).filter(li => li.sort_order < 1000).map(li => ({ sku: li.sku, description: li.description, quantity_per_unit: li.quantity, hinge_side: li.hinge_side })),
-                                  fillers: (ut.cabinet_line_items || []).filter(li => li.sort_order >= 1000).map(li => ({ sku: li.sku, description: li.description, quantity_per_unit: li.quantity })),
-                                })),
-                                specs: { cabinet_line: selectedJob.manufacturer || 'TBD', door_style: selectedJob.door_style || 'TBD', finish: selectedJob.finish_color || 'TBD', box_construction: selectedJob.box_construction || 'TBD' },
-                              }
-                              const res = await fetch('/api/export/excel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ takeoffData, projectName: selectedJob.name, supplierName: selectedJob.manufacturer || 'TBD', catalogRef: 'TBD', printDate: new Date().toLocaleDateString('en-US') }) })
-                              if (!res.ok) throw new Error('Export failed')
-                              const blob = await res.blob(); const url = URL.createObjectURL(blob)
-                              const a = document.createElement('a'); a.href = url
-                              a.download = `${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Cabinet_Schedule.xlsx`
-                              a.click(); URL.revokeObjectURL(url)
-                            } catch (err) { alert('Download failed: ' + err.message) }
-                          }}
-                          style={{ padding: '4px 12px', fontSize: 11, background: '#2D7A3A', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 500 }}>
-                          ⬇ Download Excel
-                        </button>
-                      )}
-                    </div>
-                    {!collapsed.cs && (<>
-                    {selectedJob.total_cabinet_count > 0 ? (
-                      <div>
-                        <div style={{ display: 'flex', gap: 16, marginBottom: 10 }}>
-                          <div><div style={lbl}>Total Cabinets</div><div style={{ fontSize: 22, fontWeight: 700, color: '#3C3489' }}>{selectedJob.total_cabinet_count.toLocaleString()}</div></div>
-                          <div><div style={lbl}>Unit Types</div><div style={{ fontSize: 22, fontWeight: 700, color: '#3C3489' }}>{(selectedJob.unit_types || []).length}</div></div>
-                        </div>
-                        {(selectedJob.unit_types || []).sort((a,b) => a.sort_order - b.sort_order).map(ut => (
-                          <div key={ut.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 12, borderBottom: '0.5px solid #f0f0ec' }}>
-                            <span>{ut.unit_type_name}</span>
-                            <span style={{ color: '#888' }}>{ut.unit_quantity} units · {(ut.cabinet_count || 0).toLocaleString()} cabs · {((ut.cabinet_count || 0) * (ut.unit_quantity || 1)).toLocaleString()} total</span>
-                          </div>
-                        ))}
+                    <div style={{ fontWeight: 500, marginBottom: 16 }}><Chevron k="ps"/>Pricing Summary</div>
+                    {!collapsed.ps && (<>
+                    {[['Manufacturer Gross', selectedJob.manufacturer_gross_cost], ['Freight', selectedJob.freight_cost]].map(([label, value]) => (
+                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec' }}>
+                        <span style={{ color: '#555' }}>{label}</span><span style={{ fontWeight: 500 }}>{fmt(value)}</span>
                       </div>
-                    ) : (
-                      <div style={{ color: '#aaa', fontSize: 12 }}>No cabinet data saved yet — use the <span style={{ color: '#3C3489', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => setView('agent-pipeline')}>⚡ Agent Pipeline</span> to extract and save</div>
-                    )}
+                    ))}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec', color: '#3B6D11' }}>
+                      <span>Dealer Discount ({((selectedJob.dealer_discount_pct || 0.05) * 100).toFixed(0)}%)</span>
+                      <span style={{ fontWeight: 500 }}>− {fmt((selectedJob.manufacturer_gross_cost || 0) * (selectedJob.dealer_discount_pct || 0.05))}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0', fontSize: 16, fontWeight: 500 }}>
+                      <span>Bid to GC</span><span style={{ color: '#3C3489' }}>{fmt(selectedJob.bid_value)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
+                      <span style={{ color: '#888' }}>Gross Margin</span>
+                      <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
+                    </div>
                   </>)}
                     </div>
 
@@ -1889,27 +1863,63 @@ export default function Home() {
                 </div>
 
                 <div>
+                  
+
+                  
+
                   <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 16 }}><Chevron k="ps"/>Pricing Summary</div>
-                    {!collapsed.ps && (<>
-                    {[['Manufacturer Gross', selectedJob.manufacturer_gross_cost], ['Freight', selectedJob.freight_cost]].map(([label, value]) => (
-                      <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec' }}>
-                        <span style={{ color: '#555' }}>{label}</span><span style={{ fontWeight: 500 }}>{fmt(value)}</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+                      <div style={{ fontWeight:500 }}><Chevron k="tsk"/>Tasks & Reminders{Array.isArray(selectedJob.tasks) && selectedJob.tasks.filter(t=>!t[3]).length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.tasks.filter(t=>!t[3]).length} open</span>}</div>
+                    </div>
+                    {!collapsed.tsk && (<>
+                    {(selectedJob.tasks || []).map((t, i) => (
+                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                        <input type="checkbox" checked={!!t[3]} onChange={async()=>{ const nv = (selectedJob.tasks||[]).map((x,j)=> j===i ? [x[0],x[1],x[2],!x[3], !x[3] ? new Date().toISOString().split('T')[0] : null] : x); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ width:15, height:15, cursor:'pointer' }}/>
+                        <span style={{ flex:1, textDecoration: t[3] ? 'line-through' : 'none', color: t[3] ? '#999' : '#1a1a1a' }}>{t[0]}</span>
+                        <span style={{ fontSize:10, fontWeight:600, color:'#3C3489', background:'#f0eff9', padding:'1px 8px', borderRadius:8 }}>{t[1] || '—'}</span>
+                        {t[2] && <span style={{ fontSize:10, color: !t[3] && t[2] < todayISO ? '#A32D2D' : '#aaa' }}>{fmtD(t[2])}</span>}
+                        <button onClick={async()=>{ const nv = (selectedJob.tasks||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
                       </div>
                     ))}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec', color: '#3B6D11' }}>
-                      <span>Dealer Discount ({((selectedJob.dealer_discount_pct || 0.05) * 100).toFixed(0)}%)</span>
-                      <span style={{ fontWeight: 500 }}>− {fmt((selectedJob.manufacturer_gross_cost || 0) * (selectedJob.dealer_discount_pct || 0.05))}</span>
+                    <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                      <input id="task-text" placeholder="Task…" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      <select id="task-who" defaultValue={authProfile?.name || ''} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}>
+                        {['Cole','Pam','Vicki','Blake','Tabetha','Team'].map(o => <option key={o}>{o}</option>)}
+                      </select>
+                      <input id="task-due" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      <button onClick={async()=>{ const tx = document.getElementById('task-text'), w = document.getElementById('task-who'), d = document.getElementById('task-due'); if(!tx.value.trim()) return; const nv = [...(selectedJob.tasks||[]), [tx.value.trim(), w.value, d.value || null, false, null]]; await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs(); tx.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Assign</button>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 0', fontSize: 16, fontWeight: 500 }}>
-                      <span>Bid to GC</span><span style={{ color: '#3C3489' }}>{fmt(selectedJob.bid_value)}</span>
+                    </>)}
+                  
+                    {!collapsed.tsk && (<div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, marginTop:10 }}>REMINDERS</div>
+                      <button onClick={() => setShowReminderForm(true)} style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>+ Add</button>
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 12 }}>
-                      <span style={{ color: '#888' }}>Gross Margin</span>
-                      <span style={{ color: (selectedJob.gross_margin_pct || 0) >= 0.25 ? '#3B6D11' : '#854F0B', fontWeight: 500 }}>{fmtPct(selectedJob.gross_margin_pct)}</span>
-                    </div>
+                    {true && (<>
+                    {showReminderForm && (
+                      <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                        <input type="date" value={newReminder.due_date} onChange={e => setNewReminder(p => ({ ...p, due_date: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
+                        <select value={newReminder.reminder_type} onChange={e => setNewReminder(p => ({ ...p, reminder_type: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
+                          <option>Bid Follow-up</option><option>Bid Deadline</option><option>Delivery Check</option><option>Payment</option><option>General</option>
+                        </select>
+                        <input placeholder="Message..." value={newReminder.message} onChange={e => setNewReminder(p => ({ ...p, message: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button onClick={createReminder} style={{ flex: 1, padding: '6px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Save</button>
+                          <button onClick={() => setShowReminderForm(false)} style={{ flex: 1, padding: '6px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                    {(selectedJob.reminders || []).filter(r => !r.completed).map(r => (
+                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: 12, borderBottom: '0.5px solid #f0f0ec' }}>
+                        <div><div>{r.message}</div><div style={{ color: '#888', fontSize: 11 }}>{r.due_date} · {r.reminder_type}</div></div>
+                        <button onClick={() => completeReminder(r.id)} style={{ fontSize: 10, padding: '3px 8px', background: '#EAF3DE', color: '#3B6D11', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Done</button>
+                      </div>
+                    ))}
+                    {(selectedJob.reminders || []).filter(r => !r.completed).length === 0 && !showReminderForm && <div style={{ color: '#888', fontSize: 12 }}>No open reminders</div>}
                   </>)}
-                    </div>
+                    </div>)}
+                  </div>
 
                   <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -1979,326 +1989,7 @@ export default function Home() {
                     </>)}
                   </div>
 
-                  <div style={card}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
-                      <div style={{ fontWeight:500 }}><Chevron k="tsk"/>Tasks{Array.isArray(selectedJob.tasks) && selectedJob.tasks.filter(t=>!t[3]).length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.tasks.filter(t=>!t[3]).length} open</span>}</div>
-                    </div>
-                    {!collapsed.tsk && (<>
-                    {(selectedJob.tasks || []).map((t, i) => (
-                      <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
-                        <input type="checkbox" checked={!!t[3]} onChange={async()=>{ const nv = (selectedJob.tasks||[]).map((x,j)=> j===i ? [x[0],x[1],x[2],!x[3], !x[3] ? new Date().toISOString().split('T')[0] : null] : x); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ width:15, height:15, cursor:'pointer' }}/>
-                        <span style={{ flex:1, textDecoration: t[3] ? 'line-through' : 'none', color: t[3] ? '#999' : '#1a1a1a' }}>{t[0]}</span>
-                        <span style={{ fontSize:10, fontWeight:600, color:'#3C3489', background:'#f0eff9', padding:'1px 8px', borderRadius:8 }}>{t[1] || '—'}</span>
-                        {t[2] && <span style={{ fontSize:10, color: !t[3] && t[2] < todayISO ? '#A32D2D' : '#aaa' }}>{fmtD(t[2])}</span>}
-                        <button onClick={async()=>{ const nv = (selectedJob.tasks||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
-                      </div>
-                    ))}
-                    <div style={{ display:'flex', gap:6, marginTop:6 }}>
-                      <input id="task-text" placeholder="Task…" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                      <select id="task-who" defaultValue={authProfile?.name || ''} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}>
-                        {['Cole','Pam','Vicki','Blake','Tabetha','Team'].map(o => <option key={o}>{o}</option>)}
-                      </select>
-                      <input id="task-due" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                      <button onClick={async()=>{ const tx = document.getElementById('task-text'), w = document.getElementById('task-who'), d = document.getElementById('task-due'); if(!tx.value.trim()) return; const nv = [...(selectedJob.tasks||[]), [tx.value.trim(), w.value, d.value || null, false, null]]; await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs(); tx.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Assign</button>
-                    </div>
-                    </>)}
-                  </div>
-
-                  <div style={card}>
-                    <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-                      <div style={{ fontWeight:500 }}><Chevron k="trk"/>ORDER TRACKING</div>
-                      <div style={{ display:'flex', gap:4, alignItems:'center' }}>
-                        <span style={{ fontSize:11, color:'#888' }}>Priority:</span>
-                        {['low','normal','high','hot'].map(pr => (
-                          <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
-                        ))}
-                      </div>
-                      <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_test ? '#8B6914' : '#bbb', cursor:'pointer' }}>
-                        <input type="checkbox" checked={!!selectedJob.is_test} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_test: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_test: v }); loadJobs() }} style={{ width:13, height:13 }}/>🧪 Test job
-                      </label>
-                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                        <span style={{ fontSize:11, color:'#888' }}>Next follow-up:</span>
-                        <input type="date" value={selectedJob.next_followup_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ next_followup_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, next_followup_date: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                      </div>
-                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                        <span style={{ fontSize:11, color:'#888' }}>Ship:</span>
-                        <input type="date" value={selectedJob.ship_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ ship_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ship_date: v }) }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                        <span style={{ fontSize:11, color:'#888' }}>Delivery:</span>
-                        <input type="date" value={selectedJob.est_delivery || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ est_delivery: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, est_delivery: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                        <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: selectedJob.notify_delivery ? '#2D7A3A' : '#888', cursor:'pointer', fontWeight: selectedJob.notify_delivery ? 600 : 400 }}>
-                          <input type="checkbox" checked={!!selectedJob.notify_delivery} onChange={async e=>{ const v = e.target.checked; if (v && !selectedJob.est_delivery) { alert('Set a delivery date first'); return } if (v && !selectedJob.gc_email) { if(!confirm('No GC email on this job — notices will go to Willy only. Continue?')) return } await supabase.from('jobs').update({ notify_delivery: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, notify_delivery: v }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: v ? 'Auto delivery notices ON (GC + Willy, weekly + 2-day)' : 'Auto delivery notices OFF' }) }} style={{ width:14, height:14, cursor:'pointer' }}/>
-                          📣 Auto-notify GC + Willy
-                        </label>
-                      </div>
-                    </div>
-                    {!collapsed.trk && (<>
-                    <div style={{ marginTop:10 }}>
-                      <div style={{ fontSize:11, color:'#888', fontWeight:600, marginBottom:4 }}>KEY DATES</div>
-                      {(selectedJob.key_dates || []).map((kd, i) => (
-                        <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
-                          <span style={{ width:220, fontWeight:600, color:'#555' }}>{kd[0]}</span>
-                          <span>{fmtD(kd[1])}</span>
-                          <button onClick={async()=>{ const kds = (selectedJob.key_dates||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
-                        </div>
-                      ))}
-                      <div style={{ display:'flex', gap:6, marginTop:6 }}>
-                        <input id="kd-label" placeholder="Label (e.g. Samples due, Walk-through)" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                        <input id="kd-date" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                        <button onClick={async()=>{ const l = document.getElementById('kd-label'); const d = document.getElementById('kd-date'); if(!l.value.trim()) return; const kds = [...(selectedJob.key_dates||[]), [l.value.trim(), d.value || '']]; await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }); l.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
-                      </div>
-                    </div>
-                  </>)}
-                    
-                    {!collapsed.trk && (<div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}><span style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5 }}>SHIPMENTS</span></div>
-                      <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
-                    </div>
-                    {true && (<>
-                    {showShipmentForm && (
-                      <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 14, marginBottom: 14 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                          <div><label style={lbl}>Load #</label><input type="number" min="1" value={newShipment.load_number} onChange={e => setNewShipment(p => ({ ...p, load_number: Number(e.target.value) }))} style={inp} /></div>
-                          <div><label style={lbl}>Total Loads</label><input type="number" min="1" value={newShipment.total_loads} onChange={e => setNewShipment(p => ({ ...p, total_loads: Number(e.target.value) }))} style={inp} /></div>
-                        </div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Carrier</label><select value={newShipment.carrier} onChange={e => setNewShipment(p => ({ ...p, carrier: e.target.value }))} style={inp}>{CARRIERS.map(c => <option key={c}>{c}</option>)}</select></div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Tracking Number</label><input value={newShipment.tracking_number} onChange={e => setNewShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                          <div><label style={lbl}>Expected Delivery</label><input type="date" value={newShipment.scheduled_date} onChange={e => setNewShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
-                          <div><label style={lbl}>Cabinets in Load</label><input type="number" value={newShipment.cabinet_count} onChange={e => setNewShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
-                        </div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Floors / Units Covered</label><input value={newShipment.floors_covered} onChange={e => setNewShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Site Contact</label><input value={newShipment.delivery_contact} onChange={e => setNewShipment(p => ({ ...p, delivery_contact: e.target.value }))} style={inp} /></div>
-                        <div style={{ marginBottom: 12 }}><label style={lbl}>Notes</label><input value={newShipment.notes} onChange={e => setNewShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={createShipment} disabled={savingShipment} style={{ flex: 1, padding: '7px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>{savingShipment ? 'Saving...' : 'Add Shipment'}</button>
-                          <button onClick={() => { setShowShipmentForm(false); setNewShipment(emptyShipment) }} style={{ flex: 1, padding: '7px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                    {shipments.length === 0 && !showShipmentForm && <div style={{ color: '#888', fontSize: 12 }}>No shipments yet</div>}
-                    {shipments.map(s => (
-                      <div key={s.id} style={{ border: '0.5px solid #e5e5e0', borderRadius: 8, padding: 12, marginBottom: 10, background: s.status === 'Delayed' ? '#FFF8F0' : '#fff' }}>
-                        {editingShipment?.id === s.id ? (
-                          <div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                              <div><label style={lbl}>Tracking #</label><input value={editingShipment.tracking_number || ''} onChange={e => setEditingShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
-                              <div><label style={lbl}>Expected Date</label><input type="date" value={editingShipment.scheduled_date || ''} onChange={e => setEditingShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                              <div><label style={lbl}>Floors / Units</label><input value={editingShipment.floors_covered || ''} onChange={e => setEditingShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
-                              <div><label style={lbl}>Cabinets</label><input type="number" value={editingShipment.cabinet_count || ''} onChange={e => setEditingShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
-                            </div>
-                            <div style={{ marginBottom: 10 }}><label style={lbl}>Notes</label><input value={editingShipment.notes || ''} onChange={e => setEditingShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button onClick={saveShipmentEdit} disabled={savingShipment} style={{ flex: 1, padding: '6px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Save</button>
-                              <button onClick={() => setEditingShipment(null)} style={{ flex: 1, padding: '6px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Cancel</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                              <div>
-                                <div style={{ fontWeight: 500, fontSize: 13 }}>Load {s.load_number} of {s.total_loads}</div>
-                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{s.carrier}{s.tracking_number ? ` · ${s.tracking_number}` : ''}</div>
-                              </div>
-                              <ShipmentBadge status={s.status} />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 12, marginBottom: 10 }}>
-                              {s.scheduled_date && <div><span style={{ color: '#888' }}>Expected: </span>{s.scheduled_date}</div>}
-                              {s.cabinet_count && <div><span style={{ color: '#888' }}>Cabinets: </span>{Number(s.cabinet_count).toLocaleString()}</div>}
-                              {s.floors_covered && <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#888' }}>Floors/Units: </span>{s.floors_covered}</div>}
-                              {s.notes && <div style={{ gridColumn: '1/-1', color: '#888', fontStyle: 'italic' }}>{s.notes}</div>}
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <StatusButtons shipment={s} />
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button onClick={() => setEditingShipment({ ...s })} style={{ fontSize: 10, padding: '3px 8px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
-                                <button onClick={() => deleteShipment(s.id)} style={{ fontSize: 10, padding: '3px 8px', background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Remove</button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </>)}
-                    </div>)}
-                  </div>
-
-                  
-
-
-
-                  {/* ── Scope of Work ──────────────────────────────────── */}
-                  <div style={card}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                      <div style={{ fontWeight: 500 }}><Chevron k="sow"/>Scope of Work</div>
-                      <div style={{ display:'flex', gap:6 }}>
-                        {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(sowTemplate()); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
-                        {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
-                        {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map(r => { if (r[1]) return r; const m = fresh.find(f => f[0] === r[0] && f[1]); return m ? [r[0], m[1]] : r }); setSowRows(merged); saveSow(merged) }} title="Fill empty fields from job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
-                        {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
-                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}
-                      </div>
-                    </div>
-                    {!collapsed.sow && !sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
-                    {!collapsed.sow && sowRows && (
-                      <div>
-                        {sowRows.map((r, i) => (
-                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none' }}>
-                            {sowEditing ? (
-                              <>
-                                <input value={r[0]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[e.target.value,x[1]]:x))} style={{ width:260, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
-                                <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
-                                <button onClick={()=>setSowRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>✕</button>
-                              </>
-                            ) : r[0].startsWith('— ') ? (
-                              <span style={{ flex:1, fontSize:11, fontWeight:700, color:'#3C3489', letterSpacing:0.5, background:'#f0eff9', padding:'3px 8px', borderRadius:4 }}>{r[0].replace(/—/g,'').trim()}</span>
-                            ) : (
-                              <>
-                                <span style={{ width:260, fontSize:12, fontWeight:600, color:'#555' }}>{r[0]}</span>
-                                <span style={{ flex:1, fontSize:12, color: r[1] ? '#1a1a1a' : '#ccc' }}>{r[1] || '—'}</span>
-                              </>
-                            )}
-                          </div>
-                        ))}
-                        {sowEditing && <button onClick={()=>setSowRows(rs=>[...rs, ['','']])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Row</button>}
-                      </div>
-                    )}
-                  </div>
-
-                  {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
-                  <div style={card}>
-                    {(() => {
-                      const inv = selectedJob.invoices || []
-                      const cos = selectedJob.change_orders || []
-                      const contract = Number(selectedJob.os_bid_value) || Number(selectedJob.bid_value) || 0
-                      const coApproved = cos.filter(c => c[3] === 'approved').reduce((s, c) => s + (Number(c[2]) || 0), 0)
-                      const revised = contract + coApproved
-                      const billed = inv.reduce((s, i) => s + (Number(i[2]) || 0), 0)
-                      const paid = inv.filter(i => i[3] === 'paid').reduce((s, i) => s + (Number(i[2]) || 0), 0)
-                      const saveFin = async (patch) => { await supabase.from('jobs').update(patch).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...patch }) }
-                      return (
-                        <div>
-                          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
-                            <div style={{ fontWeight:500 }}><Chevron k="fin"/>Billing & Change Orders</div>
-                            <span style={{ fontSize:11, color:'#888' }}>Contract {fmt(contract)}{coApproved > 0 ? ` + COs ${fmt(coApproved)} = ${fmt(revised)}` : ''} · Billed {fmt(billed)} · Paid {fmt(paid)}{billed - paid > 0 ? ` · AR ${fmt(billed - paid)}` : ''}</span>
-                          </div>
-                          {!collapsed.fin && (<>
-                          <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>INVOICES / PAY APPS</div>
-                          {inv.map((r, i) => (
-                            <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
-                              <span style={{ width:90, fontWeight:600 }}>{r[0]}</span>
-                              <span style={{ width:70, color:'#888' }}>{fmtD(r[1])}</span>
-                              <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
-                              <button onClick={()=>{ const nv = inv.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='paid'?'unpaid':'paid'] : x); saveFin({ invoices: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='paid' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='paid' ? '#fff' : '#7a5c00' }}>{r[3]==='paid' ? '✓ PAID' : 'UNPAID'}</button>
-                              <button onClick={()=>{ if(!confirm('Remove invoice?')) return; saveFin({ invoices: inv.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
-                            </div>
-                          ))}
-                          <div style={{ display:'flex', gap:6, margin:'4px 0 10px' }}>
-                            <input id="inv-num" placeholder="Inv/App #" style={{ width:90, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                            <input id="inv-date" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                            <input id="inv-amt" type="number" placeholder="$" style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                            <button onClick={()=>{ const n = document.getElementById('inv-num'), d = document.getElementById('inv-date'), a = document.getElementById('inv-amt'); if(!n.value.trim() || !(Number(a.value)>0)) return; saveFin({ invoices: [...inv, [n.value.trim(), d.value || new Date().toISOString().split('T')[0], Number(a.value), 'unpaid']] }); n.value=''; d.value=''; a.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Invoice</button>
-                          </div>
-                          <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>CHANGE ORDERS</div>
-                          {cos.map((r, i) => (
-                            <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
-                              <span style={{ width:60, fontWeight:600 }}>{r[0]}</span>
-                              <span style={{ flex:1, color:'#555' }}>{r[1]}</span>
-                              <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
-                              <button onClick={()=>{ const nv = cos.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='approved'?'pending':'approved', x[4]] : x); saveFin({ change_orders: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='approved' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='approved' ? '#fff' : '#7a5c00' }}>{r[3]==='approved' ? '✓ APPROVED' : 'PENDING'}</button>
-                              <button onClick={()=>{ if(!confirm('Remove change order?')) return; saveFin({ change_orders: cos.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
-                            </div>
-                          ))}
-                          <div style={{ display:'flex', gap:6, marginTop:4 }}>
-                            <input id="co-num" placeholder="CO #" style={{ width:60, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                            <input id="co-desc" placeholder="Description" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                            <input id="co-amt" type="number" placeholder="$ (± ok)" style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
-                            <button onClick={()=>{ const n = document.getElementById('co-num'), ds = document.getElementById('co-desc'), a = document.getElementById('co-amt'); if(!n.value.trim() || !a.value) return; saveFin({ change_orders: [...cos, [n.value.trim(), ds.value.trim(), Number(a.value), 'pending', new Date().toISOString().split('T')[0]]] }); n.value=''; ds.value=''; a.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ CO</button>
-                          </div>
-                          </>)}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                  )}
-
-                  {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
-                  <div style={card}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                      <div style={{ fontWeight: 500 }}><Chevron k="pa"/>Post-Award Checklist{paRows && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{paRows.filter(r=>r[2]).length}/{paRows.length} done</span>}</div>
-                      <div style={{ display:'flex', gap:6 }}>
-                        {!paRows && <button onClick={()=>{ const t = PA_TEMPLATE.map(r=>[r[0],r[1],false,null]); setPaRows(t); savePa(t) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start Checklist</button>}
-                        {paRows && !paEditing && <button onClick={()=>setPaEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit Tasks</button>}
-                        {paEditing && <button onClick={()=>savePa(paRows.filter(r=>r[1].trim()))} disabled={paSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{paSaving?'Saving...':'✓ Done Editing'}</button>}
-                      </div>
-                    </div>
-                    {!collapsed.pa && paRows && (() => {
-                      let lastPhase = null
-                      return paRows.map((r, i) => {
-                        const showPhase = r[0] !== lastPhase; lastPhase = r[0]
-                        return (
-                          <div key={i}>
-                            {showPhase && <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'8px 0 2px' }}>{r[0]}</div>}
-                            <div style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0' }}>
-                              {paEditing ? (
-                                <>
-                                  <input value={r[0]} onChange={e=>setPaRows(rs=>rs.map((x,j)=>j===i?[e.target.value.toUpperCase(),x[1],x[2],x[3]]:x))} style={{ width:120, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:11 }}/>
-                                  <input value={r[1]} onChange={e=>setPaRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value,x[2],x[3]]:x))} style={{ flex:1, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
-                                  <button onClick={()=>setPaRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
-                                </>
-                              ) : (
-                                <>
-                                  <input type="checkbox" checked={!!r[2]} onChange={()=>togglePaTask(i)} style={{ width:15, height:15, cursor:'pointer' }}/>
-                                  <span style={{ flex:1, fontSize:12, color: r[2] ? '#999' : '#1a1a1a', textDecoration: r[2] ? 'line-through' : 'none' }}>{r[1]}</span>
-                                  {r[3] && <span style={{ fontSize:10, color:'#aaa' }}>{r[3]}</span>}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })
-                    })()}
-                    {!collapsed.pa && paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
-                  </div>
-                  )}
-
-                  {['Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
-                  <div style={card}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
-                      <div style={{ fontWeight:500 }}><Chevron k="punch"/>Punch List{Array.isArray(selectedJob.punch_list) && selectedJob.punch_list.length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.punch_list.filter(i=>i[1]).length}/{selectedJob.punch_list.length} done</span>}</div>
-                      <button onClick={async()=>{
-                        let tok = selectedJob.share_token
-                        if (!tok) {
-                          tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g,'')
-                          await supabase.from('jobs').update({ share_token: tok }).eq('id', selectedJob.id)
-                          setSelectedJob({ ...selectedJob, share_token: tok })
-                        }
-                        const url = window.location.origin + '/punch/' + tok
-                        try { await navigator.clipboard.writeText(url); alert('Share link copied!\n\n' + url + '\n\nAnyone with this link can view and check off punch items for this job — send it to Willy or the GC super.') } catch { prompt('Copy this link:', url) }
-                      }} style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🔗 Share Link</button>
-                    </div>
-                    {!collapsed.punch && (
-                      <div>
-                        {(selectedJob.punch_list || []).map((it, i) => (
-                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', fontSize:12 }}>
-                            <input type="checkbox" checked={!!it[1]} onChange={async()=>{ const items = (selectedJob.punch_list||[]).map((x,j)=> j===i ? [x[0], !x[1], !x[1] ? new Date().toISOString().split('T')[0] : null, !x[1] ? (authProfile?.name||'') : ''] : x); await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }) }} style={{ width:15, height:15, cursor:'pointer' }}/>
-                            <span style={{ flex:1, textDecoration: it[1] ? 'line-through' : 'none', color: it[1] ? '#999' : '#1a1a1a' }}>{it[0]}</span>
-                            {it[2] && <span style={{ fontSize:10, color:'#aaa' }}>{it[3] ? it[3] + ' · ' : ''}{it[2]}</span>}
-                            <button onClick={async()=>{ const items = (selectedJob.punch_list||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
-                          </div>
-                        ))}
-                        <div style={{ display:'flex', gap:6, marginTop:8 }}>
-                          <input id="punch-new" placeholder="Add punch item…" style={{ flex:1, padding:'5px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                          <button onClick={async()=>{ const el = document.getElementById('punch-new'); if(!el.value.trim()) return; const items = [...(selectedJob.punch_list||[]), [el.value.trim(), false, null, '']]; await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }); el.value='' }} style={{ padding:'5px 14px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  )}
-
-                  {/* ── Cab List ───────────────────────────────────────── */}
+                                    {/* ── Cab List ───────────────────────────────────────── */}
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                       <div style={{ fontWeight:500 }}><Chevron k="cab"/>Cabinet List</div>
@@ -2465,7 +2156,45 @@ export default function Home() {
                     })()}
                   </div>
 
-                  {/* ── Job Files ──────────────────────────────────────── */}
+                                    {/* ── Scope of Work ──────────────────────────────────── */}
+                  <div style={card}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontWeight: 500 }}><Chevron k="sow"/>Scope of Work</div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(sowTemplate()); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
+                        {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
+                        {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map(r => { if (r[1]) return r; const m = fresh.find(f => f[0] === r[0] && f[1]); return m ? [r[0], m[1]] : r }); setSowRows(merged); saveSow(merged) }} title="Fill empty fields from job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
+                        {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
+                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}
+                      </div>
+                    </div>
+                    {!collapsed.sow && !sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
+                    {!collapsed.sow && sowRows && (
+                      <div>
+                        {sowRows.map((r, i) => (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none' }}>
+                            {sowEditing ? (
+                              <>
+                                <input value={r[0]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[e.target.value,x[1]]:x))} style={{ width:260, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
+                                <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                <button onClick={()=>setSowRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>✕</button>
+                              </>
+                            ) : r[0].startsWith('— ') ? (
+                              <span style={{ flex:1, fontSize:11, fontWeight:700, color:'#3C3489', letterSpacing:0.5, background:'#f0eff9', padding:'3px 8px', borderRadius:4 }}>{r[0].replace(/—/g,'').trim()}</span>
+                            ) : (
+                              <>
+                                <span style={{ width:260, fontSize:12, fontWeight:600, color:'#555' }}>{r[0]}</span>
+                                <span style={{ flex:1, fontSize:12, color: r[1] ? '#1a1a1a' : '#ccc' }}>{r[1] || '—'}</span>
+                              </>
+                            )}
+                          </div>
+                        ))}
+                        {sowEditing && <button onClick={()=>setSowRows(rs=>[...rs, ['','']])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Row</button>}
+                      </div>
+                    )}
+                  </div>
+
+                                    {/* ── Job Files ──────────────────────────────────────── */}
                   <div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                       <div style={{ fontWeight:500 }}>Job Files</div>
@@ -2507,40 +2236,259 @@ export default function Home() {
                     })}
                   </div>
 
-                  
-
                   <div style={card}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                      <div style={{ fontWeight: 500 }}><Chevron k="rem"/>Reminders</div>
-                      <button onClick={() => setShowReminderForm(true)} style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>+ Add</button>
+                    <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
+                      <div style={{ fontWeight:500 }}><Chevron k="trk"/>ORDER TRACKING</div>
+                      <div style={{ display:'flex', gap:4, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'#888' }}>Priority:</span>
+                        {['low','normal','high','hot'].map(pr => (
+                          <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
+                        ))}
+                      </div>
+                      <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_test ? '#8B6914' : '#bbb', cursor:'pointer' }}>
+                        <input type="checkbox" checked={!!selectedJob.is_test} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_test: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_test: v }); loadJobs() }} style={{ width:13, height:13 }}/>🧪 Test job
+                      </label>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'#888' }}>Next follow-up:</span>
+                        <input type="date" value={selectedJob.next_followup_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ next_followup_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, next_followup_date: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                      </div>
+                      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:'#888' }}>Ship:</span>
+                        <input type="date" value={selectedJob.ship_date || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ ship_date: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ship_date: v }) }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <span style={{ fontSize:11, color:'#888' }}>Delivery:</span>
+                        <input type="date" value={selectedJob.est_delivery || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ est_delivery: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, est_delivery: v }); loadJobs() }} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color: selectedJob.notify_delivery ? '#2D7A3A' : '#888', cursor:'pointer', fontWeight: selectedJob.notify_delivery ? 600 : 400 }}>
+                          <input type="checkbox" checked={!!selectedJob.notify_delivery} onChange={async e=>{ const v = e.target.checked; if (v && !selectedJob.est_delivery) { alert('Set a delivery date first'); return } if (v && !selectedJob.gc_email) { if(!confirm('No GC email on this job — notices will go to Willy only. Continue?')) return } await supabase.from('jobs').update({ notify_delivery: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, notify_delivery: v }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: v ? 'Auto delivery notices ON (GC + Willy, weekly + 2-day)' : 'Auto delivery notices OFF' }) }} style={{ width:14, height:14, cursor:'pointer' }}/>
+                          📣 Auto-notify GC + Willy
+                        </label>
+                      </div>
                     </div>
-                    {!collapsed.rem && (<>
-                    {showReminderForm && (
-                      <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-                        <input type="date" value={newReminder.due_date} onChange={e => setNewReminder(p => ({ ...p, due_date: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
-                        <select value={newReminder.reminder_type} onChange={e => setNewReminder(p => ({ ...p, reminder_type: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }}>
-                          <option>Bid Follow-up</option><option>Bid Deadline</option><option>Delivery Check</option><option>Payment</option><option>General</option>
-                        </select>
-                        <input placeholder="Message..." value={newReminder.message} onChange={e => setNewReminder(p => ({ ...p, message: e.target.value }))} style={{ width: '100%', padding: '6px 8px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 12, marginBottom: 8 }} />
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button onClick={createReminder} style={{ flex: 1, padding: '6px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Save</button>
-                          <button onClick={() => setShowReminderForm(false)} style={{ flex: 1, padding: '6px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+                    {!collapsed.trk && (<>
+                    <div style={{ marginTop:10 }}>
+                      <div style={{ fontSize:11, color:'#888', fontWeight:600, marginBottom:4 }}>KEY DATES</div>
+                      {(selectedJob.key_dates || []).map((kd, i) => (
+                        <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                          <span style={{ width:220, fontWeight:600, color:'#555' }}>{kd[0]}</span>
+                          <span>{fmtD(kd[1])}</span>
+                          <button onClick={async()=>{ const kds = (selectedJob.key_dates||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{ display:'flex', gap:6, marginTop:6 }}>
+                        <input id="kd-label" placeholder="Label (e.g. Samples due, Walk-through)" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <input id="kd-date" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                        <button onClick={async()=>{ const l = document.getElementById('kd-label'); const d = document.getElementById('kd-date'); if(!l.value.trim()) return; const kds = [...(selectedJob.key_dates||[]), [l.value.trim(), d.value || '']]; await supabase.from('jobs').update({ key_dates: kds }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, key_dates: kds }); l.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
+                      </div>
+                    </div>
+                  </>)}
+                    
+                    {!collapsed.trk && (<div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}><span style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5 }}>SHIPMENTS</span></div>
+                      <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
+                    </div>
+                    {true && (<>
+                    {showShipmentForm && (
+                      <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                          <div><label style={lbl}>Load #</label><input type="number" min="1" value={newShipment.load_number} onChange={e => setNewShipment(p => ({ ...p, load_number: Number(e.target.value) }))} style={inp} /></div>
+                          <div><label style={lbl}>Total Loads</label><input type="number" min="1" value={newShipment.total_loads} onChange={e => setNewShipment(p => ({ ...p, total_loads: Number(e.target.value) }))} style={inp} /></div>
+                        </div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Carrier</label><select value={newShipment.carrier} onChange={e => setNewShipment(p => ({ ...p, carrier: e.target.value }))} style={inp}>{CARRIERS.map(c => <option key={c}>{c}</option>)}</select></div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Tracking Number</label><input value={newShipment.tracking_number} onChange={e => setNewShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                          <div><label style={lbl}>Expected Delivery</label><input type="date" value={newShipment.scheduled_date} onChange={e => setNewShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Cabinets in Load</label><input type="number" value={newShipment.cabinet_count} onChange={e => setNewShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
+                        </div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Floors / Units Covered</label><input value={newShipment.floors_covered} onChange={e => setNewShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Site Contact</label><input value={newShipment.delivery_contact} onChange={e => setNewShipment(p => ({ ...p, delivery_contact: e.target.value }))} style={inp} /></div>
+                        <div style={{ marginBottom: 12 }}><label style={lbl}>Notes</label><input value={newShipment.notes} onChange={e => setNewShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={createShipment} disabled={savingShipment} style={{ flex: 1, padding: '7px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>{savingShipment ? 'Saving...' : 'Add Shipment'}</button>
+                          <button onClick={() => { setShowShipmentForm(false); setNewShipment(emptyShipment) }} style={{ flex: 1, padding: '7px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
                         </div>
                       </div>
                     )}
-                    {(selectedJob.reminders || []).filter(r => !r.completed).map(r => (
-                      <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', fontSize: 12, borderBottom: '0.5px solid #f0f0ec' }}>
-                        <div><div>{r.message}</div><div style={{ color: '#888', fontSize: 11 }}>{r.due_date} · {r.reminder_type}</div></div>
-                        <button onClick={() => completeReminder(r.id)} style={{ fontSize: 10, padding: '3px 8px', background: '#EAF3DE', color: '#3B6D11', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Done</button>
+                    {shipments.length === 0 && !showShipmentForm && <div style={{ color: '#888', fontSize: 12 }}>No shipments yet</div>}
+                    {shipments.map(s => (
+                      <div key={s.id} style={{ border: '0.5px solid #e5e5e0', borderRadius: 8, padding: 12, marginBottom: 10, background: s.status === 'Delayed' ? '#FFF8F0' : '#fff' }}>
+                        {editingShipment?.id === s.id ? (
+                          <div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div><label style={lbl}>Tracking #</label><input value={editingShipment.tracking_number || ''} onChange={e => setEditingShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
+                              <div><label style={lbl}>Expected Date</label><input type="date" value={editingShipment.scheduled_date || ''} onChange={e => setEditingShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div><label style={lbl}>Floors / Units</label><input value={editingShipment.floors_covered || ''} onChange={e => setEditingShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
+                              <div><label style={lbl}>Cabinets</label><input type="number" value={editingShipment.cabinet_count || ''} onChange={e => setEditingShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
+                            </div>
+                            <div style={{ marginBottom: 10 }}><label style={lbl}>Notes</label><input value={editingShipment.notes || ''} onChange={e => setEditingShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={saveShipmentEdit} disabled={savingShipment} style={{ flex: 1, padding: '6px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Save</button>
+                              <button onClick={() => setEditingShipment(null)} style={{ flex: 1, padding: '6px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                              <div>
+                                <div style={{ fontWeight: 500, fontSize: 13 }}>Load {s.load_number} of {s.total_loads}</div>
+                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{s.carrier}{s.tracking_number ? ` · ${s.tracking_number}` : ''}</div>
+                              </div>
+                              <ShipmentBadge status={s.status} />
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 12, marginBottom: 10 }}>
+                              {s.scheduled_date && <div><span style={{ color: '#888' }}>Expected: </span>{s.scheduled_date}</div>}
+                              {s.cabinet_count && <div><span style={{ color: '#888' }}>Cabinets: </span>{Number(s.cabinet_count).toLocaleString()}</div>}
+                              {s.floors_covered && <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#888' }}>Floors/Units: </span>{s.floors_covered}</div>}
+                              {s.notes && <div style={{ gridColumn: '1/-1', color: '#888', fontStyle: 'italic' }}>{s.notes}</div>}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <StatusButtons shipment={s} />
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => setEditingShipment({ ...s })} style={{ fontSize: 10, padding: '3px 8px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
+                                <button onClick={() => deleteShipment(s.id)} style={{ fontSize: 10, padding: '3px 8px', background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Remove</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))}
-                    {(selectedJob.reminders || []).filter(r => !r.completed).length === 0 && !showReminderForm && <div style={{ color: '#888', fontSize: 12 }}>No open reminders</div>}
                   </>)}
+                    </div>)}
+                  </div>
+
+                                    {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
+                  <div style={card}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                      <div style={{ fontWeight: 500 }}><Chevron k="pa"/>Post-Award Checklist{paRows && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{paRows.filter(r=>r[2]).length}/{paRows.length} done</span>}</div>
+                      <div style={{ display:'flex', gap:6 }}>
+                        {!paRows && <button onClick={()=>{ const t = PA_TEMPLATE.map(r=>[r[0],r[1],false,null]); setPaRows(t); savePa(t) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start Checklist</button>}
+                        {paRows && !paEditing && <button onClick={()=>setPaEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit Tasks</button>}
+                        {paEditing && <button onClick={()=>savePa(paRows.filter(r=>r[1].trim()))} disabled={paSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{paSaving?'Saving...':'✓ Done Editing'}</button>}
+                      </div>
                     </div>
+                    {!collapsed.pa && paRows && (() => {
+                      let lastPhase = null
+                      return paRows.map((r, i) => {
+                        const showPhase = r[0] !== lastPhase; lastPhase = r[0]
+                        return (
+                          <div key={i}>
+                            {showPhase && <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'8px 0 2px' }}>{r[0]}</div>}
+                            <div style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0' }}>
+                              {paEditing ? (
+                                <>
+                                  <input value={r[0]} onChange={e=>setPaRows(rs=>rs.map((x,j)=>j===i?[e.target.value.toUpperCase(),x[1],x[2],x[3]]:x))} style={{ width:120, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:11 }}/>
+                                  <input value={r[1]} onChange={e=>setPaRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value,x[2],x[3]]:x))} style={{ flex:1, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                  <button onClick={()=>setPaRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                                </>
+                              ) : (
+                                <>
+                                  <input type="checkbox" checked={!!r[2]} onChange={()=>togglePaTask(i)} style={{ width:15, height:15, cursor:'pointer' }}/>
+                                  <span style={{ flex:1, fontSize:12, color: r[2] ? '#999' : '#1a1a1a', textDecoration: r[2] ? 'line-through' : 'none' }}>{r[1]}</span>
+                                  {r[3] && <span style={{ fontSize:10, color:'#aaa' }}>{r[3]}</span>}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })
+                    })()}
+                    {!collapsed.pa && paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
+                  </div>
+                  )}
 
-                  
+                                    {['Awarded','Shop Drawings','Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
+                  <div style={card}>
+                    {(() => {
+                      const inv = selectedJob.invoices || []
+                      const cos = selectedJob.change_orders || []
+                      const contract = Number(selectedJob.os_bid_value) || Number(selectedJob.bid_value) || 0
+                      const coApproved = cos.filter(c => c[3] === 'approved').reduce((s, c) => s + (Number(c[2]) || 0), 0)
+                      const revised = contract + coApproved
+                      const billed = inv.reduce((s, i) => s + (Number(i[2]) || 0), 0)
+                      const paid = inv.filter(i => i[3] === 'paid').reduce((s, i) => s + (Number(i[2]) || 0), 0)
+                      const saveFin = async (patch) => { await supabase.from('jobs').update(patch).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...patch }) }
+                      return (
+                        <div>
+                          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                            <div style={{ fontWeight:500 }}><Chevron k="fin"/>Billing & Change Orders</div>
+                            <span style={{ fontSize:11, color:'#888' }}>Contract {fmt(contract)}{coApproved > 0 ? ` + COs ${fmt(coApproved)} = ${fmt(revised)}` : ''} · Billed {fmt(billed)} · Paid {fmt(paid)}{billed - paid > 0 ? ` · AR ${fmt(billed - paid)}` : ''}</span>
+                          </div>
+                          {!collapsed.fin && (<>
+                          <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>INVOICES / PAY APPS</div>
+                          {inv.map((r, i) => (
+                            <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                              <span style={{ width:90, fontWeight:600 }}>{r[0]}</span>
+                              <span style={{ width:70, color:'#888' }}>{fmtD(r[1])}</span>
+                              <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
+                              <button onClick={()=>{ const nv = inv.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='paid'?'unpaid':'paid'] : x); saveFin({ invoices: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='paid' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='paid' ? '#fff' : '#7a5c00' }}>{r[3]==='paid' ? '✓ PAID' : 'UNPAID'}</button>
+                              <button onClick={()=>{ if(!confirm('Remove invoice?')) return; saveFin({ invoices: inv.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                            </div>
+                          ))}
+                          <div style={{ display:'flex', gap:6, margin:'4px 0 10px' }}>
+                            <input id="inv-num" placeholder="Inv/App #" style={{ width:90, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="inv-date" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="inv-amt" type="number" placeholder="$" style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <button onClick={()=>{ const n = document.getElementById('inv-num'), d = document.getElementById('inv-date'), a = document.getElementById('inv-amt'); if(!n.value.trim() || !(Number(a.value)>0)) return; saveFin({ invoices: [...inv, [n.value.trim(), d.value || new Date().toISOString().split('T')[0], Number(a.value), 'unpaid']] }); n.value=''; d.value=''; a.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Invoice</button>
+                          </div>
+                          <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>CHANGE ORDERS</div>
+                          {cos.map((r, i) => (
+                            <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
+                              <span style={{ width:60, fontWeight:600 }}>{r[0]}</span>
+                              <span style={{ flex:1, color:'#555' }}>{r[1]}</span>
+                              <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
+                              <button onClick={()=>{ const nv = cos.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='approved'?'pending':'approved', x[4]] : x); saveFin({ change_orders: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='approved' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='approved' ? '#fff' : '#7a5c00' }}>{r[3]==='approved' ? '✓ APPROVED' : 'PENDING'}</button>
+                              <button onClick={()=>{ if(!confirm('Remove change order?')) return; saveFin({ change_orders: cos.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                            </div>
+                          ))}
+                          <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                            <input id="co-num" placeholder="CO #" style={{ width:60, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="co-desc" placeholder="Description" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <input id="co-amt" type="number" placeholder="$ (± ok)" style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
+                            <button onClick={()=>{ const n = document.getElementById('co-num'), ds = document.getElementById('co-desc'), a = document.getElementById('co-amt'); if(!n.value.trim() || !a.value) return; saveFin({ change_orders: [...cos, [n.value.trim(), ds.value.trim(), Number(a.value), 'pending', new Date().toISOString().split('T')[0]]] }); n.value=''; ds.value=''; a.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ CO</button>
+                          </div>
+                          </>)}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                  )}
 
-                  {/* ── Countertop Proposal Configuration ─────────────────────── */}
+                                    {['Ordered','Delivered','Closeout'].includes(selectedJob.stage) && (
+                  <div style={card}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+                      <div style={{ fontWeight:500 }}><Chevron k="punch"/>Punch List{Array.isArray(selectedJob.punch_list) && selectedJob.punch_list.length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.punch_list.filter(i=>i[1]).length}/{selectedJob.punch_list.length} done</span>}</div>
+                      <button onClick={async()=>{
+                        let tok = selectedJob.share_token
+                        if (!tok) {
+                          tok = (crypto.randomUUID() + crypto.randomUUID()).replace(/-/g,'')
+                          await supabase.from('jobs').update({ share_token: tok }).eq('id', selectedJob.id)
+                          setSelectedJob({ ...selectedJob, share_token: tok })
+                        }
+                        const url = window.location.origin + '/punch/' + tok
+                        try { await navigator.clipboard.writeText(url); alert('Share link copied!\n\n' + url + '\n\nAnyone with this link can view and check off punch items for this job — send it to Willy or the GC super.') } catch { prompt('Copy this link:', url) }
+                      }} style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🔗 Share Link</button>
+                    </div>
+                    {!collapsed.punch && (
+                      <div>
+                        {(selectedJob.punch_list || []).map((it, i) => (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', fontSize:12 }}>
+                            <input type="checkbox" checked={!!it[1]} onChange={async()=>{ const items = (selectedJob.punch_list||[]).map((x,j)=> j===i ? [x[0], !x[1], !x[1] ? new Date().toISOString().split('T')[0] : null, !x[1] ? (authProfile?.name||'') : ''] : x); await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }) }} style={{ width:15, height:15, cursor:'pointer' }}/>
+                            <span style={{ flex:1, textDecoration: it[1] ? 'line-through' : 'none', color: it[1] ? '#999' : '#1a1a1a' }}>{it[0]}</span>
+                            {it[2] && <span style={{ fontSize:10, color:'#aaa' }}>{it[3] ? it[3] + ' · ' : ''}{it[2]}</span>}
+                            <button onClick={async()=>{ const items = (selectedJob.punch_list||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                          </div>
+                        ))}
+                        <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                          <input id="punch-new" placeholder="Add punch item…" style={{ flex:1, padding:'5px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                          <button onClick={async()=>{ const el = document.getElementById('punch-new'); if(!el.value.trim()) return; const items = [...(selectedJob.punch_list||[]), [el.value.trim(), false, null, '']]; await supabase.from('jobs').update({ punch_list: items }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, punch_list: items }); el.value='' }} style={{ padding:'5px 14px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Add</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  )}
+
+                                    {/* ── Countertop Proposal Configuration ─────────────────────── */}
                   <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
                     <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}><Chevron k="ctp"/>Generate Countertop Proposal</div>
                     {!collapsed.ctp && (<>
@@ -2643,6 +2591,34 @@ export default function Home() {
                     ))}
                     {(selectedJob.activity_log || []).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
                   </div>
+
+                  
+
+                  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                  
+
+                  
+
+                  
+
+
+
+                  
 
                   
                 </div>
