@@ -290,11 +290,11 @@ export async function POST(request) {
       ['HINGES:',             'Soft Close'],
     ]
     const specR = [
-      ['NO. OF UNITS:',      String(nUnits > 0 ? nUnits : (job.total_residential_units || '—'))],
+      ['NO. OF UNITS:',      String(job.units_override ?? (nUnits > 0 ? nUnits : (job.total_residential_units || '—')))],
       ...(nBaths > 0 ? [['NO. OF BATHROOMS:', String(nBaths)]] : []),
-      ['NO. OF AMENITIES:',  String(nAmen > 0 ? nAmen : (job.amenity_unit_count || '—'))],
+      ['NO. OF AMENITIES:',  String(job.amenities_override ?? (nAmen > 0 ? nAmen : (job.amenity_unit_count || '—')))],
       ['EST. DELIVERY:',     job.est_delivery || '—'],
-      ['NO. OF DELIVERIES:', job.num_deliveries || '—'],
+      ['NO. OF DELIVERIES:', job.deliveries_count || job.num_deliveries || '—'],
       ['TOTAL CABINETS:',    totalCabsDisplay.toLocaleString()],
       ['HARDWARE ALLOW.:',   hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included'],
     ]

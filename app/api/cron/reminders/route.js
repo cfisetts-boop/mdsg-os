@@ -93,6 +93,15 @@ export async function GET() {
       }
     }
 
+    // Tasks due (assignee-based; 'Team' fans out to everyone)
+    for (const j of jobs) {
+      for (const t of (Array.isArray(j.tasks) ? j.tasks : [])) {
+        if (t[3] || !t[2] || t[2] > today) continue
+        const targets = t[1] === 'Team' ? profiles.map(pr => pr.name) : [t[1]]
+        for (const nm of targets) add(nm, '✔ Tasks due', `${t[0]} — ${j.name}${t[2] < today ? ' (overdue ' + t[2] + ')' : ''}`)
+      }
+    }
+
     let sent = 0
     for (const prof of profiles) {
       const sections = byOwner[prof.name]
@@ -112,7 +121,41 @@ export async function GET() {
       })
       if (res.ok) { sent++; try { const rj = await res.json(); await supabase.from('email_events').insert({ email_id: rj.id, event: 'sent', job_id: null, subject: 'Daily digest', recipients: prof.email }) } catch {} }
     }
-    return Response.json({ sent, deliveryNotices, owners: Object.keys(byOwner) })
+    // ── Weekly team email (Mondays): Cole, Pam, CSR, Tabetha ────────────────
+    let weekly = 0
+    if (isMonday) {
+      const num = (x) => Number(x) || 0
+      const val = (j) => num(j.os_bid_value) || num(j.bid_value) || 0
+      const active = jobs.filter(j => !j.is_test)
+      const stages = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded', 'Shop Drawings', 'Ordered', 'Delivered']
+      const pipeLines = stages.map(s => { const js = active.filter(j => j.stage === s); return `  ${s}: ${js.length} jobs · $${Math.round(js.reduce((x, j) => x + val(j), 0)).toLocaleString()}` })
+      const wk = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0]
+      const awardedWk = active.filter(j => j.awarded_at && j.awarded_at >= wk)
+      const in14b = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0]
+      const delivs = active.filter(j => j.est_delivery && j.est_delivery >= today && j.est_delivery <= in14b)
+      const stale = active.filter(j => ['RFQ', 'Open Proposals', 'On Hold'].includes(j.stage) && j.bid_due_date && j.bid_due_date < today)
+      const ar = active.reduce((s, j) => s + (Array.isArray(j.invoices) ? j.invoices.filter(i => i[3] !== 'paid').reduce((x, i) => x + num(i[2]), 0) : 0), 0)
+      const { data: ships } = await supabase.from('shipments').select('*, jobs(name)').gte('created_at', wk)
+      const shipLines = (ships || []).map(s2 => `  Load ${s2.load_number ?? ''} — ${s2.jobs?.name || ''}${s2.estimated_delivery ? ' · ETA ' + s2.estimated_delivery : ''}`)
+      const bodyW = [
+        'MDSG WEEKLY — ' + today, '',
+        'PIPELINE', ...pipeLines, '',
+        `AWARDED LAST 7 DAYS: ${awardedWk.length}${awardedWk.length ? ' — ' + awardedWk.map(j => j.name).join(', ') : ''}`,
+        `DELIVERIES NEXT 14 DAYS: ${delivs.length}${delivs.length ? ' — ' + delivs.map(j => `${j.name} (${j.est_delivery})`).join(', ') : ''}`,
+        shipLines.length ? 'SHIPMENTS BOOKED THIS WEEK:\n' + shipLines.join('\n') : 'SHIPMENTS BOOKED THIS WEEK: none',
+        `STALE OPEN BIDS: ${stale.length}`,
+        `AR OUTSTANDING: $${Math.round(ar).toLocaleString()}`, '',
+        'Open the OS: https://mdsg-os.vercel.app',
+      ].join('\n')
+      const resW = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: 'MDSG OS <csr@mdsgcabinets.com>', to: ['cole@mdsgcabinets.com', 'pam@mdsgcabinets.com', 'csr@mdsgcabinets.com', 'tabetha@mdsgcabinets.com'], subject: 'MDSG Weekly — pipeline, deliveries, AR', text: bodyW }),
+      })
+      if (resW.ok) weekly = 1
+    }
+
+    return Response.json({ sent, deliveryNotices, weekly, owners: Object.keys(byOwner) })
   } catch (err) {
     return Response.json({ error: err.message }, { status: 500 })
   }

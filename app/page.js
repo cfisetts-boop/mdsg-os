@@ -59,6 +59,7 @@ const FRONT_STAGES = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded']
 const PRODUCTION_STAGES = ['Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
 const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics', 'Estes Express', 'R+L Carriers', 'Other']
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
+const OWNER_EMAILS = { Cole: 'cole@mdsgcabinets.com', Pam: 'pam@mdsgcabinets.com', Vicki: 'vicki@mdsgcabinets.com', Blake: 'csr@mdsgcabinets.com', Tabetha: 'tabetha@mdsgcabinets.com' }
 const fmtD = (d) => { if (!d) return '—'; const [y, m, dd] = String(d).split('T')[0].split('-'); return y && m && dd ? `${Number(m)}/${Number(dd)}/${y.substring(2)}` : d }
 const fmtPct = (n) => n ? (n * 100).toFixed(1) + '%' : '—'
 
@@ -189,6 +190,8 @@ export default function Home() {
   const [emailBody,       setEmailBody]       = useState('')
   const [emailSending,    setEmailSending]    = useState(false)
   const [emailResult,     setEmailResult]     = useState(null)
+  const [emailAttachQuote, setEmailAttachQuote] = useState(true)
+  const [emailFollowUp,   setEmailFollowUp]   = useState('')
   const REP_QUICKPICKS = [
     ['Richard Knudson', 'rk@eclipsesalesgroup.com'],
     ['Lorine Dockstader', 'ld@eclipsesalesgroup.com'],
@@ -399,6 +402,10 @@ export default function Home() {
         gc_contact:   selectedJob.gc_contact   || '',
         gc_phone:     selectedJob.gc_phone     || '',
         gc_email:     selectedJob.gc_email     || '',
+        units_override:     selectedJob.units_override ?? '',
+        amenities_override: selectedJob.amenities_override ?? '',
+        est_delivery:       selectedJob.est_delivery || '',
+        deliveries_count:   selectedJob.deliveries_count || '',
       })
       setEditUnitTypes(mergeUnitTypes(selectedJob.unit_types || []))
       setAdditionalLineItems([])
@@ -444,6 +451,10 @@ export default function Home() {
       state:        editFields.state,
       zip:          editFields.zip,
       manufacturer: editFields.manufacturer,
+      units_override:     editFields.units_override !== '' && editFields.units_override != null ? Number(editFields.units_override) : null,
+      amenities_override: editFields.amenities_override !== '' && editFields.amenities_override != null ? Number(editFields.amenities_override) : null,
+      est_delivery:       editFields.est_delivery || null,
+      deliveries_count:   editFields.deliveries_count || null,
       bid_due_date: editFields.bid_due_date || null,
       gc_contact:   editFields.gc_contact,
       gc_phone:     editFields.gc_phone,
@@ -720,7 +731,15 @@ export default function Home() {
     e.target.value = ''
   }
 
-  function openEmailPanel() {
+  function openEmailPanel(kind = 'quote') {
+    setEmailAttachQuote(kind === 'quote')
+    setEmailFollowUp('')
+    if (kind === 'generic') {
+      setEmailSubject(`${selectedJob.name} — `)
+      setEmailBody(`Hi,\n\n\n\nThank you,\n${authProfile?.name || ''}\nMDSG Cabinets`)
+      setEmailResult(null); setEmailOpen(true)
+      return
+    }
     setEmailSubject(`${selectedJob.name} — Cabinet List for Pricing`)
     setEmailBody(`Hi,\n\nPlease find attached the cabinet list for ${selectedJob.name} for pricing.\n\nProduct line: ${cabList?.product_line || 'framed'}. Please include freight and lead time with your quote.\n\nThank you,\n${authProfile?.name || ''}\nMDSG Cabinets`)
     setEmailResult(null); setEmailOpen(true)
@@ -729,6 +748,8 @@ export default function Home() {
   async function sendQuoteEmail() {
     setEmailSending(true); setEmailResult(null)
     try {
+      let b64 = null
+      if (emailAttachQuote && cabList) {
       // Build the Quote export server-side, attach as base64
       const res = await fetch('/api/export/excel', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -736,12 +757,13 @@ export default function Home() {
       })
       if (!res.ok) throw new Error('Quote export failed')
       const blob = await res.blob()
-      const b64 = await new Promise((resolve, reject) => {
+      b64 = await new Promise((resolve, reject) => {
         const r = new FileReader()
         r.onload = () => resolve(r.result.split(',')[1])
         r.onerror = reject
         r.readAsDataURL(blob)
       })
+      }
       const to = emailTo.split(/[,;]/).map(s => s.trim()).filter(Boolean)
       const cc = emailCc.split(/[,;]/).map(s => s.trim()).filter(Boolean)
       const resp = await fetch('/api/send-email', {
@@ -751,12 +773,17 @@ export default function Home() {
           fromEmail: authProfile?.email, fromName: authProfile?.name,
           senderName: authProfile?.name,
           subject: emailSubject, body: emailBody,
-          attachmentName: `${selectedJob.name.replace(/[^a-zA-Z0-9]/g, '_')}_Quote.xlsx`,
-          attachmentB64: b64,
+          attachmentName: b64 ? `${selectedJob.name.replace(/[^a-zA-Z0-9]/g, '_')}_Quote.xlsx` : undefined,
+          attachmentB64: b64 || undefined,
         }),
       })
       const d = await resp.json()
       setEmailResult(d.success ? { ok: true } : { error: d.error })
+      if (d.success && emailFollowUp) {
+        const nv = [...(selectedJob.tasks||[]), [`Follow up: ${emailSubject}`.substring(0, 120), authProfile?.name || 'Cole', emailFollowUp, false, null]]
+        await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id)
+        setSelectedJob({ ...selectedJob, tasks: nv })
+      }
     } catch (err) { setEmailResult({ error: err.message }) }
     setEmailSending(false)
   }
@@ -1131,7 +1158,7 @@ export default function Home() {
                 </div>
               )}
               {(() => {
-                const mine = jobs.flatMap(j => (Array.isArray(j.tasks) ? j.tasks : []).map((t, i) => ({ j, t, i }))).filter(x => !x.t[3] && x.t[1] === authProfile?.name)
+                const mine = jobs.flatMap(j => (Array.isArray(j.tasks) ? j.tasks : []).map((t, i) => ({ j, t, i }))).filter(x => !x.t[3] && (x.t[1] === authProfile?.name || x.t[1] === 'Team'))
                 if (!mine.length) return null
                 return (
                   <div style={{ background:'#f0f6f1', border:'0.5px solid #c4dcc8', borderRadius:10, padding:14, marginBottom:12 }}>
@@ -1251,6 +1278,9 @@ export default function Home() {
                       <div key={job.id} onClick={() => { setSelectedJob(job); setView('job-detail') }}
                         style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 7, padding: 13, marginBottom: 8, cursor: 'pointer' }}>
                         <div style={{ fontWeight: 500, fontSize: 13.5 }}>{(job.priority==='hot') ? '🔥 ' : ''}{job.name}{job.priority==='high' && <span style={{ marginLeft:5, fontSize:9, background:'#e0a800', color:'#fff', padding:'1px 5px', borderRadius:6, fontWeight:700 }}>HIGH</span>}</div>
+                        {(job.tasks || []).filter(t=>!t[3])[0] && (
+                          <div style={{ fontSize: 10.5, color:'#2D7A3A', marginTop: 2 }}>✔ {(job.tasks || []).filter(t=>!t[3])[0][0].substring(0, 60)}{(job.tasks || []).filter(t=>!t[3]).length > 1 ? ` (+${(job.tasks || []).filter(t=>!t[3]).length - 1})` : ''}</div>
+                        )}
                         {(job.bid_due_date || job.next_followup_date) && (
                           <div style={{ fontSize: 11, marginTop: 3, display:'flex', gap:8 }}>
                             {job.bid_due_date && <span style={{ color: job.bid_due_date < new Date().toISOString().split('T')[0] ? '#A32D2D' : '#888' }}>📅 {fmtD(job.bid_due_date)}</span>}
@@ -1424,7 +1454,7 @@ export default function Home() {
                       <div key={label} style={{ marginBottom: 10 }}>
                         <div style={lbl}>{label}</div>
                         {value === '__OWNER_SELECT__' ? (
-                          <select value={selectedJob.owner || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ owner: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, owner: v }); loadJobs() }} style={{ fontSize: 13, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:6, background:'#fff' }}>
+                          <select value={selectedJob.owner || ''} onChange={async e=>{ const v = e.target.value || null; await supabase.from('jobs').update({ owner: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, owner: v }); loadJobs(); if (v && v !== authProfile?.name && OWNER_EMAILS[v]) { fetch('/api/send-email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, to: [OWNER_EMAILS[v]], fromEmail: authProfile?.email, fromName: authProfile?.name, senderName: authProfile?.name, subject: `Job assigned to you: ${selectedJob.name}`, body: `${selectedJob.name} has been assigned to you by ${authProfile?.name || 'MDSG'}.\n\nGC: ${selectedJob.gc_name || '—'}\nStage: ${selectedJob.stage}\nBid due: ${selectedJob.bid_due_date || '—'}\n\nOpen the OS: https://mdsg-os.vercel.app` }) }).catch(()=>{}) } }} style={{ fontSize: 13, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:6, background:'#fff' }}>
                             <option value="">— unassigned —</option>
                             {['Cole','Pam','Vicki','Blake','Tabetha'].map(o => <option key={o}>{o}</option>)}
                           </select>
@@ -1507,6 +1537,10 @@ export default function Home() {
                             </select></div>
                           <div><label style={lbl}>Interior Color</label><input value={editFields.interior_color} placeholder="White" onChange={e => setEditFields(pv => ({ ...pv, interior_color: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Shelf Thickness</label><input value={editFields.shelf_thickness} placeholder={'3/4"'} onChange={e => setEditFields(pv => ({ ...pv, shelf_thickness: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>No. of Units (proposal)</label><input type="number" value={editFields.units_override ?? ''} placeholder="auto" onChange={e => setEditFields(pv => ({ ...pv, units_override: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>No. of Amenities (proposal)</label><input type="number" value={editFields.amenities_override ?? ''} placeholder="auto" onChange={e => setEditFields(pv => ({ ...pv, amenities_override: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Est. Delivery</label><input type="date" value={editFields.est_delivery ?? ''} onChange={e => setEditFields(pv => ({ ...pv, est_delivery: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>No. of Deliveries</label><input value={editFields.deliveries_count ?? ''} placeholder="e.g. 4 loads" onChange={e => setEditFields(pv => ({ ...pv, deliveries_count: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Door Hinge Type</label>
                             <select value={editFields.hinge_type} onChange={e => setEditFields(pv => ({ ...pv, hinge_type: e.target.value }))} style={inp}>
                               <option value="">— select —</option><option>Euro 6 Way</option><option>Soft-Close</option>
@@ -1848,7 +1882,7 @@ export default function Home() {
                     <div style={{ display:'flex', gap:6, marginTop:6 }}>
                       <input id="task-text" placeholder="Task…" style={{ flex:1, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
                       <select id="task-who" defaultValue={authProfile?.name || ''} style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}>
-                        {['Cole','Pam','Vicki','Blake','Tabetha'].map(o => <option key={o}>{o}</option>)}
+                        {['Cole','Pam','Vicki','Blake','Tabetha','Team'].map(o => <option key={o}>{o}</option>)}
                       </select>
                       <input id="task-due" type="date" style={{ padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:11 }}/>
                       <button onClick={async()=>{ const tx = document.getElementById('task-text'), w = document.getElementById('task-who'), d = document.getElementById('task-due'); if(!tx.value.trim()) return; const nv = [...(selectedJob.tasks||[]), [tx.value.trim(), w.value, d.value || null, false, null]]; await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs(); tx.value=''; d.value='' }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Assign</button>
@@ -1865,6 +1899,7 @@ export default function Home() {
                           <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
                         ))}
                       </div>
+                      <button onClick={()=>openEmailPanel('generic')} style={{ padding:'3px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✉ Email</button>
                       <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_test ? '#8B6914' : '#bbb', cursor:'pointer' }}>
                         <input type="checkbox" checked={!!selectedJob.is_test} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_test: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_test: v }); loadJobs() }} style={{ width:13, height:13 }}/>🧪 Test job
                       </label>
@@ -1901,6 +1936,113 @@ export default function Home() {
                     </div>
                   </>)}
                     </div>
+
+                  <div style={card}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                      <div style={{ fontWeight: 500 }}><Chevron k="shp"/>Shipments</div>
+                      <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
+                    </div>
+                    {!collapsed.shp && (<>
+                    {showShipmentForm && (
+                      <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 14, marginBottom: 14 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                          <div><label style={lbl}>Load #</label><input type="number" min="1" value={newShipment.load_number} onChange={e => setNewShipment(p => ({ ...p, load_number: Number(e.target.value) }))} style={inp} /></div>
+                          <div><label style={lbl}>Total Loads</label><input type="number" min="1" value={newShipment.total_loads} onChange={e => setNewShipment(p => ({ ...p, total_loads: Number(e.target.value) }))} style={inp} /></div>
+                        </div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Carrier</label><select value={newShipment.carrier} onChange={e => setNewShipment(p => ({ ...p, carrier: e.target.value }))} style={inp}>{CARRIERS.map(c => <option key={c}>{c}</option>)}</select></div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Tracking Number</label><input value={newShipment.tracking_number} onChange={e => setNewShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                          <div><label style={lbl}>Expected Delivery</label><input type="date" value={newShipment.scheduled_date} onChange={e => setNewShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Cabinets in Load</label><input type="number" value={newShipment.cabinet_count} onChange={e => setNewShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
+                        </div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Floors / Units Covered</label><input value={newShipment.floors_covered} onChange={e => setNewShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
+                        <div style={{ marginBottom: 8 }}><label style={lbl}>Site Contact</label><input value={newShipment.delivery_contact} onChange={e => setNewShipment(p => ({ ...p, delivery_contact: e.target.value }))} style={inp} /></div>
+                        <div style={{ marginBottom: 12 }}><label style={lbl}>Notes</label><input value={newShipment.notes} onChange={e => setNewShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button onClick={createShipment} disabled={savingShipment} style={{ flex: 1, padding: '7px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>{savingShipment ? 'Saving...' : 'Add Shipment'}</button>
+                          <button onClick={() => { setShowShipmentForm(false); setNewShipment(emptyShipment) }} style={{ flex: 1, padding: '7px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
+                        </div>
+                      </div>
+                    )}
+                    {shipments.length === 0 && !showShipmentForm && <div style={{ color: '#888', fontSize: 12 }}>No shipments yet</div>}
+                    {shipments.map(s => (
+                      <div key={s.id} style={{ border: '0.5px solid #e5e5e0', borderRadius: 8, padding: 12, marginBottom: 10, background: s.status === 'Delayed' ? '#FFF8F0' : '#fff' }}>
+                        {editingShipment?.id === s.id ? (
+                          <div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div><label style={lbl}>Tracking #</label><input value={editingShipment.tracking_number || ''} onChange={e => setEditingShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
+                              <div><label style={lbl}>Expected Date</label><input type="date" value={editingShipment.scheduled_date || ''} onChange={e => setEditingShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+                              <div><label style={lbl}>Floors / Units</label><input value={editingShipment.floors_covered || ''} onChange={e => setEditingShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
+                              <div><label style={lbl}>Cabinets</label><input type="number" value={editingShipment.cabinet_count || ''} onChange={e => setEditingShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
+                            </div>
+                            <div style={{ marginBottom: 10 }}><label style={lbl}>Notes</label><input value={editingShipment.notes || ''} onChange={e => setEditingShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
+                            <div style={{ display: 'flex', gap: 6 }}>
+                              <button onClick={saveShipmentEdit} disabled={savingShipment} style={{ flex: 1, padding: '6px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Save</button>
+                              <button onClick={() => setEditingShipment(null)} style={{ flex: 1, padding: '6px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                              <div>
+                                <div style={{ fontWeight: 500, fontSize: 13 }}>Load {s.load_number} of {s.total_loads}</div>
+                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{s.carrier}{s.tracking_number ? ` · ${s.tracking_number}` : ''}</div>
+                              </div>
+                              <ShipmentBadge status={s.status} />
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 12, marginBottom: 10 }}>
+                              {s.scheduled_date && <div><span style={{ color: '#888' }}>Expected: </span>{s.scheduled_date}</div>}
+                              {s.cabinet_count && <div><span style={{ color: '#888' }}>Cabinets: </span>{Number(s.cabinet_count).toLocaleString()}</div>}
+                              {s.floors_covered && <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#888' }}>Floors/Units: </span>{s.floors_covered}</div>}
+                              {s.notes && <div style={{ gridColumn: '1/-1', color: '#888', fontStyle: 'italic' }}>{s.notes}</div>}
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <StatusButtons shipment={s} />
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button onClick={() => setEditingShipment({ ...s })} style={{ fontSize: 10, padding: '3px 8px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
+                                <button onClick={() => deleteShipment(s.id)} style={{ fontSize: 10, padding: '3px 8px', background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Remove</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </>)}
+                    </div>
+
+                  {emailOpen && (
+                      <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email — sends from {authProfile?.email} · logs to Activity</div>
+                          <button onClick={()=>setEmailOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb' }}>✕</button>
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>To:</label>
+                          <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="email, email" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                          {REP_QUICKPICKS.filter(r=>r[1]).map(r => (
+                            <button key={r[0]} onClick={()=>setEmailTo(t=>t ? t + ', ' + r[1] : r[1])} style={{ padding:'3px 8px', fontSize:10, background:'#fff', border:'0.5px solid #b9cbe0', borderRadius:5, cursor:'pointer', color:'#1B5EA6' }}>{r[0].split(' ')[0]}</button>
+                          ))}
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>Cc:</label>
+                          <input value={emailCc} onChange={e=>setEmailCc(e.target.value)} placeholder="optional" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>Subject:</label>
+                          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                        </div>
+                        <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={5} style={{ width:'100%', padding:'8px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, boxSizing:'border-box', marginBottom:8, fontFamily:'inherit' }}/>
+                        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                          <button onClick={sendQuoteEmail} disabled={emailSending || !emailTo.trim()} style={{ padding:'7px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{emailSending ? 'Sending…' : (emailAttachQuote ? 'Send with Quote attached' : 'Send')}</button>
+                          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#555', cursor:'pointer' }}><input type="checkbox" checked={emailAttachQuote} onChange={e=>setEmailAttachQuote(e.target.checked)} disabled={!cabList} style={{ width:13, height:13 }}/>Attach Quote xlsx</label>
+                          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#555' }}>Follow-up:<input type="date" value={emailFollowUp} onChange={e=>setEmailFollowUp(e.target.value)} style={{ padding:'3px 6px', border:'0.5px solid #ccc', borderRadius:5, fontSize:11 }}/></label>
+                          {emailResult?.ok && <span style={{ fontSize:12, color:'#2D7A3A', fontWeight:600 }}>✓ Sent & logged</span>}
+                          {emailResult?.error && <span style={{ fontSize:12, color:'#A32D2D' }}>✗ {emailResult.error}</span>}
+                        </div>
+                      </div>
+                  )}
 
                   {/* ── Scope of Work ──────────────────────────────────── */}
                   <div style={card}>
@@ -2104,36 +2246,7 @@ export default function Home() {
                         {skuSuggest.map(it => <option key={it.sku} value={it.sku}>{it.description || ''}</option>)}
                       </datalist>
                     )}
-                    {emailOpen && (
-                      <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email Quote — sends from {authProfile?.email}</div>
-                          <button onClick={()=>setEmailOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb' }}>✕</button>
-                        </div>
-                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#888', width:52 }}>To:</label>
-                          <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="email, email" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                          {REP_QUICKPICKS.filter(r=>r[1]).map(r => (
-                            <button key={r[0]} onClick={()=>setEmailTo(t=>t ? t + ', ' + r[1] : r[1])} style={{ padding:'3px 8px', fontSize:10, background:'#fff', border:'0.5px solid #b9cbe0', borderRadius:5, cursor:'pointer', color:'#1B5EA6' }}>{r[0].split(' ')[0]}</button>
-                          ))}
-                        </div>
-                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#888', width:52 }}>Cc:</label>
-                          <input value={emailCc} onChange={e=>setEmailCc(e.target.value)} placeholder="optional" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                        </div>
-                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#888', width:52 }}>Subject:</label>
-                          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                        </div>
-                        <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={5} style={{ width:'100%', padding:'8px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, boxSizing:'border-box', marginBottom:8, fontFamily:'inherit' }}/>
-                        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                          <button onClick={sendQuoteEmail} disabled={emailSending || !emailTo.trim()} style={{ padding:'7px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{emailSending ? 'Sending…' : 'Send with Quote attached'}</button>
-                          <span style={{ fontSize:11, color:'#888' }}>Attaches {selectedJob.name}_Quote.xlsx automatically</span>
-                          {emailResult?.ok && <span style={{ fontSize:12, color:'#2D7A3A', fontWeight:600 }}>✓ Sent & logged</span>}
-                          {emailResult?.error && <span style={{ fontSize:12, color:'#A32D2D' }}>✗ {emailResult.error}</span>}
-                        </div>
-                      </div>
-                    )}
+
                     {cabList && cabEditing && (
                         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
                           {['framed','frameless'].map(pl => (
@@ -2309,80 +2422,7 @@ export default function Home() {
                     })}
                   </div>
 
-                  <div style={card}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                      <div style={{ fontWeight: 500 }}><Chevron k="shp"/>Shipments</div>
-                      <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
-                    </div>
-                    {!collapsed.shp && (<>
-                    {showShipmentForm && (
-                      <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 14, marginBottom: 14 }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                          <div><label style={lbl}>Load #</label><input type="number" min="1" value={newShipment.load_number} onChange={e => setNewShipment(p => ({ ...p, load_number: Number(e.target.value) }))} style={inp} /></div>
-                          <div><label style={lbl}>Total Loads</label><input type="number" min="1" value={newShipment.total_loads} onChange={e => setNewShipment(p => ({ ...p, total_loads: Number(e.target.value) }))} style={inp} /></div>
-                        </div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Carrier</label><select value={newShipment.carrier} onChange={e => setNewShipment(p => ({ ...p, carrier: e.target.value }))} style={inp}>{CARRIERS.map(c => <option key={c}>{c}</option>)}</select></div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Tracking Number</label><input value={newShipment.tracking_number} onChange={e => setNewShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                          <div><label style={lbl}>Expected Delivery</label><input type="date" value={newShipment.scheduled_date} onChange={e => setNewShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
-                          <div><label style={lbl}>Cabinets in Load</label><input type="number" value={newShipment.cabinet_count} onChange={e => setNewShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
-                        </div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Floors / Units Covered</label><input value={newShipment.floors_covered} onChange={e => setNewShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
-                        <div style={{ marginBottom: 8 }}><label style={lbl}>Site Contact</label><input value={newShipment.delivery_contact} onChange={e => setNewShipment(p => ({ ...p, delivery_contact: e.target.value }))} style={inp} /></div>
-                        <div style={{ marginBottom: 12 }}><label style={lbl}>Notes</label><input value={newShipment.notes} onChange={e => setNewShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button onClick={createShipment} disabled={savingShipment} style={{ flex: 1, padding: '7px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>{savingShipment ? 'Saving...' : 'Add Shipment'}</button>
-                          <button onClick={() => { setShowShipmentForm(false); setNewShipment(emptyShipment) }} style={{ flex: 1, padding: '7px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>Cancel</button>
-                        </div>
-                      </div>
-                    )}
-                    {shipments.length === 0 && !showShipmentForm && <div style={{ color: '#888', fontSize: 12 }}>No shipments yet</div>}
-                    {shipments.map(s => (
-                      <div key={s.id} style={{ border: '0.5px solid #e5e5e0', borderRadius: 8, padding: 12, marginBottom: 10, background: s.status === 'Delayed' ? '#FFF8F0' : '#fff' }}>
-                        {editingShipment?.id === s.id ? (
-                          <div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                              <div><label style={lbl}>Tracking #</label><input value={editingShipment.tracking_number || ''} onChange={e => setEditingShipment(p => ({ ...p, tracking_number: e.target.value }))} style={inp} /></div>
-                              <div><label style={lbl}>Expected Date</label><input type="date" value={editingShipment.scheduled_date || ''} onChange={e => setEditingShipment(p => ({ ...p, scheduled_date: e.target.value }))} style={inp} /></div>
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
-                              <div><label style={lbl}>Floors / Units</label><input value={editingShipment.floors_covered || ''} onChange={e => setEditingShipment(p => ({ ...p, floors_covered: e.target.value }))} style={inp} /></div>
-                              <div><label style={lbl}>Cabinets</label><input type="number" value={editingShipment.cabinet_count || ''} onChange={e => setEditingShipment(p => ({ ...p, cabinet_count: e.target.value }))} style={inp} /></div>
-                            </div>
-                            <div style={{ marginBottom: 10 }}><label style={lbl}>Notes</label><input value={editingShipment.notes || ''} onChange={e => setEditingShipment(p => ({ ...p, notes: e.target.value }))} style={inp} /></div>
-                            <div style={{ display: 'flex', gap: 6 }}>
-                              <button onClick={saveShipmentEdit} disabled={savingShipment} style={{ flex: 1, padding: '6px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Save</button>
-                              <button onClick={() => setEditingShipment(null)} style={{ flex: 1, padding: '6px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer', fontSize: 11 }}>Cancel</button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                              <div>
-                                <div style={{ fontWeight: 500, fontSize: 13 }}>Load {s.load_number} of {s.total_loads}</div>
-                                <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{s.carrier}{s.tracking_number ? ` · ${s.tracking_number}` : ''}</div>
-                              </div>
-                              <ShipmentBadge status={s.status} />
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, fontSize: 12, marginBottom: 10 }}>
-                              {s.scheduled_date && <div><span style={{ color: '#888' }}>Expected: </span>{s.scheduled_date}</div>}
-                              {s.cabinet_count && <div><span style={{ color: '#888' }}>Cabinets: </span>{Number(s.cabinet_count).toLocaleString()}</div>}
-                              {s.floors_covered && <div style={{ gridColumn: '1/-1' }}><span style={{ color: '#888' }}>Floors/Units: </span>{s.floors_covered}</div>}
-                              {s.notes && <div style={{ gridColumn: '1/-1', color: '#888', fontStyle: 'italic' }}>{s.notes}</div>}
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <StatusButtons shipment={s} />
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button onClick={() => setEditingShipment({ ...s })} style={{ fontSize: 10, padding: '3px 8px', background: '#f5f5f3', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>Edit</button>
-                                <button onClick={() => deleteShipment(s.id)} style={{ fontSize: 10, padding: '3px 8px', background: '#FCEBEB', color: '#A32D2D', border: 'none', borderRadius: 6, cursor: 'pointer' }}>Remove</button>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </>)}
-                    </div>
+                  
 
                   <div style={card}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -2413,18 +2453,7 @@ export default function Home() {
                   </>)}
                     </div>
 
-                  <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="log"/>Activity Log</div>
-                    {!collapsed.log && (selectedJob.activity_log || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12).map(log => (
-                      <div key={log.id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: '0.5px solid #f0f0ec', fontSize: 12 }}>
-                        <div>{log.action}</div>
-                        <div style={{ color: '#888', fontSize: 11, marginTop: 2, display:'flex', alignItems:'center' }}>{log.user_name} · {new Date(log.created_at).toLocaleDateString()}
-                          <button onClick={async()=>{ if(!confirm('Remove this log entry?')) return; await supabase.from('activity_log').delete().eq('id', log.id); setSelectedJob({ ...selectedJob, activity_log: (selectedJob.activity_log||[]).filter(l=>l.id!==log.id) }) }} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:11 }}>✕</button>
-                        </div>
-                      </div>
-                    ))}
-                    {(selectedJob.activity_log || []).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
-                  </div>
+                  
 
                   {/* ── Countertop Proposal Configuration ─────────────────────── */}
                   <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
@@ -2463,6 +2492,18 @@ export default function Home() {
                         <input type="number" min="0" max="30" value={ctWastePct} onChange={e=>setCtWastePct(Number(e.target.value))} style={{ ...inp, width:70 }}/>
                         <span style={{ fontSize:11, color:'#2D7A3A' }}>{ctWastePct}% added to net SF for order quantity</span>
                       </div>
+                      {savedQuotes.filter(q => q.quote_type === 'countertops').length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={lbl}>Price From Saved CT Quote</label>
+                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                            {savedQuotes.filter(q => q.quote_type === 'countertops').map(q => (
+                              <button key={q.id} onClick={()=>setCtGross(String(q.grand_total || q.gross_amount || ''))} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', background: String(ctGross)===String(q.grand_total || q.gross_amount) ? '#8B6914' : '#f5f5f3', color: String(ctGross)===String(q.grand_total || q.gross_amount) ? '#fff' : '#555', border:'0.5px solid #ddd' }}>
+                                {String(ctGross)===String(q.grand_total || q.gross_amount) ? '✓ ' : ''}{q.manufacturer} · ${Number(q.grand_total || q.gross_amount || 0).toLocaleString(undefined,{maximumFractionDigits:0})} · {fmtD(q.created_at)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <label style={lbl}>Countertop Material Cost ($ — from supplier quote)</label>
                       <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:160, marginBottom:10 }}/>
                       <label style={lbl}>Gross Margin %</label>
@@ -2504,6 +2545,19 @@ export default function Home() {
                       </button>
                   </>)}
                     </div>
+
+                  <div style={card}>
+                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="log"/>Activity Log</div>
+                    {!collapsed.log && (selectedJob.activity_log || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12).map(log => (
+                      <div key={log.id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: '0.5px solid #f0f0ec', fontSize: 12 }}>
+                        <div>{log.action}</div>
+                        <div style={{ color: '#888', fontSize: 11, marginTop: 2, display:'flex', alignItems:'center' }}>{log.user_name} · {new Date(log.created_at).toLocaleDateString()}
+                          <button onClick={async()=>{ if(!confirm('Remove this log entry?')) return; await supabase.from('activity_log').delete().eq('id', log.id); setSelectedJob({ ...selectedJob, activity_log: (selectedJob.activity_log||[]).filter(l=>l.id!==log.id) }) }} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#ccc', fontSize:11 }}>✕</button>
+                        </div>
+                      </div>
+                    ))}
+                    {(selectedJob.activity_log || []).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
+                  </div>
 
                   
                 </div>
