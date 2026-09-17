@@ -167,6 +167,8 @@ export default function Home() {
   const [specLib,         setSpecLib]         = useState([])
   const [libUploading,    setLibUploading]    = useState(false)
   const [litSelected,     setLitSelected]     = useState([])
+  const [reportOwner,     setReportOwner]     = useState('all')
+  const [reportGc,        setReportGc]        = useState('all')
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -180,7 +182,8 @@ export default function Home() {
   const [loginBusy,       setLoginBusy]       = useState(false)
   const [savedQuotes,      setSavedQuotes]      = useState([])
   const [propQuoteId,      setPropQuoteId]      = useState('')
-  const [collapsed,        setCollapsed]        = useState({})
+  const [collapsed,        setCollapsed]        = useState(() => { try { return JSON.parse(localStorage.getItem('mdsg_collapsed') || '{}') } catch { return {} } })
+  useEffect(() => { try { localStorage.setItem('mdsg_collapsed', JSON.stringify(collapsed)) } catch {} }, [collapsed])
   const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
   const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
   const [paRows,          setPaRows]          = useState(null)
@@ -1966,14 +1969,13 @@ export default function Home() {
                       </div>
                     </div>
                   </>)}
-                    </div>
-
-                  <div style={card}>
+                    
+                    {!collapsed.trk && (<div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                      <div style={{ fontWeight: 500 }}><Chevron k="shp"/>Shipments</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}><span style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5 }}>SHIPMENTS</span></div>
                       <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
                     </div>
-                    {!collapsed.shp && (<>
+                    {true && (<>
                     {showShipmentForm && (
                       <div style={{ background: '#f5f5f3', borderRadius: 8, padding: 14, marginBottom: 14 }}>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -2041,7 +2043,10 @@ export default function Home() {
                       </div>
                     ))}
                   </>)}
-                    </div>
+                    </div>)}
+                  </div>
+
+                  
 
                   {emailOpen && (
                       <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
@@ -2689,7 +2694,7 @@ export default function Home() {
 
           {/* REPORTS VIEW */}
           {view === 'reports' && (() => {
-            const jobs_all = jobs; const jobsR = jobs.filter(j => !j.is_test)
+            const jobsR = jobs.filter(j => !j.is_test && (reportOwner === 'all' || j.owner === reportOwner) && (reportGc === 'all' || j.gc_name === reportGc))
             const OPEN_ST = ['RFQ', 'Open Proposals', 'On Hold']
             const WON_ST  = ['Awarded', 'Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
             const monthKey = (d) => d ? String(d).substring(0, 7) : null
@@ -2717,6 +2722,16 @@ export default function Home() {
             const emailStats = null
             return (
               <div>
+                <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                  <select value={reportOwner} onChange={e=>setReportOwner(e.target.value)} style={{ padding:'5px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, background:'#fff' }}>
+                    <option value="all">All owners</option>
+                    {['Cole','Pam','Vicki','Blake','Tabetha'].map(o => <option key={o}>{o}</option>)}
+                  </select>
+                  <select value={reportGc} onChange={e=>setReportGc(e.target.value)} style={{ padding:'5px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, background:'#fff', maxWidth:220 }}>
+                    <option value="all">All GCs</option>
+                    {[...new Set(jobs.filter(j=>!j.is_test).map(j => j.gc_name).filter(Boolean))].sort().map(g => <option key={g}>{g}</option>)}
+                  </select>
+                </div>
                 <div style={card}>
                   <div style={{ fontWeight: 500, marginBottom: 12 }}>Won $ vs Bid $ — last 6 months <span style={{ fontSize:10, color:'#999', fontWeight:400 }}>(won by award date · bids by bid-due date — award dates start counting from today forward)</span></div>
                   {byMonth.map(x => {
