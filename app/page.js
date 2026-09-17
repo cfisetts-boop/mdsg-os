@@ -195,6 +195,8 @@ export default function Home() {
   const [emailResult,     setEmailResult]     = useState(null)
   const [emailAttachQuote, setEmailAttachQuote] = useState(true)
   const [emailFollowUp,   setEmailFollowUp]   = useState('')
+  const [sigEditing,      setSigEditing]      = useState(false)
+  const [sigDraft,        setSigDraft]        = useState('')
   const REP_QUICKPICKS = [
     ['Richard Knudson', 'rk@eclipsesalesgroup.com'],
     ['Lorine Dockstader', 'ld@eclipsesalesgroup.com'],
@@ -738,17 +740,18 @@ export default function Home() {
     e.target.value = ''
   }
 
+  const mySig = () => authProfile?.signature || `${authProfile?.name || ''}\nMDSG Cabinets`
   function openEmailPanel(kind = 'quote') {
     setEmailAttachQuote(kind === 'quote')
     setEmailFollowUp('')
     if (kind === 'generic') {
       setEmailSubject(`${selectedJob.name} — `)
-      setEmailBody(`Hi,\n\n\n\nThank you,\n${authProfile?.name || ''}\nMDSG Cabinets`)
+      setEmailBody(`Hi,\n\n\n\nThank you,\n${mySig()}`)
       setEmailResult(null); setEmailOpen(true)
       return
     }
     setEmailSubject(`${selectedJob.name} — Cabinet List for Pricing`)
-    setEmailBody(`Hi,\n\nPlease find attached the cabinet list for ${selectedJob.name} for pricing.\n\nProduct line: ${cabList?.product_line || 'framed'}. Please include freight and lead time with your quote.\n\nThank you,\n${authProfile?.name || ''}\nMDSG Cabinets`)
+    setEmailBody(`Hi,\n\nPlease find attached the cabinet list for ${selectedJob.name} for pricing.\n\nProduct line: ${cabList?.product_line || 'framed'}. Please include freight and lead time with your quote.\n\nThank you,\n${mySig()}`)
     setEmailResult(null); setEmailOpen(true)
   }
 
@@ -2043,7 +2046,17 @@ export default function Home() {
                   {emailOpen && (
                       <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
                         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email — sends from {authProfile?.email} · logs to Activity</div>
+                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email — sends from {authProfile?.email} · logs to Activity <button onClick={()=>{ setSigDraft(authProfile?.signature || mySig()); setSigEditing(v=>!v) }} style={{ marginLeft:8, padding:'2px 8px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer', fontWeight:400 }}>✎ signature</button></div>
+                      {sigEditing && (
+                        <div style={{ margin:'8px 0' }}>
+                          <textarea value={sigDraft} onChange={e=>setSigDraft(e.target.value)} rows={9} style={{ width:'100%', padding:8, border:'0.5px solid #ccc', borderRadius:6, fontSize:11, fontFamily:'inherit' }}/>
+                          <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                            <button onClick={async()=>{ await supabase.from('user_profiles').update({ signature: sigDraft }).eq('email', authProfile.email); setAuthProfile({ ...authProfile, signature: sigDraft }); setSigEditing(false) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>Save Signature</button>
+                            <button onClick={()=>setSigEditing(false)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Cancel</button>
+                          </div>
+                          <div style={{ fontSize:10, color:'#999', marginTop:2 }}>Paste your Outlook signature text here — it appends to every email you send from the OS.</div>
+                        </div>
+                      )}
                           <button onClick={()=>setEmailOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb' }}>✕</button>
                         </div>
                         <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
