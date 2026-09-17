@@ -164,6 +164,9 @@ export default function Home() {
   const [brandAs,         setBrandAs]         = useState('mdsg')
   const [discountPct,     setDiscountPct]     = useState('')
   const [rfqImporting,    setRfqImporting]    = useState(false)
+  const [specLib,         setSpecLib]         = useState([])
+  const [libUploading,    setLibUploading]    = useState(false)
+  const [litSelected,     setLitSelected]     = useState([])
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -363,7 +366,11 @@ export default function Home() {
       .then(({ data }) => setAuthProfile(data || { email: authSession.user.email, name: authSession.user.email.split('@')[0], role: 'sales' }))
   }, [authSession])
 
-  useEffect(() => { if (authSession) { loadJobs(); loadReminders(); loadAllActiveShipments() } }, [authSession, loadJobs, loadReminders, loadAllActiveShipments])
+  const loadSpecLib = useCallback(async () => {
+    const { data } = await supabase.from('spec_library').select('*').order('title')
+    setSpecLib(data || [])
+  }, [])
+  useEffect(() => { if (authSession) { loadJobs(); loadReminders(); loadAllActiveShipments(); loadSpecLib() } }, [authSession, loadJobs, loadReminders, loadAllActiveShipments, loadSpecLib])
   useEffect(() => {
     if (!authSession) return
     const id = setInterval(() => { loadJobs() }, 60000)
@@ -929,7 +936,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1103,6 +1110,7 @@ export default function Home() {
           {nav('contacts', 'Contractors')}
           {nav('reports', 'Reports')}
           {nav('financials', 'Financials')}
+          {nav('library', 'Spec Library')}
           {nav('agent-pipeline', '⚡ Agent Pipeline')}
           {nav('takeoff', 'Upload Mfr Quote')}
           {nav('shipments', `Shipments${inTransitCount > 0 ? ` (${inTransitCount})` : ''}`)}
@@ -1123,6 +1131,7 @@ export default function Home() {
             {view === 'contacts' && 'Contractors'}
             {view === 'reports' && 'Reports'}
             {view === 'financials' && 'Financials'}
+            {view === 'library' && 'Spec Library'}
             {view === 'takeoff' && 'Upload Manufacturer Quote'}
             {view === 'agent-pipeline' && '⚡ Agent Pipeline'}
             {view === 'shipments' && 'Shipments'}
@@ -1749,6 +1758,25 @@ export default function Home() {
                           <input type="number" min="0" value={proposalMfrTax} placeholder="0" onChange={e=>setProposalMfrTax(e.target.value)} style={{ width:120, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
                         </div>
                       </div>
+                      {specLib.length > 0 && (
+                        <div style={{ margin:'8px 0' }}>
+                          <div style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:4 }}>Attach Spec Literature <span style={{ fontWeight:400, color:'#999' }}>(matches to this job's specs in green)</span></div>
+                          <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                            {specLib.map(r => {
+                              const specText = [selectedJob.door_style, selectedJob.cabinet_construction, selectedJob.box_construction, selectedJob.drawer_box].filter(Boolean).join(' ').toLowerCase()
+                              const tagList = (r.tags || '').split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 2)
+                              const match = tagList.some(t => specText.includes(t) || t.split(/[\s/-]+/).some(w => w.length > 3 && specText.includes(w)))
+                              const on = litSelected.includes(r.id)
+                              return (
+                                <label key={r.id} style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'3px 8px', borderRadius:6, cursor:'pointer', border:'0.5px solid ' + (on ? '#3C3489' : '#e0e0e0'), background: on ? '#f0eff9' : '#fff', color: match ? '#2D7A3A' : '#555', fontWeight: match ? 700 : 400 }}>
+                                  <input type="checkbox" checked={on} onChange={()=>setLitSelected(pv => on ? pv.filter(x => x !== r.id) : [...pv, r.id])} style={{ width:12, height:12 }}/>
+                                  {r.title.length > 38 ? r.title.substring(0, 38) + '…' : r.title}
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={applyDiscount} onChange={e=>setApplyDiscount(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Apply dealer discount of
@@ -2561,6 +2589,42 @@ export default function Home() {
 
                   
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* SPEC LIBRARY VIEW */}
+          {view === 'library' && (
+            <div>
+              <div style={card}>
+                <div style={{ fontWeight:500, marginBottom:6 }}>Spec Literature Library</div>
+                <div style={{ fontSize:12, color:'#888', marginBottom:10 }}>Upload manufacturer literature PDFs once, tag them with the specs they cover (door styles, Framed/Frameless, drawer box types). When generating a proposal, sheets matching that job's specs highlight automatically for attachment.</div>
+                <label style={{ padding:'6px 14px', fontSize:12, background:'#3C3489', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
+                  {libUploading ? 'Uploading…' : '⬆ Upload Literature PDF(s)'}
+                  <input type="file" accept=".pdf" multiple style={{ display:'none' }} disabled={libUploading} onChange={async e=>{
+                    const files = Array.from(e.target.files || []); if (!files.length) return
+                    setLibUploading(true)
+                    for (const f of files) {
+                      const clean = f.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+                      const path = `_speclib/${Date.now()}_${clean}`
+                      const { error } = await supabase.storage.from('job-files').upload(path, f)
+                      if (error) { alert(`${f.name}: ${error.message}`); continue }
+                      await supabase.from('spec_library').insert({ title: f.name.replace(/\.pdf$/i, '').replace(/_/g, ' '), file_path: path, tags: '' })
+                    }
+                    await loadSpecLib(); setLibUploading(false); e.target.value = ''
+                  }}/>
+                </label>
+              </div>
+              <div style={card}>
+                {specLib.map(r => (
+                  <div key={r.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'5px 0', borderTop:'0.5px dotted #eee', fontSize:12 }}>
+                    <input defaultValue={r.title} onBlur={async e=>{ if (e.target.value !== r.title) { await supabase.from('spec_library').update({ title: e.target.value }).eq('id', r.id); loadSpecLib() } }} style={{ flex:1, padding:'4px 8px', border:'0.5px solid #e5e5e5', borderRadius:5, fontSize:12, fontWeight:600 }}/>
+                    <input defaultValue={r.tags} placeholder="tags: Shaker, Framed, dovetail…" onBlur={async e=>{ if (e.target.value !== r.tags) { await supabase.from('spec_library').update({ tags: e.target.value }).eq('id', r.id); loadSpecLib() } }} style={{ flex:1.4, padding:'4px 8px', border:'0.5px solid #e5e5e5', borderRadius:5, fontSize:11, color:'#3C3489' }}/>
+                    <button onClick={async()=>{ const { data } = await supabase.storage.from('job-files').createSignedUrl(r.file_path, 300); if (data?.signedUrl) window.open(data.signedUrl, '_blank') }} style={{ padding:'3px 10px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer' }}>View</button>
+                    <button onClick={async()=>{ if(!confirm(`Delete "${r.title}" from the library?`)) return; await supabase.storage.from('job-files').remove([r.file_path]); await supabase.from('spec_library').delete().eq('id', r.id); loadSpecLib() }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>✕</button>
+                  </div>
+                ))}
+                {specLib.length === 0 && <div style={{ fontSize:12, color:'#999' }}>Nothing yet — upload the Leedo literature PDFs to start.</div>}
               </div>
             </div>
           )}

@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [] } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -500,6 +500,18 @@ export async function POST(request) {
     dt('CORPORATE OFFICES: 23463 E. Moraine Pl., Aurora, CO 80016  |  CONTACT: Pamela Isetts, President  |  651/301-1063  |  pam@mdsgcabinets.com  |  csr@mdsgcabinets.com', ML, 20, { size: 6.5, color: gray, maxWidth: PW })
 
     // ── Save + log ────────────────────────────────────────────────────────
+    // ── Append selected spec literature PDFs ──────────────────────────────
+    for (const litPath of (Array.isArray(literaturePaths) ? literaturePaths.slice(0, 15) : [])) {
+      try {
+        const { data: fileData, error: dlErr } = await supabase.storage.from('job-files').download(litPath)
+        if (dlErr || !fileData) continue
+        const litBytes = await fileData.arrayBuffer()
+        const litDoc = await PDFDocument.load(litBytes, { ignoreEncryption: true })
+        const pages = await pdfDoc.copyPages(litDoc, litDoc.getPageIndices())
+        pages.forEach(pg => pdfDoc.addPage(pg))
+      } catch { /* skip unreadable literature file */ }
+    }
+
     const pdfBytes = await pdfDoc.save()
 
     await supabase.from('proposals').insert({
