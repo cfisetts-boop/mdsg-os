@@ -38,6 +38,7 @@ export async function POST(request) {
       await supabase.from('email_events').insert({
         email_id: json.id, event: 'sent', job_id: jobId || null,
         subject, recipients: [...to, ...cc].join(', '),
+        body: (body || '').substring(0, 8000),
       })
     } catch {}
     return Response.json({ success: true, id: json.id })

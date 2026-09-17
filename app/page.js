@@ -115,6 +115,16 @@ export default function Home() {
       ]).then(([a, r]) => setSelectedJob(prev => prev && prev.id === selectedJob.id
         ? { ...prev, activity_log: a.data || [], reminders: r.data || [] } : prev))
     }
+    setJobEmails([]); setJobEmailStatus({})
+    if (selectedJob?.id) {
+      supabase.from('email_events').select('*').eq('job_id', selectedJob.id).order('created_at', { ascending: false }).limit(60).then(({ data }) => {
+        const evs = data || []
+        setJobEmails(evs.filter(e => e.event === 'sent').slice(0, 12))
+        const st = {}
+        evs.forEach(e => { if (!e.email_id) return; st[e.email_id] = st[e.email_id] || {}; if (e.event === 'opened') st[e.email_id].opened = true; if (e.event === 'bounced') st[e.email_id].bounced = true })
+        setJobEmailStatus(st)
+      })
+    }
     setSavedQuotes([])
     if (selectedJob?.id) fetch('/api/quotes?jobId=' + selectedJob.id).then(r=>r.json()).then(d=>{
       setSavedQuotes(d.quotes || [])
@@ -182,7 +192,7 @@ export default function Home() {
   const [loginBusy,       setLoginBusy]       = useState(false)
   const [savedQuotes,      setSavedQuotes]      = useState([])
   const [propQuoteId,      setPropQuoteId]      = useState('')
-  const [collapsed,        setCollapsed]        = useState(() => { try { return JSON.parse(localStorage.getItem('mdsg_collapsed') || '{}') } catch { return {} } })
+  const [collapsed,        setCollapsed]        = useState(() => { try { return { lit: true, ...JSON.parse(localStorage.getItem('mdsg_collapsed') || '{}') } } catch { return { lit: true } } })
   useEffect(() => { try { localStorage.setItem('mdsg_collapsed', JSON.stringify(collapsed)) } catch {} }, [collapsed])
   const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
   const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
@@ -200,6 +210,8 @@ export default function Home() {
   const [emailFollowUp,   setEmailFollowUp]   = useState('')
   const [sigEditing,      setSigEditing]      = useState(false)
   const [sigDraft,        setSigDraft]        = useState('')
+  const [jobEmails,       setJobEmails]       = useState([])
+  const [jobEmailStatus,  setJobEmailStatus]  = useState({})
   const REP_QUICKPICKS = [
     ['Richard Knudson', 'rk@eclipsesalesgroup.com'],
     ['Lorine Dockstader', 'ld@eclipsesalesgroup.com'],
@@ -1766,8 +1778,8 @@ export default function Home() {
                       </div>
                       {specLib.length > 0 && (
                         <div style={{ margin:'8px 0' }}>
-                          <div style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:4 }}>Attach Spec Literature <span style={{ fontWeight:400, color:'#999' }}>(matches to this job's specs in green)</span></div>
-                          <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                          <div onClick={()=>setCollapsed(pv=>({ ...pv, lit: !pv.lit }))} style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:4, cursor:'pointer', userSelect:'none' }}>{collapsed.lit ? '▸' : '▾'} Attach Spec Literature <span style={{ fontWeight:400, color:'#999' }}>({specLib.length} sheets · matches to this job's specs in green{litSelected.length ? ` · ${litSelected.length} selected` : ''})</span></div>
+                          {!collapsed.lit && <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                             {specLib.map(r => {
                               const specText = [selectedJob.door_style, selectedJob.cabinet_construction, selectedJob.box_construction, selectedJob.drawer_box].filter(Boolean).join(' ').toLowerCase()
                               const tagList = (r.tags || '').split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 2)
@@ -1780,7 +1792,7 @@ export default function Home() {
                                 </label>
                               )
                             })}
-                          </div>
+                          </div>}
                         </div>
                       )}
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
@@ -1900,6 +1912,74 @@ export default function Home() {
                     </div>
 
                   <div style={card}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ fontWeight:500 }}><Chevron k="em"/>Email</div>
+                      <button onClick={()=>openEmailPanel('generic')} style={{ padding:'4px 14px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✉ New Email</button>
+                      {jobEmails.length > 0 && <span style={{ fontSize:11, color:'#888' }}>{jobEmails.length} sent from this job</span>}
+                    </div>
+                    {!collapsed.em && (<>
+                    {emailOpen && (
+                      <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email — sends from {authProfile?.email} · logs to Activity <button onClick={()=>{ setSigDraft(authProfile?.signature || mySig()); setSigEditing(v=>!v) }} style={{ marginLeft:8, padding:'2px 8px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer', fontWeight:400 }}>✎ signature</button></div>
+                      {sigEditing && (
+                        <div style={{ margin:'8px 0' }}>
+                          <textarea value={sigDraft} onChange={e=>setSigDraft(e.target.value)} rows={9} style={{ width:'100%', padding:8, border:'0.5px solid #ccc', borderRadius:6, fontSize:11, fontFamily:'inherit' }}/>
+                          <div style={{ display:'flex', gap:6, marginTop:4 }}>
+                            <button onClick={async()=>{ await supabase.from('user_profiles').update({ signature: sigDraft }).eq('email', authProfile.email); setAuthProfile({ ...authProfile, signature: sigDraft }); setSigEditing(false) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>Save Signature</button>
+                            <button onClick={()=>setSigEditing(false)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Cancel</button>
+                          </div>
+                          <div style={{ fontSize:10, color:'#999', marginTop:2 }}>Paste your Outlook signature text here — it appends to every email you send from the OS.</div>
+                        </div>
+                      )}
+                          <button onClick={()=>setEmailOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb' }}>✕</button>
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>To:</label>
+                          <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="email, email" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                          {REP_QUICKPICKS.filter(r=>r[1]).map(r => (
+                            <button key={r[0]} onClick={()=>setEmailTo(t=>t ? t + ', ' + r[1] : r[1])} style={{ padding:'3px 8px', fontSize:10, background:'#fff', border:'0.5px solid #b9cbe0', borderRadius:5, cursor:'pointer', color:'#1B5EA6' }}>{r[0].split(' ')[0]}</button>
+                          ))}
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>Cc:</label>
+                          <input value={emailCc} onChange={e=>setEmailCc(e.target.value)} placeholder="optional" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                        </div>
+                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
+                          <label style={{ fontSize:11, color:'#888', width:52 }}>Subject:</label>
+                          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
+                        </div>
+                        <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={5} style={{ width:'100%', padding:'8px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, boxSizing:'border-box', marginBottom:8, fontFamily:'inherit' }}/>
+                        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                          <button onClick={sendQuoteEmail} disabled={emailSending || !emailTo.trim()} style={{ padding:'7px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{emailSending ? 'Sending…' : (emailAttachQuote ? 'Send with Quote attached' : 'Send')}</button>
+                          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#555', cursor:'pointer' }}><input type="checkbox" checked={emailAttachQuote} onChange={e=>setEmailAttachQuote(e.target.checked)} disabled={!cabList} style={{ width:13, height:13 }}/>Attach Quote xlsx</label>
+                          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#555' }}>Follow-up:<input type="date" value={emailFollowUp} onChange={e=>setEmailFollowUp(e.target.value)} style={{ padding:'3px 6px', border:'0.5px solid #ccc', borderRadius:5, fontSize:11 }}/></label>
+                          {emailResult?.ok && <span style={{ fontSize:12, color:'#2D7A3A', fontWeight:600 }}>✓ Sent & logged</span>}
+                          {emailResult?.error && <span style={{ fontSize:12, color:'#A32D2D' }}>✗ {emailResult.error}</span>}
+                        </div>
+                      </div>
+                    )}
+                    {jobEmails.length > 0 && (
+                      <div style={{ marginTop:10 }}>
+                        {jobEmails.map(ev => {
+                          const opened = jobEmailStatus[ev.email_id] || {}
+                          return (
+                            <div key={ev.id} style={{ display:'flex', gap:8, alignItems:'center', padding:'4px 0', borderTop:'0.5px dotted #eee', fontSize:11.5 }}>
+                              <span style={{ color:'#888', width:58 }}>{fmtD(ev.created_at)}</span>
+                              <span style={{ flex:1, fontWeight:500 }}>{ev.subject}</span>
+                              <span style={{ color:'#999', maxWidth:180, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{ev.recipients}</span>
+                              {opened.opened && <span style={{ fontSize:10, color:'#2D7A3A', fontWeight:700 }}>📬 opened</span>}
+                              {opened.bounced && <span style={{ fontSize:10, color:'#A32D2D', fontWeight:700 }}>⚠ bounced</span>}
+                              <button onClick={()=>{ setEmailAttachQuote(false); setEmailFollowUp(''); setEmailTo(ev.recipients || ''); setEmailSubject(ev.subject || ''); setEmailBody(ev.body || ''); setEmailResult(null); setEmailOpen(true) }} style={{ padding:'2px 10px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer' }}>↺ Reuse</button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    </>)}
+                  </div>
+
+                  <div style={card}>
                     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
                       <div style={{ fontWeight:500 }}><Chevron k="tsk"/>Tasks{Array.isArray(selectedJob.tasks) && selectedJob.tasks.filter(t=>!t[3]).length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.tasks.filter(t=>!t[3]).length} open</span>}</div>
                     </div>
@@ -1933,7 +2013,6 @@ export default function Home() {
                           <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
                         ))}
                       </div>
-                      <button onClick={()=>openEmailPanel('generic')} style={{ padding:'3px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✉ Email</button>
                       <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_test ? '#8B6914' : '#bbb', cursor:'pointer' }}>
                         <input type="checkbox" checked={!!selectedJob.is_test} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_test: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_test: v }); loadJobs() }} style={{ width:13, height:13 }}/>🧪 Test job
                       </label>
@@ -2048,47 +2127,7 @@ export default function Home() {
 
                   
 
-                  {emailOpen && (
-                      <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-                          <div style={{ fontSize:12, fontWeight:600, color:'#1B5EA6' }}>Email — sends from {authProfile?.email} · logs to Activity <button onClick={()=>{ setSigDraft(authProfile?.signature || mySig()); setSigEditing(v=>!v) }} style={{ marginLeft:8, padding:'2px 8px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer', fontWeight:400 }}>✎ signature</button></div>
-                      {sigEditing && (
-                        <div style={{ margin:'8px 0' }}>
-                          <textarea value={sigDraft} onChange={e=>setSigDraft(e.target.value)} rows={9} style={{ width:'100%', padding:8, border:'0.5px solid #ccc', borderRadius:6, fontSize:11, fontFamily:'inherit' }}/>
-                          <div style={{ display:'flex', gap:6, marginTop:4 }}>
-                            <button onClick={async()=>{ await supabase.from('user_profiles').update({ signature: sigDraft }).eq('email', authProfile.email); setAuthProfile({ ...authProfile, signature: sigDraft }); setSigEditing(false) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>Save Signature</button>
-                            <button onClick={()=>setSigEditing(false)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>Cancel</button>
-                          </div>
-                          <div style={{ fontSize:10, color:'#999', marginTop:2 }}>Paste your Outlook signature text here — it appends to every email you send from the OS.</div>
-                        </div>
-                      )}
-                          <button onClick={()=>setEmailOpen(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'#bbb' }}>✕</button>
-                        </div>
-                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#888', width:52 }}>To:</label>
-                          <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="email, email" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                          {REP_QUICKPICKS.filter(r=>r[1]).map(r => (
-                            <button key={r[0]} onClick={()=>setEmailTo(t=>t ? t + ', ' + r[1] : r[1])} style={{ padding:'3px 8px', fontSize:10, background:'#fff', border:'0.5px solid #b9cbe0', borderRadius:5, cursor:'pointer', color:'#1B5EA6' }}>{r[0].split(' ')[0]}</button>
-                          ))}
-                        </div>
-                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#888', width:52 }}>Cc:</label>
-                          <input value={emailCc} onChange={e=>setEmailCc(e.target.value)} placeholder="optional" style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                        </div>
-                        <div style={{ display:'flex', gap:6, marginBottom:6, alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#888', width:52 }}>Subject:</label>
-                          <input value={emailSubject} onChange={e=>setEmailSubject(e.target.value)} style={{ flex:1, padding:'6px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/>
-                        </div>
-                        <textarea value={emailBody} onChange={e=>setEmailBody(e.target.value)} rows={5} style={{ width:'100%', padding:'8px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12, boxSizing:'border-box', marginBottom:8, fontFamily:'inherit' }}/>
-                        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                          <button onClick={sendQuoteEmail} disabled={emailSending || !emailTo.trim()} style={{ padding:'7px 16px', fontSize:12, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>{emailSending ? 'Sending…' : (emailAttachQuote ? 'Send with Quote attached' : 'Send')}</button>
-                          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#555', cursor:'pointer' }}><input type="checkbox" checked={emailAttachQuote} onChange={e=>setEmailAttachQuote(e.target.checked)} disabled={!cabList} style={{ width:13, height:13 }}/>Attach Quote xlsx</label>
-                          <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'#555' }}>Follow-up:<input type="date" value={emailFollowUp} onChange={e=>setEmailFollowUp(e.target.value)} style={{ padding:'3px 6px', border:'0.5px solid #ccc', borderRadius:5, fontSize:11 }}/></label>
-                          {emailResult?.ok && <span style={{ fontSize:12, color:'#2D7A3A', fontWeight:600 }}>✓ Sent & logged</span>}
-                          {emailResult?.error && <span style={{ fontSize:12, color:'#A32D2D' }}>✗ {emailResult.error}</span>}
-                        </div>
-                      </div>
-                  )}
+
 
                   {/* ── Scope of Work ──────────────────────────────────── */}
                   <div style={card}>
