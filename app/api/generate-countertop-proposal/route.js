@@ -20,7 +20,7 @@ export async function POST(request) {
     const {
       jobId, totals = {}, propConfig = {}, sender = 'Cole', bidSections = {},
       marginPct = 20, grossCostOverride = 0, notes = '', brandAs = 'mdsg',
-      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null,
+      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null,
     } = await request.json()
 
     let job = null
@@ -45,7 +45,18 @@ export async function POST(request) {
     const margin = Math.min(Math.max(Number(marginPct) || 0, 0), 60)
     const sell = cost > 0 ? Math.round((cost / (1 - margin / 100)) * 100) / 100 : 0
     if (!manualMode && !sell) return Response.json({ error: 'No countertop pricing — fill in the pricing lines first' }, { status: 422 })
-    const headline = manualMode ? ((locMat + locIns) || (impMat + impIns)) : sell
+    // Typed lines are COST → marked up by margin; a typed SELL total overrides
+    // and the displayed lines scale proportionally to sum to it.
+    const mF = margin > 0 && margin < 95 ? 1 / (1 - margin / 100) : 1
+    const sellLines = (mat, ins, sellOverride) => {
+      let m2 = Math.round(mat * mF), i2 = Math.round(ins * mF)
+      const so = num(sellOverride)
+      if (so > 0 && (m2 + i2) > 0) { const f = so / (m2 + i2); m2 = Math.round(m2 * f); i2 = Math.round(i2 * f); m2 += so - m2 - i2 }
+      return { m2, i2, tot: so > 0 ? so : m2 + i2 }
+    }
+    const loc = sellLines(locMat, locIns, ctLocalSell)
+    const imp = sellLines(impMat, impIns, ctImportSell)
+    const headline = manualMode ? (locMat > 0 ? loc.tot : imp.tot) : sell
 
     const isGW = brandAs === 'greenworks'
     const today = new Date()
@@ -192,8 +203,8 @@ export async function POST(request) {
       y -= 12
     }
     if (manualMode) {
-      if (locMat > 0) priceBlock('LOCAL FABRICATOR - MATERIAL', locMat, locIns)
-      if (impMat > 0) priceBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', impMat, impIns)
+      if (locMat > 0) priceBlock('LOCAL FABRICATOR - MATERIAL', loc.m2, loc.i2)
+      if (impMat > 0) priceBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', imp.m2, imp.i2)
     } else {
       priceBlock('COUNTERTOP MATERIAL, FABRICATION & DELIVERY', sell, 0)
     }
@@ -256,6 +267,7 @@ export async function POST(request) {
       if (manualMode) await supabase.from('jobs').update({
         ct_local_material: locMat || null, ct_local_install: locIns || null,
         ct_import_material: impMat || null, ct_import_install: impIns || null,
+        ct_local_sell: num(ctLocalSell) || null, ct_import_sell: num(ctImportSell) || null,
       }).eq('id', jobId)
       const who = isGW ? 'Greenworks' : (SENDERS[sender] || SENDERS.Cole).name
       await supabase.from('activity_log').insert({ job_id: jobId, user_name: who, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)}${isGW ? ' · Greenworks-branded' : ''}` })

@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -134,16 +134,25 @@ export async function POST(request) {
     const taxZeroed    = taxExplicit && (Number(mfrTaxPassThrough) || 0) === 0
     const taxAmount    = (taxZeroed || mfrTax > 0) ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
     const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
-    const displayBid = Number(priceLeedo) > 0 ? Number(priceLeedo) : totalBid
-    const rtaBid = Number(priceRta) > 0 ? Number(priceRta) : 0
+    // Manual pricing model: typed lines are COST; margin marks them up; a
+    // typed SELL overrides the math. Legacy priceLeedo/priceRta = sell.
+    const n0 = (v) => Number(v) > 0 ? Number(v) : 0
+    const mFactor = mPct > 0 && mPct < 95 ? 1 / (1 - mPct / 100) : (markupMultiplier || job.markup_multiplier || 1.34)
+    const cL = n0(costLeedo), cR = n0(costRta)
+    const sL = n0(sellLeedo) || n0(priceLeedo)
+    const sR = n0(sellRta) || n0(priceRta)
+    const displayBid = sL > 0 ? sL : (cL > 0 ? Math.round(cL * mFactor) : totalBid)
+    const rtaBid = sR > 0 ? sR : (cR > 0 ? Math.round(cR * mFactor) : 0)
 
     // Persist OS-side financials — dashboard prefers these over Monday columns
     await supabase.from('jobs').update({
       os_bid_value: Math.round(displayBid * 100) / 100,
-      ...(Number(priceLeedo) > 0 ? { price_leedo: Number(priceLeedo) } : {}),
-      ...(Number(priceRta) > 0 ? { price_rta: Number(priceRta) } : { price_rta: null }),
-      os_cost_value: Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100,
-      os_margin_pct: mPct > 0 && mPct < 95 ? mPct : null,
+      ...((sL > 0 || cL > 0) ? { price_leedo: displayBid } : {}),
+      price_rta: rtaBid > 0 ? rtaBid : null,
+      price_leedo_cost: cL > 0 ? cL : null,
+      price_rta_cost: cR > 0 ? cR : null,
+      os_cost_value: cL > 0 ? cL : Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100,
+      os_margin_pct: cL > 0 && displayBid > 0 ? Math.round((1 - cL / displayBid) * 1000) / 10 : (mPct > 0 && mPct < 95 ? mPct : null),
     }).eq('id', jobId)
     // Margin kept internal only — logged to activity but never shown on PDF
     const hardwareCost = hwCost
@@ -378,7 +387,7 @@ export async function POST(request) {
       bandRow(null, null, fmtMoney(rtaBid), { rl: 'TOTAL', rlBold: true })
     } else {
       baseBand((job.manufacturer || 'LEEDO').toUpperCase() + ' — CABINET SUPPLY')
-      if (Number(priceLeedo) > 0) {
+      if (sL > 0 || cL > 0) {
         bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
       } else {
         bandRow(null, 'BASE CABINET PRICE', fmtMoney(cabsToGC), { bold:true })

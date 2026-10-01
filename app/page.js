@@ -116,7 +116,9 @@ export default function Home() {
         ? { ...prev, activity_log: a.data || [], reminders: r.data || [] } : prev))
     }
     setJobEmails([]); setJobEmailStatus({})
-    setPriceLeedo(selectedJob?.price_leedo || ''); setPriceRta(selectedJob?.price_rta || '')
+    setPriceLeedo(selectedJob?.price_leedo_cost || ''); setPriceRta(selectedJob?.price_rta_cost || '')
+    setSellLeedo(selectedJob?.price_leedo || ''); setSellRta(selectedJob?.price_rta || '')
+    setCtLocalSell(selectedJob?.ct_local_sell || ''); setCtImportSell(selectedJob?.ct_import_sell || '')
     setCtLocalInstall(selectedJob?.ct_local_install || ''); setCtImportMat(selectedJob?.ct_import_material || ''); setCtImportInstall(selectedJob?.ct_import_install || '')
     if (selectedJob?.ct_local_material) setCtGross(String(selectedJob.ct_local_material))
     if (selectedJob?.id) {
@@ -191,6 +193,10 @@ export default function Home() {
   const [ctMaterialSpec,  setCtMaterialSpec]  = useState('')
   const [ctColorSpec,     setCtColorSpec]     = useState('')
   const [ctAmenities,     setCtAmenities]     = useState('')
+  const [sellLeedo,       setSellLeedo]       = useState('')
+  const [sellRta,         setSellRta]         = useState('')
+  const [ctLocalSell,     setCtLocalSell]     = useState('')
+  const [ctImportSell,    setCtImportSell]    = useState('')
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -950,7 +956,7 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0 }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0 }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
@@ -970,7 +976,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, priceLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, priceRta: priceRta !== '' ? Number(priceRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1767,12 +1773,16 @@ export default function Home() {
                         </div>
                       </div>
                       <div style={{ margin:'8px 0', padding:'8px 10px', background:'#f8f7f4', borderRadius:8, border:'0.5px solid #e8e6e0' }}>
-                        <div style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(type Richard's totals — both filled = dual-price proposal like Greenworks)</span></div>
+                        <div style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(Cost = Richard's number → marked up by Margin % · Sell typed = final price wins)</span></div>
                         <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>Leedo Total $
-                            <input type="number" min="0" value={priceLeedo} placeholder="auto (computed)" onChange={e=>setPriceLeedo(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
-                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>Imported RTA Total $
-                            <input type="number" min="0" value={priceRta} placeholder="blank = omit" onChange={e=>setPriceRta(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
+                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>Leedo Cost $
+                            <input type="number" min="0" value={priceLeedo} placeholder="blank = computed" onChange={e=>setPriceLeedo(e.target.value)} style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
+                          <label style={{ fontSize:11, color:'#2D7A3A', display:'flex', alignItems:'center', gap:5, fontWeight:600 }}>Leedo SELL $
+                            <input type="number" min="0" value={sellLeedo} placeholder="blank = auto markup" onChange={e=>setSellLeedo(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #2D7A3A', borderRadius:6, fontSize:12 }}/></label>
+                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>RTA Cost $
+                            <input type="number" min="0" value={priceRta} placeholder="blank = omit" onChange={e=>setPriceRta(e.target.value)} style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
+                          <label style={{ fontSize:11, color:'#2D7A3A', display:'flex', alignItems:'center', gap:5, fontWeight:600 }}>RTA SELL $
+                            <input type="number" min="0" value={sellRta} placeholder="blank = auto markup" onChange={e=>setSellRta(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #2D7A3A', borderRadius:6, fontSize:12 }}/></label>
                         </div>
                       </div>
                       {specLib.length > 0 && (
@@ -2563,7 +2573,7 @@ export default function Home() {
                         </div>
                       )}
                       <div style={{ padding:'8px 10px', background:'#f8f7f4', borderRadius:8, border:'0.5px solid #e8e6e0', marginBottom:10 }}>
-                        <div style={{ fontSize:11, fontWeight:600, color:'#8B6914', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(fillable — installation blank = line omitted)</span></div>
+                        <div style={{ fontSize:11, fontWeight:600, color:'#8B6914', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(COSTS — marked up by Margin % · type a SELL total to set the final price instead)</span></div>
                         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
                           <label style={{ fontSize:11, color:'#555' }}>Local Fabricator — Material $<br/>
                             <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:130 }}/></label>
@@ -2573,6 +2583,10 @@ export default function Home() {
                             <input type="number" min="0" value={ctImportMat} placeholder="blank = omit block" onChange={e=>setCtImportMat(e.target.value)} style={{ ...inp, width:130 }}/></label>
                           <label style={{ fontSize:11, color:'#555' }}>Import — Installation $<br/>
                             <input type="number" min="0" value={ctImportInstall} placeholder="blank = omit" onChange={e=>setCtImportInstall(e.target.value)} style={{ ...inp, width:130 }}/></label>
+                          <label style={{ fontSize:11, color:'#2D7A3A', fontWeight:600 }}>Local SELL Total $<br/>
+                            <input type="number" min="0" value={ctLocalSell} placeholder="blank = auto" onChange={e=>setCtLocalSell(e.target.value)} style={{ ...inp, width:120, borderColor:'#2D7A3A' }}/></label>
+                          <label style={{ fontSize:11, color:'#2D7A3A', fontWeight:600 }}>Import SELL Total $<br/>
+                            <input type="number" min="0" value={ctImportSell} placeholder="blank = auto" onChange={e=>setCtImportSell(e.target.value)} style={{ ...inp, width:120, borderColor:'#2D7A3A' }}/></label>
                         </div>
                         <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:8 }}>
                           <label style={{ fontSize:11, color:'#555' }}>Material Spec<br/>
