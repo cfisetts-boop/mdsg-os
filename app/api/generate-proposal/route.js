@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [] } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -134,10 +134,14 @@ export async function POST(request) {
     const taxZeroed    = taxExplicit && (Number(mfrTaxPassThrough) || 0) === 0
     const taxAmount    = (taxZeroed || mfrTax > 0) ? 0 : (salesTax > 0 ? (cabsToGC + hwToGC) * (salesTax / 100) : 0)
     const totalBid     = cabsToGC + freight + mfrTax + hwToGC + taxAmount
+    const displayBid = Number(priceLeedo) > 0 ? Number(priceLeedo) : totalBid
+    const rtaBid = Number(priceRta) > 0 ? Number(priceRta) : 0
 
     // Persist OS-side financials — dashboard prefers these over Monday columns
     await supabase.from('jobs').update({
-      os_bid_value: Math.round(totalBid * 100) / 100,
+      os_bid_value: Math.round(displayBid * 100) / 100,
+      ...(Number(priceLeedo) > 0 ? { price_leedo: Number(priceLeedo) } : {}),
+      ...(Number(priceRta) > 0 ? { price_rta: Number(priceRta) } : { price_rta: null }),
       os_cost_value: Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100,
       os_margin_pct: mPct > 0 && mPct < 95 ? mPct : null,
     }).eq('id', jobId)
@@ -241,10 +245,10 @@ export async function POST(request) {
     const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(', ')
 
     // CUSTOMER block starts 12pt below the bar bottom (y=744), so cap height clears the bar
-    dt('CUSTOMER',          COL_R, 730, { size: 6.5, color: gray, bold: true })
-    dt(job.gc_name || '—', COL_R, 719, { size: 10,  bold: true, maxWidth: MR - COL_R })
-    dt(job.name,            COL_R, 707, { size: 8.5, maxWidth: MR - COL_R })
-    if (addr) dt(addr,      COL_R, 696, { size: 7.5, color: gray, maxWidth: MR - COL_R })
+    dt('CUSTOMER',          ML, 730, { size: 6.5, color: gray, bold: true })
+    dt(job.gc_name || '—', ML, 719, { size: 10,  bold: true, maxWidth: MID - ML - 10 })
+    dt(job.name,            ML, 707, { size: 8.5, maxWidth: MID - ML - 10 })
+    if (addr) dt(addr,      ML, 696, { size: 7.5, color: gray, maxWidth: MID - ML - 10 })
 
     dline(686)   // separator — 10pt below address baseline (696)
 
@@ -252,19 +256,19 @@ export async function POST(request) {
     // SUBMITTED BY — two columns
     // ═══════════════════════════════════════════════════════════════════════
 
-    dt('SR. PROJECT MANAGER',  ML,    676, { size: 6.5, color: gray, bold: true })
-    dt('CONTACT',              COL_R, 676, { size: 6.5, color: gray, bold: true })
+    dt('CONTACT',              ML,    676, { size: 6.5, color: gray, bold: true })
+    dt('SR. PROJECT MANAGER',  COL_R, 676, { size: 6.5, color: gray, bold: true })
 
-    dt(senderInfo.name,        ML,    664, { size: 9, bold: true })
-    dt('Tel:',                 COL_R, 664, { size: 7.5, color: gray })
-    dt(senderInfo.phone || '—', COL_R + 24, 664, { size: 7.5 })
+    dt('Tel:',                 ML, 664, { size: 7.5, color: gray })
+    dt(senderInfo.phone || '—', ML + 24, 664, { size: 7.5 })
+    dt(senderInfo.name,        COL_R, 664, { size: 9, bold: true })
 
-    dt(senderInfo.title,       ML,    653, { size: 7.5, color: gray })
-    dt('Email:',               COL_R, 653, { size: 7.5, color: gray })
-    dt(senderInfo.email,       COL_R + 33, 653, { size: 7.5 })
+    dt('Email:',               ML, 653, { size: 7.5, color: gray })
+    dt(senderInfo.email,       ML + 33, 653, { size: 7.5 })
+    dt(senderInfo.title,       COL_R, 653, { size: 7.5, color: gray })
 
-    dt('CSR:',                 COL_R, 642, { size: 7.5, color: gray })
-    dt('csr@mdsgcabinets.com', COL_R + 27, 642, { size: 7.5 })
+    dt('CSR:',                 ML, 642, { size: 7.5, color: gray })
+    dt('csr@mdsgcabinets.com', ML + 27, 642, { size: 7.5 })
 
     dline(632)   // separator — 10pt below CSR baseline (642)
 
@@ -443,13 +447,33 @@ export async function POST(request) {
     }
 
     py -= 4
+    if (rtaBid > 0) {
+      // ── Greenworks-style dual BASE PRICE blocks ──────────────────────────
+      const priceBlock = (label, amount) => {
+        drect(ML, py - 10, PW, 14, darkGreen)
+        dt(label, ML + 8, py - 6, { bold: true, size: 7.5, color: white })
+        rAlign('TOTAL COST', MR - 8, py - 6, { bold: true, size: 6.5, color: rgb(0.80, 0.92, 0.82) })
+        py -= 24
+        dt('Cabinets, hardware allowance & applicable sales tax', ML + 8, py, { size: 8 })
+        rAlign(fmtMoney(amount), MR - 8, py, { size: 8.5 })
+        py -= 14
+        drect(ML, py - 5, PW, 17, brandGreen)
+        dt('TOTAL', ML + 8, py - 1, { bold: true, size: 8.5, color: white })
+        rAlign(fmtMoney(amount), MR - 8, py - 1, { bold: true, size: 11, color: white })
+        py -= 26
+      }
+      priceBlock('BASE PRICE:  LEEDO — DOMESTIC MANUFACTURED', displayBid)
+      priceBlock('BASE PRICE:  IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE', rtaBid)
+      py -= 4
+    } else {
     // TOTAL box — brand green
     const boxH = 34
     drect(ML, py - boxH, PW, boxH, brandGreen)
     dt('TOTAL PROJECT PRICE', ML + 10, py - 13, { bold: true, size: 9, color: white })
-    rAlign(fmtMoney(totalBid), MR - 10, py - 13, { bold: true, size: 15, color: white })
+    rAlign(fmtMoney(displayBid), MR - 10, py - 13, { bold: true, size: 15, color: white })
     dt('Includes cabinets, hardware allowance & applicable sales tax', ML + 10, py - 26, { size: 6, color: rgb(0.88, 0.97, 0.90) })
     py -= boxH + 10
+    }
 
     dline(py)
     py -= 10
@@ -489,11 +513,11 @@ export async function POST(request) {
     dt('Thank you for the opportunity to submit our proposal. Unit pricing honored for 90 days from proposal date. All quantities estimated — field measurements and approved shop drawings will prevail.', ML, py, { size: 6.5, color: gray, maxWidth: PW })
     py -= 14
 
-    // Signature
-    dt('Accepted by:', ML, py, { size: 8 })
-    page.drawLine({ start: { x: ML + 78, y: py - 2 }, end: { x: ML + 290, y: py - 2 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
-    dt('Date:', MR - 130, py, { size: 8 })
-    page.drawLine({ start: { x: MR - 95, y: py - 2 }, end: { x: MR, y: py - 2 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
+    // Signature — fixed footer position (bottom of final page, per Pam)
+    dt('Accepted by:', ML, 50, { size: 8 })
+    page.drawLine({ start: { x: ML + 78, y: 48 }, end: { x: ML + 290, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
+    dt('Date:', MR - 130, 50, { size: 8 })
+    page.drawLine({ start: { x: MR - 95, y: 48 }, end: { x: MR, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
 
     // Footer
     drect(ML, 30, PW, 2, brandGreen)

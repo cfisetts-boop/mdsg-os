@@ -20,6 +20,7 @@ export async function POST(request) {
       jobId, unitTypes = [], totals = {}, wastePct = 10, propConfig = {},
       sender = 'Cole', bidSections = {}, marginPct = 20, grossCostOverride = 0,
       notes = '', hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg',
+      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null,
     } = await request.json()
 
     let job = null
@@ -39,7 +40,14 @@ export async function POST(request) {
     const cost   = Number(grossCostOverride) || Number(propConfig.materialCost) || 0
     const margin = Math.min(Math.max(Number(marginPct) || 0, 0), 60)
     const sell   = cost > 0 ? Math.round((cost / (1 - margin / 100)) * 100) / 100 : 0
-    if (!sell) return Response.json({ error: 'No countertop cost — upload/pick a CT quote or enter material cost first' }, { status: 422 })
+    // Manual fillable pricing (Greenworks-style): local + import blocks
+    const num = (v) => Number(v) > 0 ? Number(v) : 0
+    const locMat = num(ctLocalMaterial), locIns = num(ctLocalInstall)
+    const impMat = num(ctImportMaterial), impIns = num(ctImportInstall)
+    const manualMode = locMat > 0 || impMat > 0
+    const locTotal = locMat + locIns, impTotal = impMat + impIns
+    if (!sell && !manualMode) return Response.json({ error: 'No countertop pricing — fill in the pricing lines or pick a saved CT quote' }, { status: 422 })
+    const headline = manualMode ? (locTotal || impTotal) : sell
 
     const isGW = brandAs === 'greenworks'
     const today = new Date()
@@ -91,6 +99,19 @@ export async function POST(request) {
     if (addr) { dt(addr, ML, y, { size:7.5, color:gray }); y -= 11 }
     y -= 4; dline(y); y -= 16
 
+    // Spec rows (Greenworks layout)
+    if (propConfig.material || propConfig.color || job?.finish_color) {
+      drect(ML, y - 4, PW, 14, darkGreen)
+      dt('DESCRIPTION', ML + 8, y, { bold: true, size: 7, color: white })
+      y -= 17
+      dt('MATERIAL SPEC:', ML + 8, y, { bold: true, size: 7.5, color: gray })
+      dt(propConfig.material || '—', ML + 95, y, { size: 8 })
+      y -= 12
+      dt('COLOR:', ML + 8, y, { bold: true, size: 7.5, color: gray })
+      dt(propConfig.color || job?.finish_color || 'TBD', ML + 95, y, { size: 8 })
+      y -= 16
+    }
+
     // Scope band
     const sqft = Number(totals.totalSqft) || 0
     const sqftWaste = sqft > 0 ? Math.round(sqft * (1 + (Number(wastePct)||0)/100)) : 0
@@ -125,7 +146,30 @@ export async function POST(request) {
     }
 
     // Pricing
-    if (totalOnly) {
+    if (manualMode) {
+      const priceBlock = (label, mat, ins) => {
+        if (!(mat > 0)) return
+        drect(ML, y - 10, PW, 14, darkGreen)
+        dt('BASE PRICE:', ML + 8, y - 6, { bold: true, size: 7.5, color: white })
+        rAlign('TOTAL COST', MR - 8, y - 6, { bold: true, size: 6.5, color: rgb(0.80, 0.92, 0.82) })
+        y -= 24
+        dt(label, ML + 8, y, { size: 8 })
+        rAlign(fmtMoney(mat), MR - 8, y, { size: 8.5 })
+        y -= 12
+        if (ins > 0) {
+          rAlign('INSTALLATION', MR - 120, y, { size: 7.5, color: gray })
+          rAlign(fmtMoney(ins), MR - 8, y, { size: 8.5 })
+          y -= 12
+        }
+        drect(ML, y - 5, PW, 17, brandGreen)
+        dt('TOTAL', ML + 8, y - 1, { bold: true, size: 8.5, color: white })
+        rAlign(fmtMoney(mat + ins), MR - 8, y - 1, { bold: true, size: 11, color: white })
+        y -= 28
+      }
+      priceBlock('LOCAL FABRICATOR — MATERIAL', locMat, locIns)
+      priceBlock('IMPORT MATERIAL TO MATCH MATERIAL SPEC ABOVE', impMat, impIns)
+      y -= 4
+    } else if (totalOnly) {
       drect(ML, y-14, PW, 30, darkGreen)
       dt('TOTAL — COUNTERTOP SUPPLY', ML+10, y-4, { bold:true, size:10, color:white })
       rAlign(fmtMoney(sell), MR-10, y-4, { bold:true, size:13, color:white })
@@ -174,9 +218,23 @@ export async function POST(request) {
     dt(si.title, ML, y, { size:7.5, color:gray })
     rAlign(si.email, MR, y, { size:8, color:gray })
 
+    // Accepted-by signature + corporate footer (fixed bottom, per Pam)
+    dt('Accepted by:', ML, 50, { size: 8 })
+    page.drawLine({ start: { x: ML + 78, y: 48 }, end: { x: ML + 290, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
+    dt('Date:', MR - 130, 50, { size: 8 })
+    page.drawLine({ start: { x: MR - 95, y: 48 }, end: { x: MR, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
+    drect(ML, 30, PW, 2, brandGreen)
+    dt(isGW
+      ? 'CORPORATE OFFICES: 5328 S. Jebel Way, Centennial, CO 80015  |  CONTACT: Anthony (Willy) Ramirez, President  |  619-718-1578  |  greenworksrenovationsllc@gmail.com'
+      : 'CORPORATE OFFICES: 23463 E. Moraine Pl., Aurora, CO 80016  |  CONTACT: Pamela Isetts, President  |  651/301-1063  |  pam@mdsgcabinets.com  |  csr@mdsgcabinets.com', ML, 20, { size: 6.5, color: gray, maxWidth: PW })
+
     const bytes = await pdfDoc.save()
     if (jobId) {
-      await supabase.from('activity_log').insert({ job_id: jobId, user_name: si.name, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(sell)} · ${margin}% margin${isGW ? ' · Greenworks-branded' : ''}` })
+      if (manualMode) await supabase.from('jobs').update({
+        ct_local_material: locMat || null, ct_local_install: locIns || null,
+        ct_import_material: impMat || null, ct_import_install: impIns || null,
+      }).eq('id', jobId)
+      await supabase.from('activity_log').insert({ job_id: jobId, user_name: si.name, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)} · ${margin}% margin${isGW ? ' · Greenworks-branded' : ''}` })
     }
     return new Response(Buffer.from(bytes), {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${proposalNum}.pdf"` },
