@@ -14,12 +14,12 @@ const SENDERS = {
   MDSG: { name: 'MDSG Team',     title: 'Manufacturer Direct Sales Group', phone: '', email: 'csr@mdsgcabinets.com' },
 }
 
+// ─── Greenworks-style bordered grid proposal ─────────────────────────────────
 export async function POST(request) {
   try {
     const {
-      jobId, unitTypes = [], totals = {}, wastePct = 10, propConfig = {},
-      sender = 'Cole', bidSections = {}, marginPct = 20, grossCostOverride = 0,
-      notes = '', hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg',
+      jobId, totals = {}, propConfig = {}, sender = 'Cole', bidSections = {},
+      marginPct = 20, grossCostOverride = 0, notes = '', brandAs = 'mdsg',
       ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null,
     } = await request.json()
 
@@ -31,202 +31,219 @@ export async function POST(request) {
 
     const SEC = {
       includedInBid: bidSections.includedInBid ?? 'Sales Tax  |  Delivery to Job Site  |  Sink cutouts per sink specifications',
-      assembly: bidSections.assembly ?? 'By Greenworks Renovations under separate contract — Contact: Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com',
-      notIncluded: bidSections.notIncluded ?? 'Installation — under separate contract with Greenworks Renovations\nPlumbing connections, faucets, undermount sink brackets\nTile backsplash installation or materials',
-      bottomNotes: bidSections.bottomNotes ?? 'Final price subject to approved shop drawings. All quantities are estimated — field measurements and approved shop drawings will prevail.',
+      notIncluded: bidSections.notIncluded ?? 'Material Storage',
+      generalNotes: bidSections.generalNotes ?? '- Installation:\n- Davis Bacon Wages are NOT Included\n- OCIP/CCIP Insurance NOT Included\n- Backing of any kind is NOT Included',
+      bottomNotes: bidSections.bottomNotes ?? 'Final Price subject to Approved Shop Drawings',
     }
 
-    // ── Pricing ───────────────────────────────────────────────────────────
-    const cost   = Number(grossCostOverride) || Number(propConfig.materialCost) || 0
-    const margin = Math.min(Math.max(Number(marginPct) || 0, 0), 60)
-    const sell   = cost > 0 ? Math.round((cost / (1 - margin / 100)) * 100) / 100 : 0
-    // Manual fillable pricing (Greenworks-style): local + import blocks
+    // ── Pricing ─────────────────────────────────────────────────────────────
     const num = (v) => Number(v) > 0 ? Number(v) : 0
     const locMat = num(ctLocalMaterial), locIns = num(ctLocalInstall)
     const impMat = num(ctImportMaterial), impIns = num(ctImportInstall)
     const manualMode = locMat > 0 || impMat > 0
-    const locTotal = locMat + locIns, impTotal = impMat + impIns
-    if (!sell && !manualMode) return Response.json({ error: 'No countertop pricing — fill in the pricing lines or pick a saved CT quote' }, { status: 422 })
-    const headline = manualMode ? (locTotal || impTotal) : sell
+    const cost = Number(grossCostOverride) || 0
+    const margin = Math.min(Math.max(Number(marginPct) || 0, 0), 60)
+    const sell = cost > 0 ? Math.round((cost / (1 - margin / 100)) * 100) / 100 : 0
+    if (!manualMode && !sell) return Response.json({ error: 'No countertop pricing — fill in the pricing lines first' }, { status: 422 })
+    const headline = manualMode ? ((locMat + locIns) || (impMat + impIns)) : sell
 
     const isGW = brandAs === 'greenworks'
     const today = new Date()
-    const validUntil = new Date(today); validUntil.setDate(validUntil.getDate() + 90)
-    const fmtDate  = (d) => d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
     const fmtMoney = (n) => '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const dateStr = `${today.getMonth()+1}/${today.getDate()}/${today.getFullYear()}`
     const proposalNum = `${isGW ? 'GW' : 'MDSG'}-CT-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}${job ? '-' + (job.name || 'JOB').substring(0,3).toUpperCase() : ''}`
 
     const pdfDoc  = await PDFDocument.create()
     const bold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const boldIt  = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique)
     const regular = await pdfDoc.embedFont(StandardFonts.Helvetica)
     let logo = null
     try { if (!isGW) logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png'))) } catch {}
 
-    const brandGreen = rgb(0.44, 0.61, 0.47), darkGreen = rgb(0.26, 0.40, 0.28)
-    const white = rgb(1,1,1), black = rgb(0.13,0.13,0.13)
-    const gray = rgb(0.45,0.45,0.45), lgray = rgb(0.94,0.94,0.94), dgray = rgb(0.60,0.60,0.60)
-    const mintBg = rgb(0.94, 0.97, 0.95)
-    const ML = 50, PW = 512, MR = ML + PW
+    const sage   = rgb(0.56, 0.68, 0.55)     // Greenworks band green
+    const black  = rgb(0, 0, 0)
+    const white  = rgb(1, 1, 1)
+    const blue   = rgb(0.05, 0.3, 0.6)
 
-    let page = pdfDoc.addPage(PageSizes.Letter)
-    const mk = () => ({
-      dt: (t, x, y, o = {}) => { if (t == null) return; page.drawText(String(t), { x, y, size: o.size||9, font: o.bold?bold:regular, color: o.color||black, maxWidth: o.maxWidth||(MR-x) }) },
-      dline: (y) => page.drawLine({ start:{x:ML,y}, end:{x:MR,y}, thickness:0.5, color:rgb(0.80,0.85,0.81) }),
-      drect: (x,y,w,h,c) => page.drawRectangle({x,y,width:w,height:h,color:c}),
-      rAlign: (t,rx,y,o={}) => { const f=o.bold?bold:regular; page.drawText(String(t), { x: rx - f.widthOfTextAtSize(String(t), o.size||9), y, size:o.size||9, font:f, color:o.color||black }) },
-    })
-    let { dt, dline, drect, rAlign } = mk()
-
-    const header = () => {
-      if (logo) { const d = logo.scaleToFit(100, 26); page.drawImage(logo, { x: ML+6, y: 764, width: d.width, height: d.height }) }
-      const coX = isGW ? ML + 6 : ML + 118
-      dt(isGW ? 'GREENWORKS RENOVATIONS LLC' : 'MANUFACTURER DIRECT SALES GROUP, LLC', coX, 780, { bold:true, size:11.5, color:darkGreen })
-      dt(isGW ? 'Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com' : '23463 E. Moraine Pl., Aurora, CO 80016  |  mdsgcabinets.com', coX, 767, { size:7.5, color:brandGreen })
-      drect(ML, 744, PW, 18, darkGreen)
-      dt('COUNTERTOP PROPOSAL', ML+10, 750, { bold:true, size:10, color:white })
-      rAlign(`Proposal No. ${proposalNum}`, MR-8, 750, { size:8, color:rgb(0.80,0.92,0.82) })
+    const page = pdfDoc.addPage(PageSizes.Letter)
+    const ML = 30, MR = 582, W = MR - ML      // full grid width 552
+    const line = (x1, y1, x2, y2, t = 0.75) => page.drawLine({ start:{x:x1,y:y1}, end:{x:x2,y:y2}, thickness:t, color:black })
+    const box  = (x, y, w, h, fill = null, t = 0.75) => {
+      if (fill) page.drawRectangle({ x, y, width:w, height:h, color:fill })
+      page.drawRectangle({ x, y, width:w, height:h, borderColor:black, borderWidth:t })
     }
-    header()
+    const txt = (t, x, y, o = {}) => { if (t == null || t === '') return
+      const f = o.boldIt ? boldIt : (o.bold ? bold : regular)
+      page.drawText(String(t), { x, y, size:o.size||7.5, font:f, color:o.color||black, maxWidth:o.maxWidth }) }
+    const ctr = (t, x, w, y, o = {}) => { const f = o.boldIt ? boldIt : (o.bold ? bold : regular)
+      const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, x + (w - tw)/2, y, o) }
+    const rgt = (t, rx, y, o = {}) => { const f = o.boldIt ? boldIt : (o.bold ? bold : regular)
+      const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, rx - tw - 4, y, o) }
 
-    let y = 726
-    // Customer block
-    dt('CUSTOMER', ML, y, { size:6.5, color:gray, bold:true })
-    rAlign(`Date: ${fmtDate(today)}`, MR, y, { size:8, color:gray })
+    // ═ Title band ═
+    let y = 768
+    box(ML, y - 20, W, 20, sage, 1.25)
+    ctr(isGW ? 'GREENWORKS RENOVATIONS, LLC' : 'MANUFACTURER DIRECT SALES GROUP, LLC', ML, W, y - 14, { bold:true, size:12 })
+    y -= 20
+
+    // ═ Date strip (right) ═
+    box(MR - 150, y - 12, 150, 12)
+    txt('Date:', MR - 146, y - 9, { bold:true, size:6.5 })
+    rgt(dateStr, MR, y - 9, { bold:true, size:6.5 })
     y -= 12
-    dt(job?.gc_name || '—', ML, y, { size:10, bold:true }); y -= 12
-    dt(job?.name || '', ML, y, { size:8.5 }); y -= 11
-    const addr = job ? [job.address, job.city, job.state, job.zip].filter(Boolean).join(', ') : ''
-    if (addr) { dt(addr, ML, y, { size:7.5, color:gray }); y -= 11 }
-    y -= 4; dline(y); y -= 16
 
-    // Spec rows (Greenworks layout)
-    if (propConfig.material || propConfig.color || job?.finish_color) {
-      drect(ML, y - 4, PW, 14, darkGreen)
-      dt('DESCRIPTION', ML + 8, y, { bold: true, size: 7, color: white })
-      y -= 17
-      dt('MATERIAL SPEC:', ML + 8, y, { bold: true, size: 7.5, color: gray })
-      dt(propConfig.material || '—', ML + 95, y, { size: 8 })
-      y -= 12
-      dt('COLOR:', ML + 8, y, { bold: true, size: 7.5, color: gray })
-      dt(propConfig.color || job?.finish_color || 'TBD', ML + 95, y, { size: 8 })
-      y -= 16
-    }
-
-    // Scope band
-    const sqft = Number(totals.totalSqft) || 0
-    const sqftWaste = sqft > 0 ? Math.round(sqft * (1 + (Number(wastePct)||0)/100)) : 0
-    drect(ML, y-6, PW, 20, mintBg)
-    dt('PROJECT SCOPE', ML+8, y, { bold:true, size:8, color:darkGreen })
-    const scopeBits = []
-    if (unitTypes.length) scopeBits.push(`${unitTypes.length} unit types`)
-    if (Number(totals.totalSets) > 0) scopeBits.push(`${Number(totals.totalSets).toLocaleString()} sets`)
-    if (sqft > 0) scopeBits.push(`${sqft.toLocaleString()} SF net · ~${sqftWaste.toLocaleString()} SF w/ ${wastePct}% waste`)
-    if (propConfig.material) scopeBits.push(propConfig.material)
-    rAlign(scopeBits.join('   ·   ') || 'Countertop supply per plans & specifications', MR-8, y, { size:8, color:darkGreen })
-    y -= 26
-
-    // Unit table (skippable)
-    if (!hideUnitPricing && !totalOnly && unitTypes.length) {
-      drect(ML, y-4, PW, 14, darkGreen)
-      dt('UNIT TYPE', ML+8, y, { bold:true, size:7, color:white })
-      dt('SETS', ML+300, y, { bold:true, size:7, color:white })
-      dt('SQFT', ML+380, y, { bold:true, size:7, color:white })
-      y -= 15
-      let alt = false
-      for (const ut of unitTypes.slice(0, 24)) {
-        if (y < 210) break
-        if (alt) drect(ML, y-3.5, PW, 12, mintBg)
-        alt = !alt
-        dt(String(ut.name || ut.unit_type || '—').substring(0, 52), ML+8, y, { size:7.5 })
-        dt(String(ut.sets ?? ut.quantity ?? ''), ML+300, y, { size:7.5 })
-        dt(ut.sqft ? Number(ut.sqft).toLocaleString() : '', ML+380, y, { size:7.5 })
-        y -= 12
-      }
-      y -= 8; dline(y); y -= 16
-    }
-
-    // Pricing
-    if (manualMode) {
-      const priceBlock = (label, mat, ins) => {
-        if (!(mat > 0)) return
-        drect(ML, y - 10, PW, 14, darkGreen)
-        dt('BASE PRICE:', ML + 8, y - 6, { bold: true, size: 7.5, color: white })
-        rAlign('TOTAL COST', MR - 8, y - 6, { bold: true, size: 6.5, color: rgb(0.80, 0.92, 0.82) })
-        y -= 24
-        dt(label, ML + 8, y, { size: 8 })
-        rAlign(fmtMoney(mat), MR - 8, y, { size: 8.5 })
-        y -= 12
-        if (ins > 0) {
-          rAlign('INSTALLATION', MR - 120, y, { size: 7.5, color: gray })
-          rAlign(fmtMoney(ins), MR - 8, y, { size: 8.5 })
-          y -= 12
-        }
-        drect(ML, y - 5, PW, 17, brandGreen)
-        dt('TOTAL', ML + 8, y - 1, { bold: true, size: 8.5, color: white })
-        rAlign(fmtMoney(mat + ins), MR - 8, y - 1, { bold: true, size: 11, color: white })
-        y -= 28
-      }
-      priceBlock('LOCAL FABRICATOR — MATERIAL', locMat, locIns)
-      priceBlock('IMPORT MATERIAL TO MATCH MATERIAL SPEC ABOVE', impMat, impIns)
-      y -= 4
-    } else if (totalOnly) {
-      drect(ML, y-14, PW, 30, darkGreen)
-      dt('TOTAL — COUNTERTOP SUPPLY', ML+10, y-4, { bold:true, size:10, color:white })
-      rAlign(fmtMoney(sell), MR-10, y-4, { bold:true, size:13, color:white })
-      y -= 38
-    } else {
-      drect(ML, y-4, PW, 14, darkGreen)
-      dt('PRICING', ML+8, y, { bold:true, size:7, color:white })
-      y -= 17
-      dt('Countertop Material, Fabrication & Delivery', ML+8, y, { size:8.5 })
-      rAlign(fmtMoney(sell), MR-8, y, { size:8.5 })
-      y -= 13
-      dt(`Includes ${wastePct}% waste factor on ordered quantities`, ML+8, y, { size:6.5, color:dgray })
-      y -= 20
-      drect(ML, y-8, PW, 20, darkGreen)
-      dt('TOTAL', ML+10, y-2, { bold:true, size:9, color:white })
-      rAlign(fmtMoney(sell), MR-10, y-2, { bold:true, size:11, color:white })
-      y -= 30
-    }
-
-    // Sections
-    const section = (label, text) => {
-      if (!text || !text.trim()) return
-      const lines = text.split('\n').filter(Boolean)
-      const need = 16 + lines.length * 10
-      if (y - need < 120) { page = pdfDoc.addPage(PageSizes.Letter); ({ dt, dline, drect, rAlign } = mk()); header(); y = 716 }
-      dt(label, ML, y, { bold:true, size:7.5, color:darkGreen }); y -= 11
-      for (const ln of lines) { dt(ln.replace(/^[-•]\s*/, '•  '), ML+8, y, { size:7.5, color:gray, maxWidth: PW-16 }); y -= 10 }
-      y -= 8
-    }
-    section('INCLUDED IN BID', SEC.includedInBid.split('|').map(s=>s.trim()).join('\n'))
-    if (!isGW) section('ASSEMBLY & INSTALLATION', SEC.assembly)
-    section('NOT INCLUDED', SEC.notIncluded)
-    if (notes && notes.trim()) section('PROPOSAL NOTES', notes)
-    section('TERMS', SEC.bottomNotes + `\nProposal valid through ${fmtDate(validUntil)}.`)
-
-    // Sender block
-    if (y < 130) { page = pdfDoc.addPage(PageSizes.Letter); ({ dt, dline, drect, rAlign } = mk()); header(); y = 716 }
-    y = Math.min(y, 150)
-    dline(y); y -= 14
+    // ═ Header grid: CONTACT (left) | title+logo (center) | CUSTOMER (right) ═
+    const L1 = ML, L1W = 196, C1 = ML + L1W, C1W = 160, R1 = C1 + C1W, R1W = W - L1W - C1W
+    const hTop = y, hBot = y - 92
     const si = isGW
-      ? { name: 'Anthony (Willy) Ramirez', title: 'Greenworks Renovations LLC', phone: '619-718-1578', email: 'greenworksrenovationsllc@gmail.com' }
-      : (SENDERS[sender] || SENDERS.Cole)
-    dt('Prepared by', ML, y, { size:6.5, color:gray, bold:true }); y -= 12
-    dt(si.name, ML, y, { size:9, bold:true })
-    rAlign(si.phone || '', MR, y, { size:8, color:gray }); y -= 11
-    dt(si.title, ML, y, { size:7.5, color:gray })
-    rAlign(si.email, MR, y, { size:8, color:gray })
+      ? { name: 'Anthony (Willy) Ramirez', phone: '619/718-1578', email: 'greenworksrenovationsllc@gmail.com', addr1: '5328 S. Jebel Way', addr2: 'Centennial, CO  80015' }
+      : { ...(SENDERS[sender] || SENDERS.Cole), addr1: '23463 E. Moraine Place', addr2: 'Aurora, CO  80016' }
 
-    // Accepted-by signature + corporate footer (fixed bottom, per Pam)
-    dt('Accepted by:', ML, 50, { size: 8 })
-    page.drawLine({ start: { x: ML + 78, y: 48 }, end: { x: ML + 290, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
-    dt('Date:', MR - 130, 50, { size: 8 })
-    page.drawLine({ start: { x: MR - 95, y: 48 }, end: { x: MR, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
-    drect(ML, 30, PW, 2, brandGreen)
-    dt(isGW
-      ? 'CORPORATE OFFICES: 5328 S. Jebel Way, Centennial, CO 80015  |  CONTACT: Anthony (Willy) Ramirez, President  |  619-718-1578  |  greenworksrenovationsllc@gmail.com'
-      : 'CORPORATE OFFICES: 23463 E. Moraine Pl., Aurora, CO 80016  |  CONTACT: Pamela Isetts, President  |  651/301-1063  |  pam@mdsgcabinets.com  |  csr@mdsgcabinets.com', ML, 20, { size: 6.5, color: gray, maxWidth: PW })
+    // left CONTACT block rows
+    const lrow = (label, value, ry, lw = 58) => {
+      box(L1, ry - 11, lw, 11); box(L1 + lw, ry - 11, L1W - lw, 11)
+      txt(label, L1 + 2, ry - 8, { bold:true, size:6 }); txt(value, L1 + lw + 2, ry - 8, { size:6.5, maxWidth: L1W - lw - 4 })
+    }
+    box(L1, hTop - 11, L1W, 11); txt('CONTACT:', L1 + 2, hTop - 8, { bold:true, size:6.5 })
+    box(L1, hTop - 22, L1W, 11); txt(si.name, L1 + 2, hTop - 19, { bold:true, size:7.5 })
+    lrow('TELEPHONE:', si.phone, hTop - 33)
+    lrow('EMAIL:', si.email, hTop - 44)
+    lrow('ADDRESS:', si.addr1, hTop - 55)
+    box(L1, hTop - 77, 58, 11); box(L1 + 58, hTop - 77, L1W - 58, 11)
+    txt(si.addr2, L1 + 60, hTop - 74, { size:6.5 })
+    box(L1, hBot, L1W, hTop - 77 - hBot)
+
+    // center title + logo
+    box(C1, hTop - 14, C1W, 14)
+    ctr('COUNTERTOP MATERIALS & INSTALLATION', C1, C1W, hTop - 10, { bold:true, size:6.8 })
+    box(C1, hBot, C1W, hTop - 14 - hBot)
+    if (logo) { const d = logo.scaleToFit(C1W - 60, hTop - 20 - hBot - 8); page.drawImage(logo, { x: C1 + (C1W - d.width)/2, y: hBot + ((hTop - 14 - hBot) - d.height)/2, width: d.width, height: d.height }) }
+
+    // right CUSTOMER block rows
+    const rrow = (label, value, ry, o = {}) => {
+      box(R1, ry - 11, 68, 11); box(R1 + 68, ry - 11, R1W - 68, 11)
+      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(value, R1 + 70, ry - 8, { bold: o.bold, size:6.5, color: o.color, maxWidth: R1W - 72 })
+    }
+    const addr = job ? [job.address].filter(Boolean).join('') : ''
+    const csz  = job ? [job.city, job.state].filter(Boolean).join(', ') + (job.zip ? '  ' + job.zip : '') : ''
+    rrow('CUSTOMER:', (job?.gc_name || '—').toUpperCase(), hTop, { bold:true })
+    rrow('PROJECT:', (job?.name || '').toUpperCase(), hTop - 11, { bold:true })
+    rrow('ADDRESS:', addr, hTop - 22, { bold:true })
+    rrow('CITY/STATE/ZIP', csz, hTop - 33, { bold:true })
+    rrow('CONTACT:', job?.gc_contact || '', hTop - 44, { bold:true })
+    rrow('TELEPHONE:', job?.gc_phone || '', hTop - 55, { bold:true })
+    rrow('EMAIL:', job?.gc_email || '', hTop - 66, { color: blue })
+    box(R1, hBot, R1W, hTop - 66 - hBot)
+    y = hBot
+
+    // ═ DESCRIPTION band ═
+    box(ML, y - 12, W, 12)
+    ctr('DESCRIPTION', ML, W, y - 9, { bold:true, size:7.5 })
+    y -= 12
+
+    // ═ CABINET LINE band ═
+    box(ML, y - 12, W, 12, sage)
+    txt('CABINET LINE: ', ML + 2, y - 9, { bold:true, size:7.5 })
+    txt(propConfig.cabinetLine || job?.manufacturer || '', ML + 70, y - 9, { bold:true, size:7.5 })
+    y -= 12
+
+    // ═ SPEC rows: left spec | right units/amenities ═
+    const SL = 108, SV = 230, RU = ML + SL + SV, RUW = 120, RVW = W - SL - SV - RUW
+    const specRow = (label, value, rLabel, rValue, rBold = true) => {
+      box(ML, y - 12, SL, 12); box(ML + SL, y - 12, SV, 12)
+      txt(label, ML + 2, y - 9, { bold:true, size:7 }); txt(value, ML + SL + 2, y - 9, { size:7, maxWidth: SV - 4 })
+      box(RU, y - 12, RUW, 12); box(RU + RUW, y - 12, RVW, 12)
+      txt(rLabel, RU + 2, y - 9, { bold:true, size:7 })
+      if (rValue) ctr(rValue, RU + RUW, RVW, y - 9, { bold: rBold, size:7 })
+      y -= 12
+    }
+    const units = job?.units_override ?? propConfig.units ?? ''
+    const amenLines = String(propConfig.amenities || job?.amenities_text || '').split(/\n|,/).map(s => s.trim()).filter(Boolean)
+    specRow('SPECIFICATIONS:', '', 'NO. OF UNITS:', units !== '' ? String(units) : '—')
+    specRow('MATERIAL SPEC:', propConfig.material || '', 'AMENITIES:', amenLines[0] || '—')
+    specRow('COLOR:', propConfig.color || job?.finish_color || '', '', amenLines[1] || '')
+    if (amenLines[2]) specRow('', '', '', amenLines[2])
+
+    // ═ BASE PRICE blocks ═
+    const priceBlock = (rowLabel, mat, ins) => {
+      box(ML, y - 12, W - 84, 12, sage); box(MR - 84, y - 12, 84, 12, sage)
+      txt('BASE PRICE:', ML + 2, y - 9, { bold:true, size:7.5 })
+      ctr('TOTAL COST', MR - 84, 84, y - 9, { bold:true, size:7 })
+      y -= 12
+      box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+      txt(rowLabel, ML + 2, y - 9, { bold:true, size:7 })
+      rgt(fmtMoney(mat), MR, y - 9, { bold:true, size:7 })
+      y -= 12
+      if (ins > 0) {
+        box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+        rgt('INSTALLATION', MR - 84, y - 9, { size:7 })
+        rgt(fmtMoney(ins), MR, y - 9, { bold:true, size:7 })
+        y -= 12
+      }
+      box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+      rgt('TOTAL', MR - 84, y - 9, { bold:true, size:7 })
+      rgt(fmtMoney(mat + ins), MR, y - 9, { bold:true, size:7.5 })
+      y -= 12
+    }
+    if (manualMode) {
+      if (locMat > 0) priceBlock('LOCAL FABRICATOR - MATERIAL', locMat, locIns)
+      if (impMat > 0) priceBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', impMat, impIns)
+    } else {
+      priceBlock('COUNTERTOP MATERIAL, FABRICATION & DELIVERY', sell, 0)
+    }
+
+    // ═ INCLUDED / NOT INCLUDED ═
+    const half = W - 170
+    const bandRows = (title, items) => {
+      box(ML, y - 12, half, 12, sage); box(ML + half, y - 12, W - half, 12)
+      txt(title, ML + 2, y - 9, { bold:true, size:7.5 })
+      y -= 12
+      for (const it of items) {
+        box(ML, y - 11, half, 11); box(ML + half, y - 11, W - half, 11)
+        txt(it, ML + 8, y - 8, { size:7 })
+        y -= 11
+      }
+    }
+    bandRows('INCLUDED IN BID:', SEC.includedInBid.split(/\||\n/).map(s => s.trim()).filter(Boolean))
+    bandRows('NOT INCLUDED IN BID:', SEC.notIncluded.split(/\||\n/).map(s => s.trim()).filter(Boolean).map(s => s.toUpperCase()))
+
+    // ═ NOTES (General) box ═
+    const gLines = (SEC.generalNotes + (notes && notes.trim() ? '\n' + notes.trim() : '') + (!isGW ? '\n- Installation by Greenworks Renovations under separate contract — Willy Ramirez 619-718-1578' : '')).split('\n').filter(Boolean)
+    const gH = 12 + gLines.length * 10 + 6
+    box(ML, y - gH, half, gH); box(ML + half, y - gH, W - half, gH)
+    txt('NOTES (General):', ML + 2, y - 10, { bold:true, size:7 })
+    let gy = y - 20
+    for (const gl of gLines) { txt(gl, ML + 4, gy, { bold:true, size:6.8, maxWidth: half - 8 }); gy -= 10 }
+    y -= gH
+
+    // ═ NOTES band (shop drawings) ═
+    y -= 6
+    box(ML, y - 16, W - 160, 16, sage); box(MR - 160, y - 16, 160, 16)
+    txt('NOTES:', ML + 3, y - 11, { boldIt:true, size:8 })
+    txt(SEC.bottomNotes, ML + 40, y - 11, { bold:true, size:7.5, maxWidth: W - 210 })
+    y -= 16
+
+    // ═ Thank-you + signature cell ═
+    const tH = 34
+    box(ML, y - tH, half, tH); box(ML + half, y - tH, W - half, tH)
+    txt('**Thank you for the opportunity to submit our proposal.**', ML + 2, y - 9, { size:6 })
+    txt('Unit pricing will be honored for 90 days from the date of proposal.', ML + 2, y - 17, { size:6 })
+    txt('All quantities are estimated, final field measurements and approved Shop Drawings will prevail.', ML + 2, y - 25, { size:6 })
+    line(ML + half + 10, y - tH + 10, MR - 10, y - tH + 10, 0.5)
+    ctr('Customer Signature & Date', ML + half, W - half, y - tH + 3, { size:6.5 })
+    y -= tH
+
+    // ═ Corporate footer bands ═
+    box(ML, y - 16, W, 16, sage, 1.25)
+    ctr(isGW ? 'CORPORATE OFFICES: 5328 S. Jebel Way, Centennial, CO  80015'
+             : 'CORPORATE OFFICES: 23463 E. Moraine Place, Aurora, CO  80016', ML, W, y - 11, { bold:true, size:9 })
+    y -= 16
+    box(ML, y - 12, W, 12)
+    ctr(isGW ? 'CONTACT: Anthony (Willy) Ramirez, President; Telephone: 619.718-1578; email: greenworksrenovationsllc@gmail.com'
+             : `CONTACT: Pamela Isetts, President; Telephone: 651.301-1063; email: pam@mdsgcabinets.com`, ML, W, y - 9, { bold:true, size:7 })
+    y -= 12
+    // outer frame
+    page.drawRectangle({ x: ML - 2, y: y - 2, width: W + 4, height: 770 - y, borderColor: black, borderWidth: 1.5 })
 
     const bytes = await pdfDoc.save()
     if (jobId) {
@@ -234,7 +251,8 @@ export async function POST(request) {
         ct_local_material: locMat || null, ct_local_install: locIns || null,
         ct_import_material: impMat || null, ct_import_install: impIns || null,
       }).eq('id', jobId)
-      await supabase.from('activity_log').insert({ job_id: jobId, user_name: si.name, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)} · ${margin}% margin${isGW ? ' · Greenworks-branded' : ''}` })
+      const who = isGW ? 'Greenworks' : (SENDERS[sender] || SENDERS.Cole).name
+      await supabase.from('activity_log').insert({ job_id: jobId, user_name: who, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)}${isGW ? ' · Greenworks-branded' : ''}` })
     }
     return new Response(Buffer.from(bytes), {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${proposalNum}.pdf"` },

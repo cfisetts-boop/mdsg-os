@@ -188,6 +188,9 @@ export default function Home() {
   const [ctLocalInstall,  setCtLocalInstall]  = useState('')
   const [ctImportMat,     setCtImportMat]     = useState('')
   const [ctImportInstall, setCtImportInstall] = useState('')
+  const [ctMaterialSpec,  setCtMaterialSpec]  = useState('')
+  const [ctColorSpec,     setCtColorSpec]     = useState('')
+  const [ctAmenities,     setCtAmenities]     = useState('')
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -930,6 +933,10 @@ export default function Home() {
         totalLF:   (ctSavedData?.kLF||0) + (ctSavedData?.vLF||0),
       }
       const propConfig = {
+        material:      ctMaterialSpec || ctQuoteResult?.material_type || '',
+        color:         ctColorSpec || ctQuoteResult?.color || selectedJob.finish_color || '',
+        amenities:     ctAmenities || '',
+        units:         selectedJob.units_override ?? '',
         material_type: ctQuoteResult?.material_type || 'Countertop',
         fabricator:    ctQuoteResult?.fabricator    || '—',
         color:         ctQuoteResult?.color         || '',
@@ -2566,6 +2573,14 @@ export default function Home() {
                             <input type="number" min="0" value={ctImportMat} placeholder="blank = omit block" onChange={e=>setCtImportMat(e.target.value)} style={{ ...inp, width:130 }}/></label>
                           <label style={{ fontSize:11, color:'#555' }}>Import — Installation $<br/>
                             <input type="number" min="0" value={ctImportInstall} placeholder="blank = omit" onChange={e=>setCtImportInstall(e.target.value)} style={{ ...inp, width:130 }}/></label>
+                        </div>
+                        <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:8 }}>
+                          <label style={{ fontSize:11, color:'#555' }}>Material Spec<br/>
+                            <input value={ctMaterialSpec} placeholder="e.g. 2CM QUARTZ" onChange={e=>setCtMaterialSpec(e.target.value)} style={{ ...inp, width:150 }}/></label>
+                          <label style={{ fontSize:11, color:'#555' }}>Color<br/>
+                            <input value={ctColorSpec} placeholder="e.g. CARRARA ROMA or MATCH" onChange={e=>setCtColorSpec(e.target.value)} style={{ ...inp, width:190 }}/></label>
+                          <label style={{ fontSize:11, color:'#555' }}>Amenities (comma sep)<br/>
+                            <input value={ctAmenities} placeholder="Amenity Kitchen, Laundry (10), Office" onChange={e=>setCtAmenities(e.target.value)} style={{ ...inp, width:220 }}/></label>
                         </div>
                       </div>
                       <label style={lbl}>Gross Margin %</label>
