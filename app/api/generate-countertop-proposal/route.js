@@ -58,7 +58,13 @@ export async function POST(request) {
     const boldIt  = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique)
     const regular = await pdfDoc.embedFont(StandardFonts.Helvetica)
     let logo = null
-    try { if (!isGW) logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png'))) } catch {}
+    try {
+      if (isGW) logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'greenworks-logo.png')))
+      else {
+        try { logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo-square.png'))) }
+        catch { logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png'))) }
+      }
+    } catch {}
 
     const sage   = rgb(0.56, 0.68, 0.55)     // Greenworks band green
     const black  = rgb(0, 0, 0)
@@ -117,7 +123,7 @@ export async function POST(request) {
     box(C1, hTop - 14, C1W, 14)
     ctr('COUNTERTOP MATERIALS & INSTALLATION', C1, C1W, hTop - 10, { bold:true, size:6.8 })
     box(C1, hBot, C1W, hTop - 14 - hBot)
-    if (logo) { const d = logo.scaleToFit(C1W - 60, hTop - 20 - hBot - 8); page.drawImage(logo, { x: C1 + (C1W - d.width)/2, y: hBot + ((hTop - 14 - hBot) - d.height)/2, width: d.width, height: d.height }) }
+    if (logo) { const d = logo.scaleToFit(C1W - 12, hTop - 14 - hBot - 8); page.drawImage(logo, { x: C1 + (C1W - d.width)/2, y: hBot + ((hTop - 14 - hBot) - d.height)/2, width: d.width, height: d.height }) }
 
     // right CUSTOMER block rows
     const rrow = (label, value, ry, o = {}) => {

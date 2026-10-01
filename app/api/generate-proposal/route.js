@@ -160,138 +160,133 @@ export async function POST(request) {
     const isPlywood = /plywood/i.test(boxConst) || true
     const isFramed  = /framed/i.test(boxConst)  || true
 
-    // ── PDF setup ─────────────────────────────────────────────────────────
-    const pdfDoc = await PDFDocument.create()
-    const page   = pdfDoc.addPage(PageSizes.Letter)
-    // Letter = 612 × 792 pts. y=0 is bottom-left.
-
+    // ── PDF setup — Greenworks-style bordered grid ────────────────────────
+    const pdfDoc  = await PDFDocument.create()
     const bold    = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const boldIt  = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique)
     const regular = await pdfDoc.embedFont(StandardFonts.Helvetica)
-
-    // Logo (white-background PNG — placed in white area above colored bar)
     const isGW = brandAs === 'greenworks'
     let logo = null
     try {
-      if (!isGW) logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png')))
+      if (isGW) logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'greenworks-logo.png')))
+      else {
+        try { logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo-square.png'))) }
+        catch { logo = await pdfDoc.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png'))) }
+      }
     } catch {}
 
-    // ── MDSG brand colors (sage green from logo) ──────────────────────────
-    const brandGreen = rgb(0.44, 0.61, 0.47)   // #709B77 — main sage green
-    const darkGreen  = rgb(0.26, 0.40, 0.28)   // header bar / section titles
-    const white      = rgb(1.00, 1.00, 1.00)
-    const black      = rgb(0.13, 0.13, 0.13)
-    const gray       = rgb(0.45, 0.45, 0.45)
-    const lgray      = rgb(0.94, 0.94, 0.94)
-    const dgray      = rgb(0.60, 0.60, 0.60)
-    const mintBg     = rgb(0.94, 0.97, 0.95)   // very light green for alternating rows
+    const sage  = rgb(0.56, 0.68, 0.55)
+    const black = rgb(0, 0, 0)
+    const blue  = rgb(0.05, 0.3, 0.6)
+    const ML = 30, MR = 582, W = MR - ML
 
-    const ML  = 50
-    const PW  = 512
-    const MR  = ML + PW
-    const MID = ML + 256   // midpoint dividing left/right columns
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-    const dt = (text, x, y, opts = {}) => {
-      if (text === null || text === undefined || text === '') return
-      page.drawText(String(text), {
-        x, y,
-        size:     opts.size  || 9,
-        font:     opts.bold  ? bold : regular,
-        color:    opts.color || black,
-        maxWidth: opts.maxWidth || (MR - x),
-      })
-    }
-    const dline = (y, x1 = ML, x2 = MR) =>
-      page.drawLine({ start: { x: x1, y }, end: { x: x2, y }, thickness: 0.5, color: rgb(0.80, 0.85, 0.81) })
-    const drect = (x, y, w, h, color) =>
-      page.drawRectangle({ x, y, width: w, height: h, color })
-    const rAlign = (text, rightX, y, opts = {}) => {
-      const f = opts.bold ? bold : regular
-      const w = f.widthOfTextAtSize(String(text), opts.size || 9)
-      dt(text, rightX - w, y, opts)
-    }
-    const labelVal = (label, value, lx, vx, y, opts = {}) => {
-      dt(label, lx, y, { size: 7.5, color: gray })
-      dt(value, vx, y, { size: 7.5, ...opts })
+    let page = pdfDoc.addPage(PageSizes.Letter)
+    let frameTop = 772
+    const mk = () => ({
+      txt: (t, x, y, o = {}) => { if (t == null || t === '') return
+        page.drawText(String(t), { x, y, size:o.size||7.5, font:o.boldIt?boldIt:(o.bold?bold:regular), color:o.color||black, maxWidth:o.maxWidth }) },
+      box: (x, y, w, h, fill = null, t = 0.75) => {
+        if (fill) page.drawRectangle({ x, y, width:w, height:h, color:fill })
+        page.drawRectangle({ x, y, width:w, height:h, borderColor:black, borderWidth:t }) },
+      line2: (x1, y1, x2, y2, t = 0.5) => page.drawLine({ start:{x:x1,y:y1}, end:{x:x2,y:y2}, thickness:t, color:black }),
+    })
+    let { txt, box, line2 } = mk()
+    const ctr = (t, x, w, y, o = {}) => { const f = o.boldIt?boldIt:(o.bold?bold:regular)
+      const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, x + (w - tw)/2, y, o) }
+    const rgt = (t, rx, y, o = {}) => { const f = o.boldIt?boldIt:(o.bold?bold:regular)
+      const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, rx - tw - 4, y, o) }
+    const wrapT = (t, size, max, isBold = false) => {
+      const f = isBold ? bold : regular
+      const words = String(t).split(' '); const lines = []; let cur = ''
+      for (const w2 of words) {
+        const cand = cur ? cur + ' ' + w2 : w2
+        if (f.widthOfTextAtSize(cand, size) <= max) cur = cand
+        else { if (cur) lines.push(cur); cur = w2 }
+      }
+      if (cur) lines.push(cur)
+      return lines.length ? lines : ['']
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // HEADER — white logo area + dark green company bar
-    // ═══════════════════════════════════════════════════════════════════════
+    let y = 768
+    const finalizeFrame = () => page.drawRectangle({ x: ML - 2, y: y - 4, width: W + 4, height: frameTop - (y - 4), borderColor: black, borderWidth: 1.5 })
+    const ensure = (h) => { if (y - h < 46) {
+      finalizeFrame()
+      page = pdfDoc.addPage(PageSizes.Letter); ({ txt, box, line2 } = mk())
+      frameTop = 764; y = 760
+      box(ML, y - 14, W, 14, sage, 1)
+      ctr((isGW ? 'GREENWORKS RENOVATIONS, LLC' : 'MANUFACTURER DIRECT SALES GROUP, LLC') + '  —  CABINET PROPOSAL (cont.)', ML, W, y - 10, { bold:true, size:8 })
+      y -= 14
+    } }
 
-    // White logo area (y=762–792, 30pt)
-    drect(ML, 762, PW, 30, white)
+    // ═ Title band + Date/Proposal strip ═
+    box(ML, y - 20, W, 20, sage, 1.25)
+    ctr(isGW ? 'GREENWORKS RENOVATIONS, LLC' : 'MANUFACTURER DIRECT SALES GROUP, LLC', ML, W, y - 14, { bold:true, size:12 })
+    y -= 20
+    box(ML, y - 12, W - 300, 12); box(MR - 300, y - 12, 150, 12); box(MR - 150, y - 12, 150, 12)
+    txt('Proposal No. ' + proposalNum, ML + 3, y - 9, { bold:true, size:6.5 })
+    txt('Date:', MR - 296, y - 9, { bold:true, size:6.5 })
+    rgt(`${today.getMonth()+1}/${today.getDate()}/${today.getFullYear()}`, MR - 150, y - 9, { bold:true, size:6.5 })
+    txt('Valid through:', MR - 146, y - 9, { bold:true, size:6.5 })
+    rgt(`${validUntil.getMonth()+1}/${validUntil.getDate()}/${validUntil.getFullYear()}`, MR, y - 9, { bold:true, size:6.5 })
+    y -= 12
 
-    if (logo) {
-      const d = logo.scaleToFit(100, 26)
-      page.drawImage(logo, { x: ML + 6, y: 764, width: d.width, height: d.height })
+    // ═ Header grid: CONTACT | title+logo | CUSTOMER ═
+    const L1 = ML, L1W = 196, C1 = ML + L1W, C1W = 160, R1 = C1 + C1W, R1W = W - L1W - C1W
+    const hTop = y, hBot = y - 92
+    const si2 = isGW
+      ? { name: 'Anthony (Willy) Ramirez', phone: '619/718-1578', email: 'greenworksrenovationsllc@gmail.com', addr1: '5328 S. Jebel Way', addr2: 'Centennial, CO  80015' }
+      : { ...senderInfo, addr1: '23463 E. Moraine Place', addr2: 'Aurora, CO  80016' }
+    const lrow = (label, value, ry, lw = 58) => {
+      box(L1, ry - 11, lw, 11); box(L1 + lw, ry - 11, L1W - lw, 11)
+      txt(label, L1 + 2, ry - 8, { bold:true, size:6 }); txt(value, L1 + lw + 2, ry - 8, { size:6.5, maxWidth: L1W - lw - 4 })
     }
+    box(L1, hTop - 11, L1W, 11); txt('CONTACT:', L1 + 2, hTop - 8, { bold:true, size:6.5 })
+    box(L1, hTop - 22, L1W, 11); txt(si2.name + (si2.title ? ', ' + si2.title : ''), L1 + 2, hTop - 19, { bold:true, size:7 })
+    lrow('TELEPHONE:', si2.phone, hTop - 33)
+    lrow('EMAIL:', si2.email, hTop - 44)
+    lrow('ADDRESS:', si2.addr1, hTop - 55)
+    box(L1, hTop - 77, 58, 11); box(L1 + 58, hTop - 77, L1W - 58, 11)
+    txt(si2.addr2, L1 + 60, hTop - 74, { size:6.5 })
+    box(L1, hBot, L1W, hTop - 77 - hBot)
+    box(C1, hTop - 14, C1W, 14)
+    ctr('CABINET PROPOSAL', C1, C1W, hTop - 10, { bold:true, size:7.5 })
+    box(C1, hBot, C1W, hTop - 14 - hBot)
+    if (logo) { const d = logo.scaleToFit(C1W - 12, hTop - 14 - hBot - 8)
+      page.drawImage(logo, { x: C1 + (C1W - d.width)/2, y: hBot + ((hTop - 14 - hBot) - d.height)/2, width: d.width, height: d.height }) }
+    const rrow = (label, value, ry, o = {}) => {
+      box(R1, ry - 11, 68, 11); box(R1 + 68, ry - 11, R1W - 68, 11)
+      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(value, R1 + 70, ry - 8, { bold:o.bold, size:6.5, color:o.color, maxWidth: R1W - 72 })
+    }
+    const addrLine = [job.address].filter(Boolean).join('')
+    const cszLine  = [job.city, job.state].filter(Boolean).join(', ') + (job.zip ? '  ' + job.zip : '')
+    rrow('CUSTOMER:', (job.gc_name || '—').toUpperCase(), hTop, { bold:true })
+    rrow('PROJECT:', (job.name || '').toUpperCase(), hTop - 11, { bold:true })
+    rrow('ADDRESS:', addrLine, hTop - 22, { bold:true })
+    rrow('CITY/STATE/ZIP', cszLine, hTop - 33, { bold:true })
+    rrow('CONTACT:', job.gc_contact || '', hTop - 44, { bold:true })
+    rrow('TELEPHONE:', job.gc_phone || '', hTop - 55, { bold:true })
+    rrow('EMAIL:', job.gc_email || '', hTop - 66, { color: blue })
+    box(R1, hBot, R1W, hTop - 66 - hBot)
+    y = hBot
 
-    // Company name right of logo
-    const coX = isGW ? ML + 6 : ML + 118
-    dt(isGW ? 'GREENWORKS RENOVATIONS LLC' : 'MANUFACTURER DIRECT SALES GROUP, LLC', coX, 780, { bold: true, size: 11.5, color: darkGreen })
-    dt(isGW ? 'Anthony (Willy) Ramirez  |  619-718-1578  |  greenworksrenovationsllc@gmail.com' : '23463 E. Moraine Pl., Aurora, CO 80016  |  mdsgcabinets.com', coX, 767, { size: 7.5, color: brandGreen })
+    // ═ DESCRIPTION + CABINET LINE bands ═
+    box(ML, y - 12, W, 12); ctr('DESCRIPTION', ML, W, y - 9, { bold:true, size:7.5 }); y -= 12
+    box(ML, y - 12, W, 12, sage)
+    txt('CABINET LINE: ', ML + 2, y - 9, { bold:true, size:7.5 })
+    txt(job.manufacturer || 'TBD', ML + 70, y - 9, { bold:true, size:7.5 })
+    y -= 12
 
-    // Dark green accent bar (y=744–762, 18pt)
-    drect(ML, 744, PW, 18, darkGreen)
-    dt('CABINET PROPOSAL', ML + 10, 750, { bold: true, size: 10, color: white })
-    rAlign(`Proposal No. ${proposalNum}`, MR - 8, 750, { size: 8, color: rgb(0.80, 0.92, 0.82) })
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // CUSTOMER BLOCK — right column only (date/proposal # already in header bar)
-    // ═══════════════════════════════════════════════════════════════════════
-    const COL_R = MID + 14   // right column x start
-
-    const addr = [job.address, job.city, job.state, job.zip].filter(Boolean).join(', ')
-
-    // CUSTOMER block starts 12pt below the bar bottom (y=744), so cap height clears the bar
-    dt('CUSTOMER',          ML, 730, { size: 6.5, color: gray, bold: true })
-    dt(job.gc_name || '—', ML, 719, { size: 10,  bold: true, maxWidth: MID - ML - 10 })
-    dt(job.name,            ML, 707, { size: 8.5, maxWidth: MID - ML - 10 })
-    if (addr) dt(addr,      ML, 696, { size: 7.5, color: gray, maxWidth: MID - ML - 10 })
-
-    dline(686)   // separator — 10pt below address baseline (696)
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // SUBMITTED BY — two columns
-    // ═══════════════════════════════════════════════════════════════════════
-
-    dt('CONTACT',              ML,    676, { size: 6.5, color: gray, bold: true })
-    dt('SR. PROJECT MANAGER',  COL_R, 676, { size: 6.5, color: gray, bold: true })
-
-    dt('Tel:',                 ML, 664, { size: 7.5, color: gray })
-    dt(senderInfo.phone || '—', ML + 24, 664, { size: 7.5 })
-    dt(senderInfo.name,        COL_R, 664, { size: 9, bold: true })
-
-    dt('Email:',               ML, 653, { size: 7.5, color: gray })
-    dt(senderInfo.email,       ML + 33, 653, { size: 7.5 })
-    dt(senderInfo.title,       COL_R, 653, { size: 7.5, color: gray })
-
-    dt('CSR:',                 ML, 642, { size: 7.5, color: gray })
-    dt('csr@mdsgcabinets.com', ML + 27, 642, { size: 7.5 })
-
-    dline(632)   // separator — 10pt below CSR baseline (642)
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // DESCRIPTION — two-column specs
-    // ═══════════════════════════════════════════════════════════════════════
-    //   Bar occupies y=612 (bottom) to y=624 (top) — 8pt below separator (632)
-    drect(ML, 612, PW, 12, darkGreen)
-    // Center text: baseline = bar_bottom + (bar_height - font_size) / 2 = 612 + (12-8)/2 = 614
-    dt('DESCRIPTION', ML + PW / 2 - bold.widthOfTextAtSize('DESCRIPTION', 8) / 2, 615, { bold: true, size: 8, color: white })
-
+    // ═ Spec rows: left pairs | right pairs ═
     const specL = [
-      ['CABINET LINE:',       job.manufacturer || 'TBD'],
       ['DOOR STYLE/OVERLAY:', `${job.door_style || 'TBD'} / Full Overlay`],
       ['MATERIAL:',           'Maple'],
       ['COLOR:',              job.finish_color || 'TBD'],
-      ['BOX CONSTRUCTION:',   isFramed  ? 'Framed'      : boxConst],
+      ['BOX CONSTRUCTION:',   isFramed ? 'Framed' : boxConst],
       ['BOX MATERIAL:',       job.cabinet_construction || (isPlywood ? 'Plywood' : 'Particleboard')],
       ['DRAWER BOX/GLIDE:',   job.drawer_box || 'Dovetail / Undermount Soft Close'],
       ['INTERIOR:',           job.interior_color || 'White'],
       ['SHELF:',              job.shelf_thickness || '3/4"'],
-      ['HINGE:',              job.hinge_type || 'Euro 6 Way'],
-      ['HINGES:',             'Soft Close'],
+      ['HINGES:',             (job.hinge_type || 'Euro 6 Way') + ' / Soft Close'],
     ]
     const specR = [
       ['NO. OF UNITS:',      String(job.units_override ?? (nUnits > 0 ? nUnits : (job.total_residential_units || '—')))],
@@ -302,228 +297,166 @@ export async function POST(request) {
       ['TOTAL CABINETS:',    totalCabsDisplay.toLocaleString()],
       ['HARDWARE ALLOW.:',   hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included'],
     ]
+    const SLW = 110, SVW = 230, RLW2 = 120
+    const nSpec = Math.max(specL.length, specR.length)
+    for (let i = 0; i < nSpec; i++) {
+      const [ll, lv] = specL[i] || ['', '']
+      const [rl, rv] = specR[i] || ['', '']
+      box(ML, y - 12, SLW, 12); box(ML + SLW, y - 12, SVW, 12)
+      txt(ll, ML + 2, y - 9, { bold:true, size:6.8 }); txt(lv, ML + SLW + 2, y - 9, { size:6.8, maxWidth: SVW - 4 })
+      box(ML + SLW + SVW, y - 12, RLW2, 12); box(ML + SLW + SVW + RLW2, y - 12, W - SLW - SVW - RLW2, 12)
+      txt(rl, ML + SLW + SVW + 2, y - 9, { bold:true, size:6.8 })
+      if (rv) ctr(rv, ML + SLW + SVW + RLW2, W - SLW - SVW - RLW2, y - 9, { bold:true, size:6.8 })
+      y -= 12
+    }
 
-    const LBL_W  = 108
-    const RLBL_W = 92
-    let sy = 600
-    specL.forEach(([lbl, val]) => {
-      dt(lbl, ML, sy, { size: 7.5, color: gray })
-      dt(val, ML + LBL_W, sy, { size: 7.5, maxWidth: MID - ML - LBL_W - 8 })
-      sy -= 11
-    })
-    sy = 600   // start below the DESCRIPTION bar, same as left column (was 642 — overlapped CONTACT block and bar)
-    specR.forEach(([lbl, val]) => {
-      dt(lbl, COL_R, sy, { size: 7.5, color: gray })
-      dt(val, COL_R + RLBL_W, sy, { size: 7.5 })
-      sy -= 11
-    })
-
-    const afterSpecs = 600 - (Math.max(specL.length, specR.length) * 11) - 4
-    dline(afterSpecs)
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // UNIT TYPE BREAKDOWN
-    // ═══════════════════════════════════════════════════════════════════════
-    let uy = afterSpecs - 18   // 18pt gap: separator → UNIT TYPE bar
-    if (hideUnitPricing) {
-      // LUMP SUM MODE: no per-unit table — just the project scale line
-      drect(ML, uy, PW, 12, darkGreen)
-      dt('PROJECT SCOPE', ML + PW / 2 - bold.widthOfTextAtSize('PROJECT SCOPE', 8) / 2, uy + 4, { bold: true, size: 8, color: white })
-      uy -= 16
-      const scopeBits = []
-      if (nUnits > 0) scopeBits.push(`${nUnits} Units`)
-      if (nBaths > 0) scopeBits.push(`${nBaths} Bathrooms`)
-      if (nAmen > 0) scopeBits.push(`${nAmen} Amenities`)
-      if (scopeBits.length === 0) scopeBits.push(`${sortedUnits.reduce((s, u) => s + (u.unit_quantity || 1), 0)} Units`)
-      dt(scopeBits.join('  ·  '), ML + 6, uy, { bold: true, size: 9 })
-      uy -= 12
-      dt(`Total cabinets: ${totalCabsDisplay.toLocaleString()}`, ML + 6, uy, { size: 7.5, color: gray })
-      uy -= 14
-    } else {
-    drect(ML, uy, PW, 12, darkGreen)
-    dt('UNIT TYPE BREAKDOWN', ML + PW / 2 - bold.widthOfTextAtSize('UNIT TYPE BREAKDOWN', 8) / 2, uy + 4, { bold: true, size: 8, color: white })
-    uy -= 13
-
-    drect(ML, uy, PW, 12, lgray)
-    dt('Unit Type',  ML + 6,   uy + 3, { size: 7, bold: true, color: gray })
-    dt('Units',      ML + 280, uy + 3, { size: 7, bold: true, color: gray })
-    dt('Cabinets',   ML + 330, uy + 3, { size: 7, bold: true, color: gray })
-    dt('Mfr Price',  ML + 408, uy + 3, { size: 7, bold: true, color: gray })
-    uy -= 12
-
+    // ═ UNIT TYPE BREAKDOWN ═
     const kindOf = (name) => {
       const m = clUnits.find(u => (u.unit_type_name || '').trim().toUpperCase() === (name || '').trim().toUpperCase())
       return m ? (m.kind || 'unit') : 'unit'
     }
-    const displayOrdered = [...displayUnits.filter(u => kindOf(u.unit_type_name) !== 'amenity'), ...displayUnits.filter(u => kindOf(u.unit_type_name) === 'amenity')]
-    let amenHeaderDrawn = false
-    displayOrdered.forEach((ut, i) => {
-      if (!amenHeaderDrawn && kindOf(ut.unit_type_name) === 'amenity') {
-        drect(ML, uy, PW, 11, rgb(0.93, 0.93, 0.98))
-        dt('AMENITIES', ML + 6, uy + 2, { bold: true, size: 7, color: rgb(0.24, 0.2, 0.54) })
-        uy -= 11
-        amenHeaderDrawn = true
-      }
-      if (i % 2 === 0) drect(ML, uy, PW, 11, mintBg)
-      dt(ut.unit_type_name, ML + 6,   uy + 2, { size: 7, maxWidth: 265 })
-      dt(String(ut.unit_quantity || 1), ML + 283, uy + 2, { size: 7 })
-      dt(String(ut.cabinet_count  || 0), ML + 333, uy + 2, { size: 7 })
-      dt(ut.manufacturer_price ? fmtMoney(ut.manufacturer_price) : '—', ML + 411, uy + 2, { size: 7 })
-      uy -= 11
-    })
-    // TOTALS row
-    drect(ML, uy, PW, 12, rgb(0.88, 0.95, 0.90))
-    dt('TOTALS', ML + 6, uy + 3, { bold: true, size: 7 })
-    dt(String(sortedUnits.reduce((s, u) => s + (u.unit_quantity || 1), 0)), ML + 283, uy + 3, { bold: true, size: 7 })
-    dt(String(sortedUnits.reduce((s, u) => s + (u.cabinet_count || 0) * (u.unit_quantity || 1), 0).toLocaleString()), ML + 333, uy + 3, { bold: true, size: 7 })
-    dt(unitPriceSum > 0 ? fmtMoney(unitPriceSum) : '—', ML + 411, uy + 3, { bold: true, size: 7 })
-    uy -= 12
-    }
-
-    if (sortedUnits.length > 13) {
-      dt(`+ ${sortedUnits.length - 13} more unit types — see attached cabinet schedule`, ML + 6, uy + 2, { size: 7, color: gray })
-      uy -= 11
-    }
-
-    dline(uy - 3)
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // PRICING SUMMARY
-    // ═══════════════════════════════════════════════════════════════════════
-    let py = uy - 12
-    drect(ML, py, PW, 12, darkGreen)
-    dt('PRICING SUMMARY', ML + PW / 2 - bold.widthOfTextAtSize('PRICING SUMMARY', 8) / 2, py + 4, { bold: true, size: 8, color: white })
-    py -= 15
-
-    // Base cabinet price
-    if (!totalOnly) {
-    dt('Base Cabinet Price', ML + 6, py, { size: 8, color: gray })
-    rAlign(fmtMoney(cabsToGC), MR - 4, py, { size: 8 })
-    py -= 14
-
-    if (freight > 0) {
-      dt('Freight (pass-through)', ML + 6, py, { size: 8, color: gray })
-      rAlign(fmtMoney(freight), MR - 4, py, { size: 8 })
-      py -= 14
-    }
-    if (mfrTax > 0) {
-      const effRate = (grossCost + freight) > 0 ? ((mfrTax / (grossCost + freight)) * 100).toFixed(3).replace(/0+$/, '').replace(/\.$/, '') : null
-      dt(`Sales Tax${effRate ? ` (${effRate}%)` : ''} — from manufacturer quote`, ML + 6, py, { size: 8, color: gray })
-      rAlign(fmtMoney(mfrTax), MR - 4, py, { size: 8 })
-      py -= 14
-    }
-
-    // Hardware allowance
-    if (hwToGC > 0) {
-      dt('Hardware Allowance', ML + 6, py, { size: 8, color: gray })
-      if (hwCost > 0) dt(`(${effHwPieces.toLocaleString()} pieces)`, ML + 6, py - 9, { size: 6.5, color: dgray })
-      rAlign(fmtMoney(hwToGC), MR - 4, py, { size: 8 })
-      py -= hwCost > 0 ? 18 : 14
+    if (hideUnitPricing || totalOnly) {
+      box(ML, y - 12, W, 12, sage); txt('PROJECT SCOPE:', ML + 2, y - 9, { bold:true, size:7.5 })
+      const bits = []
+      if (nUnits > 0) bits.push(`${nUnits} Units`); if (nBaths > 0) bits.push(`${nBaths} Bathrooms`); if (nAmen > 0) bits.push(`${nAmen} Amenities`)
+      bits.push(`${totalCabsDisplay.toLocaleString()} Total Cabinets`)
+      txt(bits.join('   ·   '), ML + 95, y - 9, { bold:true, size:7 })
+      y -= 12
     } else {
-      dt('Hardware Allowance', ML + 6, py, { size: 8, color: gray })
-      rAlign('Not included — see separate quote', MR - 4, py, { size: 7.5, color: dgray })
-      py -= 14
+      box(ML, y - 12, W, 12, sage); ctr('UNIT TYPE BREAKDOWN', ML, W, y - 9, { bold:true, size:7.5 }); y -= 12
+      const CU = MR - 220, CC = MR - 140, CP = MR - 84
+      box(ML, y - 11, CU - ML, 11); box(CU, y - 11, 80, 11); box(CC, y - 11, 56, 11); box(CP, y - 11, 84, 11)
+      txt('UNIT TYPE', ML + 2, y - 8, { bold:true, size:6.5 }); ctr('UNITS', CU, 80, y - 8, { bold:true, size:6.5 })
+      ctr('CABINETS', CC, 56, y - 8, { bold:true, size:6.5 }); ctr('MFR PRICE', CP, 84, y - 8, { bold:true, size:6.5 })
+      y -= 11
+      const ordered = [...sortedUnits.filter(u => kindOf(u.unit_type_name) !== 'amenity'), ...sortedUnits.filter(u => kindOf(u.unit_type_name) === 'amenity')].slice(0, 40)
+      let amenHdr = false
+      for (const ut of ordered) {
+        ensure(12)
+        if (!amenHdr && kindOf(ut.unit_type_name) === 'amenity') {
+          box(ML, y - 11, W, 11, rgb(0.90, 0.92, 0.90)); txt('AMENITIES', ML + 2, y - 8, { bold:true, size:6.5 }); y -= 11
+          amenHdr = true
+        }
+        box(ML, y - 11, CU - ML, 11); box(CU, y - 11, 80, 11); box(CC, y - 11, 56, 11); box(CP, y - 11, 84, 11)
+        txt(String(ut.unit_type_name || '').substring(0, 58), ML + 2, y - 8, { size:6.8 })
+        ctr(String(ut.unit_quantity || 1), CU, 80, y - 8, { size:6.8 })
+        ctr(String(ut.cabinet_count || 0), CC, 56, y - 8, { size:6.8 })
+        rgt(ut.manufacturer_price ? fmtMoney(ut.manufacturer_price) : '—', MR, y - 8, { size:6.8 })
+        y -= 11
+      }
+      ensure(12)
+      box(ML, y - 11, CU - ML, 11, sage); box(CU, y - 11, 80, 11, sage); box(CC, y - 11, 56, 11, sage); box(CP, y - 11, 84, 11, sage)
+      txt('TOTALS', ML + 2, y - 8, { bold:true, size:6.8 })
+      ctr(String(sortedUnits.reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)), CU, 80, y - 8, { bold:true, size:6.8 })
+      ctr(totalCabsDisplay.toLocaleString(), CC, 56, y - 8, { bold:true, size:6.8 })
+      y -= 11
     }
 
-    // Sales tax (suppressed when zero or when mfr tax passes through)
-    if (salesTax > 0 && taxAmount > 0) {
-      dt(`Sales Tax (${salesTax}%)`, ML + 6, py, { size: 8, color: gray })
-      rAlign(fmtMoney(taxAmount), MR - 4, py, { size: 8 })
-      py -= 14
+    // ═ PRICING — BASE PRICE blocks ═
+    const PRW = 84
+    const bandRow = (fill, l, r, o = {}) => {
+      ensure(12)
+      box(ML, y - 12, W - PRW, 12, fill); box(MR - PRW, y - 12, PRW, 12, fill)
+      if (l) txt(l, ML + 2, y - 9, { bold:o.bold, size:o.size || 7 })
+      if (o.rl) rgt(o.rl, MR - PRW, y - 9, { bold:o.rlBold, size:7 })
+      if (r != null) rgt(r, MR, y - 9, { bold:true, size:7 })
+      y -= 12
     }
-
-    // Installation contact (Greenworks) — per Pam's proposal checklist
-    if (!isGW) {
-      dt('INSTALLATION: Greenworks Renovations LLC — Anthony (Willy) Ramirez · 619-718-1578 · greenworksrenovationsllc@gmail.com', ML + 6, py, { size: 6.5, color: dgray })
-      py -= 12
+    const baseBand = (label) => {
+      ensure(14)
+      box(ML, y - 12, W - PRW, 12, sage); box(MR - PRW, y - 12, PRW, 12, sage)
+      txt('BASE PRICE:  ' + label, ML + 2, y - 9, { bold:true, size:7.5 })
+      ctr('TOTAL COST', MR - PRW, PRW, y - 9, { bold:true, size:7 })
+      y -= 12
     }
-
-    // Notes
-    if (notes) {
-      dt('Notes: ' + notes, ML + 6, py, { size: 7, color: gray, maxWidth: PW - 12 })
-      py -= 12
-    }
-
-    }
-
-    py -= 4
     if (rtaBid > 0) {
-      // ── Greenworks-style dual BASE PRICE blocks ──────────────────────────
-      const priceBlock = (label, amount) => {
-        drect(ML, py - 10, PW, 14, darkGreen)
-        dt(label, ML + 8, py - 6, { bold: true, size: 7.5, color: white })
-        rAlign('TOTAL COST', MR - 8, py - 6, { bold: true, size: 6.5, color: rgb(0.80, 0.92, 0.82) })
-        py -= 24
-        dt('Cabinets, hardware allowance & applicable sales tax', ML + 8, py, { size: 8 })
-        rAlign(fmtMoney(amount), MR - 8, py, { size: 8.5 })
-        py -= 14
-        drect(ML, py - 5, PW, 17, brandGreen)
-        dt('TOTAL', ML + 8, py - 1, { bold: true, size: 8.5, color: white })
-        rAlign(fmtMoney(amount), MR - 8, py - 1, { bold: true, size: 11, color: white })
-        py -= 26
-      }
-      priceBlock('BASE PRICE:  LEEDO — DOMESTIC MANUFACTURED', displayBid)
-      priceBlock('BASE PRICE:  IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE', rtaBid)
-      py -= 4
+      baseBand('LEEDO — DOMESTIC MANUFACTURED')
+      bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
+      bandRow(null, null, fmtMoney(displayBid), { rl: 'TOTAL', rlBold: true })
+      baseBand('IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE')
+      bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(rtaBid), { bold:true })
+      bandRow(null, null, fmtMoney(rtaBid), { rl: 'TOTAL', rlBold: true })
     } else {
-    // TOTAL box — brand green
-    const boxH = 34
-    drect(ML, py - boxH, PW, boxH, brandGreen)
-    dt('TOTAL PROJECT PRICE', ML + 10, py - 13, { bold: true, size: 9, color: white })
-    rAlign(fmtMoney(displayBid), MR - 10, py - 13, { bold: true, size: 15, color: white })
-    dt('Includes cabinets, hardware allowance & applicable sales tax', ML + 10, py - 26, { size: 6, color: rgb(0.88, 0.97, 0.90) })
-    py -= boxH + 10
+      baseBand((job.manufacturer || 'LEEDO').toUpperCase() + ' — CABINET SUPPLY')
+      if (Number(priceLeedo) > 0) {
+        bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
+      } else {
+        bandRow(null, 'BASE CABINET PRICE', fmtMoney(cabsToGC), { bold:true })
+        if (freight > 0) bandRow(null, 'FREIGHT (PASS-THROUGH)', fmtMoney(freight))
+        if (mfrTax > 0) bandRow(null, 'SALES TAX — FROM MANUFACTURER QUOTE', fmtMoney(mfrTax))
+        if (hwToGC > 0) bandRow(null, `HARDWARE ALLOWANCE${hwCost > 0 ? ` (${effHwPieces.toLocaleString()} PIECES)` : ''}`, fmtMoney(hwToGC))
+        if (salesTax > 0 && taxAmount > 0) bandRow(null, `SALES TAX (${salesTax}%)`, fmtMoney(taxAmount))
+      }
+      ensure(14)
+      box(ML, y - 13, W - PRW, 13, sage); box(MR - PRW, y - 13, PRW, 13, sage)
+      rgt('TOTAL', MR - PRW, y - 9.5, { bold:true, size:7.5 })
+      rgt(fmtMoney(displayBid), MR, y - 9.5, { bold:true, size:8 })
+      y -= 13
     }
 
-    dline(py)
-    py -= 10
+    // ═ INCLUDED / NOT INCLUDED bands ═
+    const half = W - 170
+    const bandRows2 = (title, items) => {
+      ensure(12 + 11)
+      box(ML, y - 12, half, 12, sage); box(ML + half, y - 12, W - half, 12)
+      txt(title, ML + 2, y - 9, { bold:true, size:7.5 }); y -= 12
+      for (const it of items) {
+        for (const wl of wrapT(it, 6.8, half - 14)) {
+          ensure(11)
+          box(ML, y - 11, half, 11); box(ML + half, y - 11, W - half, 11)
+          txt(wl, ML + 8, y - 8, { size:6.8 }); y -= 11
+        }
+      }
+    }
+    bandRows2('INCLUDED IN BID:', SEC.includedInBid.split(/\||\n/).map(s => s.trim()).filter(Boolean))
+    if (!isGW) bandRows2('ASSEMBLY, STAGING & INSTALLATION:', SEC.assembly.split('\n').map(s => s.trim()).filter(Boolean))
+    bandRows2('NOT INCLUDED IN BID:', SEC.notIncluded.split('\n').map(s => s.trim()).filter(Boolean).map(s => '- ' + s.replace(/^[-•]\s*/, '')))
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // INCLUDED / ASSEMBLY / NOT INCLUDED / NOTES
-    // ═══════════════════════════════════════════════════════════════════════
-    dt('INCLUDED IN BID:', ML, py, { bold: true, size: 7.5, color: darkGreen })
-    py -= 10
-    SEC.includedInBid.split('\n').filter(l => l.trim()).forEach(line => {
-      dt(line.trim(), ML + 8, py, { size: 7, color: gray, maxWidth: PW - 8 })
-      py -= 10
-    })
-    py -= 3
+    // ═ NOTES (General) box ═
+    const gLines = [notes && notes.trim() ? notes.trim() : null].filter(Boolean)
+    if (gLines.length) {
+      const gH = 14 + gLines.length * 10
+      ensure(gH)
+      box(ML, y - gH, half, gH); box(ML + half, y - gH, W - half, gH)
+      txt('NOTES (General):', ML + 2, y - 10, { bold:true, size:7 })
+      let gy = y - 20
+      for (const gl of gLines) { txt(gl, ML + 4, gy, { bold:true, size:6.8, maxWidth: half - 8 }); gy -= 10 }
+      y -= gH
+    }
 
-    dt('ASSEMBLY, STAGING & INSTALLATION:', ML, py, { bold: true, size: 7.5, color: darkGreen })
-    py -= 10
-    SEC.assembly.split('\n').filter(l => l.trim()).forEach(line => {
-      dt(line.trim(), ML + 8, py, { size: 7, color: gray, maxWidth: PW - 8 })
-      py -= 10
-    })
-    py -= 3
+    // ═ NOTES band ═
+    const nLines = wrapT(SEC.bottomNotes, 6.8, W - 215, true)
+    const nH = 8 + nLines.length * 9
+    ensure(nH)
+    box(ML, y - nH, W - 160, nH, sage); box(MR - 160, y - nH, 160, nH)
+    txt('NOTES:', ML + 3, y - 11, { boldIt:true, size:8 })
+    let ny = y - 11
+    for (const nl of nLines) { txt(nl, ML + 40, ny, { bold:true, size:6.8 }); ny -= 9 }
+    y -= nH
 
-    dt('NOT INCLUDED IN BID:', ML, py, { bold: true, size: 7.5, color: darkGreen })
-    py -= 10
-    SEC.notIncluded.split('\n').filter(l => l.trim()).forEach(line => {
-      dt(`• ${line.trim().replace(/^[•\-]\s*/, '')}`, ML + 8, py, { size: 6.5, color: gray, maxWidth: PW - 8 })
-      py -= 9
-    })
+    // ═ Thank-you + signature ═
+    ensure(34)
+    const tH = 34
+    box(ML, y - tH, half, tH); box(ML + half, y - tH, W - half, tH)
+    txt('**Thank you for the opportunity to submit our proposal.**', ML + 2, y - 9, { size:6 })
+    txt('Unit pricing will be honored for 90 days from the date of proposal.', ML + 2, y - 17, { size:6 })
+    txt('All quantities are estimated, final field measurements and approved Shop Drawings will prevail.', ML + 2, y - 25, { size:6 })
+    line2(ML + half + 10, y - tH + 10, MR - 10, y - tH + 10, 0.5)
+    ctr('Customer Signature & Date', ML + half, W - half, y - tH + 3, { size:6.5 })
+    y -= tH
 
-    dline(py - 2)
-    py -= 10
+    // ═ Corporate footer bands ═
+    ensure(30)
+    box(ML, y - 16, W, 16, sage, 1.25)
+    ctr(isGW ? 'CORPORATE OFFICES: 5328 S. Jebel Way, Centennial, CO  80015'
+             : 'CORPORATE OFFICES: 23463 E. Moraine Place, Aurora, CO  80016', ML, W, y - 11, { bold:true, size:9 })
+    y -= 16
+    box(ML, y - 12, W, 12)
+    ctr(isGW ? 'CONTACT: Anthony (Willy) Ramirez, President; Telephone: 619.718-1578; email: greenworksrenovationsllc@gmail.com'
+             : 'CONTACT: Pamela Isetts, President; Telephone: 651.301-1063; email: pam@mdsgcabinets.com', ML, W, y - 9, { bold:true, size:7 })
+    y -= 12
+    finalizeFrame()
 
-    dt('NOTES:', ML, py, { bold: true, size: 7, color: darkGreen })
-    dt(SEC.bottomNotes, ML + 36, py, { size: 6.5, color: gray, maxWidth: PW - 36 })
-    py -= 11
-    dt('Thank you for the opportunity to submit our proposal. Unit pricing honored for 90 days from proposal date. All quantities estimated — field measurements and approved shop drawings will prevail.', ML, py, { size: 6.5, color: gray, maxWidth: PW })
-    py -= 14
-
-    // Signature — fixed footer position (bottom of final page, per Pam)
-    dt('Accepted by:', ML, 50, { size: 8 })
-    page.drawLine({ start: { x: ML + 78, y: 48 }, end: { x: ML + 290, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
-    dt('Date:', MR - 130, 50, { size: 8 })
-    page.drawLine({ start: { x: MR - 95, y: 48 }, end: { x: MR, y: 48 }, thickness: 0.5, color: rgb(0.6, 0.6, 0.6) })
-
-    // Footer
-    drect(ML, 30, PW, 2, brandGreen)
-    dt('CORPORATE OFFICES: 23463 E. Moraine Pl., Aurora, CO 80016  |  CONTACT: Pamela Isetts, President  |  651/301-1063  |  pam@mdsgcabinets.com  |  csr@mdsgcabinets.com', ML, 20, { size: 6.5, color: gray, maxWidth: PW })
-
-    // ── Save + log ────────────────────────────────────────────────────────
     // ── Append selected spec literature PDFs ──────────────────────────────
     for (const litPath of (Array.isArray(literaturePaths) ? literaturePaths.slice(0, 15) : [])) {
       try {
