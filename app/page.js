@@ -120,6 +120,7 @@ export default function Home() {
     setSellLeedo(selectedJob?.price_leedo || ''); setSellRta(selectedJob?.price_rta || '')
     setCtLocalSell(selectedJob?.ct_local_sell || ''); setCtImportSell(selectedJob?.ct_import_sell || '')
     setInstallLeedo(selectedJob?.price_leedo_install || ''); setInstallRta(selectedJob?.price_rta_install || '')
+    setSowGW(!!selectedJob?.is_greenworks)
     setCtLocalInstall(selectedJob?.ct_local_install || ''); setCtImportMat(selectedJob?.ct_import_material || ''); setCtImportInstall(selectedJob?.ct_import_install || '')
     if (selectedJob?.ct_local_material) setCtGross(String(selectedJob.ct_local_material))
     if (selectedJob?.id) {
@@ -200,6 +201,7 @@ export default function Home() {
   const [ctImportSell,    setCtImportSell]    = useState('')
   const [installLeedo,    setInstallLeedo]    = useState('')
   const [installRta,      setInstallRta]      = useState('')
+  const [sowGW,           setSowGW]           = useState(false)
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -2212,7 +2214,8 @@ export default function Home() {
                       <div style={{ fontWeight: 500 }}><Chevron k="sow"/>Scope of Work</div>
                       <div style={{ display:'flex', gap:6 }}>
                         {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(sowTemplate()); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
-                        {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
+                        {sowRows && !sowEditing && <button onClick={()=>setSowGW(v=>!v)} style={{ padding:'4px 12px', fontSize:11, background: sowGW ? '#2D7A3A' : '#f5f5f3', color: sowGW ? '#fff' : '#555', border:'0.5px solid ' + (sowGW ? '#2D7A3A' : '#ddd'), borderRadius:6, cursor:'pointer', fontWeight: sowGW ? 700 : 400 }}>{sowGW ? '🌿 Greenworks branding ON' : 'MDSG branding'}</button>}
+                        {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, brandAs: sowGW ? 'greenworks' : 'mdsg' }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
                         {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map(r => { if (r[1]) return r; const m = fresh.find(f => f[0] === r[0] && f[1]); return m ? [r[0], m[1]] : r }); setSowRows(merged); saveSow(merged) }} title="Fill empty fields from job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
                         {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
                         {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}

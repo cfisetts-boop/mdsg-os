@@ -11,7 +11,7 @@ const supabase = createClient(
 // POST /api/generate-sow { jobId } → printable Scope of Work PDF for GC approval
 export async function POST(request) {
   try {
-    const { jobId } = await request.json()
+    const { jobId, brandAs = null } = await request.json()
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).single()
     if (!job) return Response.json({ error: 'Job not found' }, { status: 404 })
     let rows = Array.isArray(job.scope_of_work) ? job.scope_of_work : []
@@ -56,7 +56,7 @@ export async function POST(request) {
     const dt = (t, x, yy, f = font, size = 9, color = rgb(0.1,0.1,0.1)) =>
       page.drawText(String(t), { x, y: yy, size, font: f, color })
 
-    const isGW = !!job.is_greenworks
+    const isGW = brandAs !== null ? brandAs === 'greenworks' : !!job.is_greenworks
     try {
       const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', isGW ? 'greenworks-logo.png' : 'mdsg-logo.png')))
       // square logo: cap by height, keep fully inside the header band
