@@ -453,6 +453,7 @@ export default function Home() {
         amenities_override: selectedJob.amenities_override ?? '',
         est_delivery:       selectedJob.est_delivery || '',
         deliveries_count:   selectedJob.deliveries_count || '',
+        total_cabinets_override: selectedJob.total_cabinets_override ?? '',
       })
       setEditUnitTypes(mergeUnitTypes(selectedJob.unit_types || []))
       setAdditionalLineItems([])
@@ -502,6 +503,7 @@ export default function Home() {
       amenities_override: editFields.amenities_override !== '' && editFields.amenities_override != null ? Number(editFields.amenities_override) : null,
       est_delivery:       editFields.est_delivery || null,
       deliveries_count:   editFields.deliveries_count || null,
+      total_cabinets_override: editFields.total_cabinets_override !== '' && editFields.total_cabinets_override != null ? Number(editFields.total_cabinets_override) : null,
       bid_due_date: editFields.bid_due_date || null,
       gc_contact:   editFields.gc_contact,
       gc_phone:     editFields.gc_phone,
@@ -1597,6 +1599,7 @@ export default function Home() {
                           <div><label style={lbl}>No. of Amenities (proposal)</label><input type="number" value={editFields.amenities_override ?? ''} placeholder="auto" onChange={e => setEditFields(pv => ({ ...pv, amenities_override: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Est. Delivery</label><input type="date" value={editFields.est_delivery ?? ''} onChange={e => setEditFields(pv => ({ ...pv, est_delivery: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>No. of Deliveries</label><input value={editFields.deliveries_count ?? ''} placeholder="e.g. 4 loads" onChange={e => setEditFields(pv => ({ ...pv, deliveries_count: e.target.value }))} style={inp} /></div>
+                          <div><label style={lbl}>Total Cabinets (proposal)</label><input type="number" value={editFields.total_cabinets_override ?? ''} placeholder="auto from cab list" onChange={e => setEditFields(pv => ({ ...pv, total_cabinets_override: e.target.value }))} style={inp} /></div>
                           <div><label style={lbl}>Door Hinge Type</label>
                             <select value={editFields.hinge_type} onChange={e => setEditFields(pv => ({ ...pv, hinge_type: e.target.value }))} style={inp}>
                               <option value="">— select —</option><option>Euro 6 Way</option><option>Soft-Close</option>

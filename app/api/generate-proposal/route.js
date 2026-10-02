@@ -306,7 +306,7 @@ export async function POST(request) {
       ['NO. OF AMENITIES:',  String(job.amenities_override ?? (nAmen > 0 ? nAmen : (job.amenity_unit_count || '—')))],
       ['EST. DELIVERY:',     job.est_delivery || '—'],
       ['NO. OF DELIVERIES:', job.deliveries_count || job.num_deliveries || '—'],
-      ['TOTAL CABINETS:',    totalCabsDisplay.toLocaleString()],
+      ['TOTAL CABINETS:',    Number(job.total_cabinets_override) > 0 ? Number(job.total_cabinets_override).toLocaleString() : totalCabsDisplay.toLocaleString()],
       ['HARDWARE ALLOW.:',   hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included'],
     ]
     const SLW = 110, SVW = 230, RLW2 = 120

@@ -57,12 +57,21 @@ export async function POST(request) {
       page.drawText(String(t), { x, y: yy, size, font: f, color })
 
     const isGW = brandAs !== null ? brandAs === 'greenworks' : !!job.is_greenworks
-    try {
-      const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', isGW ? 'greenworks-logo.png' : 'mdsg-logo.png')))
-      // square logo: cap by height, keep fully inside the header band
-      const lh = 54, lw = (logo.width / logo.height) * lh
-      page.drawImage(logo, { x: MR - lw, y: 792 - 26 - lh, width: lw, height: lh })
-    } catch {}
+    // Logo top-center, brand contact line beneath it
+    for (const cand of (isGW ? ['greenworks-logo.png'] : ['mdsg-logo-square.png', 'mdsg-logo.png'])) {
+      try {
+        const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', cand)))
+        const lh = 58, lw = (logo.width / logo.height) * lh
+        page.drawImage(logo, { x: (612 - lw) / 2, y: 792 - 20 - lh, width: lw, height: lh })
+        break
+      } catch {}
+    }
+    const brandLine = isGW
+      ? 'Greenworks Renovations LLC  ·  Anthony (Willy) Ramirez  ·  619-718-1578  ·  greenworksrenovationsllc@gmail.com'
+      : 'Manufacturer Direct Sales Group, LLC  ·  Pamela Isetts, President  ·  651-301-1063  ·  pam@mdsgcabinets.com'
+    const blw = font.widthOfTextAtSize(brandLine, 8)
+    dt(brandLine, (612 - blw) / 2, 792 - 20 - 58 - 11, font, 8, gray)
+    y = 792 - 20 - 58 - 28
     dt('SCOPE OF WORK', ML, y, bold, 18, navy); y -= 16
     dt(job.name || '', ML, y, bold, 11, gray); y -= 12
     dt(`${job.gc_name || ''}${job.address ? '  ·  ' + job.address : ''}`, ML, y, font, 9, gray); y -= 8
