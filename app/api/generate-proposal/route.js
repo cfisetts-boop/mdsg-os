@@ -16,7 +16,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -143,14 +143,17 @@ export async function POST(request) {
     const sR = n0(sellRta) || n0(priceRta)
     const displayBid = sL > 0 ? sL : (cL > 0 ? Math.round(cL * mFactor) : totalBid)
     const rtaBid = sR > 0 ? sR : (cR > 0 ? Math.round(cR * mFactor) : 0)
+    const instL = n0(installLeedo), instR = n0(installRta)
 
     // Persist OS-side financials — dashboard prefers these over Monday columns
     await supabase.from('jobs').update({
-      os_bid_value: Math.round(displayBid * 100) / 100,
+      os_bid_value: Math.round((displayBid + instL) * 100) / 100,
       ...((sL > 0 || cL > 0) ? { price_leedo: displayBid } : {}),
       price_rta: rtaBid > 0 ? rtaBid : null,
       price_leedo_cost: cL > 0 ? cL : null,
       price_rta_cost: cR > 0 ? cR : null,
+      price_leedo_install: instL > 0 ? instL : null,
+      price_rta_install: instR > 0 ? instR : null,
       os_cost_value: cL > 0 ? cL : Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100,
       os_margin_pct: cL > 0 && displayBid > 0 ? Math.round((1 - cL / displayBid) * 1000) / 10 : (mPct > 0 && mPct < 95 ? mPct : null),
     }).eq('id', jobId)
@@ -380,15 +383,18 @@ export async function POST(request) {
     }
     if (rtaBid > 0) {
       baseBand('LEEDO — DOMESTIC MANUFACTURED')
-      bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
-      bandRow(null, null, fmtMoney(displayBid), { rl: 'TOTAL', rlBold: true })
+      bandRow(null, 'CABINETS & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
+      if (instL > 0) bandRow(null, null, fmtMoney(instL), { rl: 'INSTALLATION' })
+      bandRow(null, null, fmtMoney(displayBid + instL), { rl: 'TOTAL', rlBold: true })
       baseBand('IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE')
-      bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(rtaBid), { bold:true })
-      bandRow(null, null, fmtMoney(rtaBid), { rl: 'TOTAL', rlBold: true })
+      bandRow(null, 'CABINETS & APPLICABLE SALES TAX', fmtMoney(rtaBid), { bold:true })
+      if (instR > 0) bandRow(null, null, fmtMoney(instR), { rl: 'STAGING, ASSEMBLY & INSTALLATION' })
+      bandRow(null, null, fmtMoney(rtaBid + instR), { rl: 'TOTAL', rlBold: true })
     } else {
       baseBand((job.manufacturer || 'LEEDO').toUpperCase() + ' — CABINET SUPPLY')
       if (sL > 0 || cL > 0) {
-        bandRow(null, 'CABINETS, HARDWARE ALLOWANCE & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
+        bandRow(null, 'CABINETS & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
+        if (instL > 0) bandRow(null, null, fmtMoney(instL), { rl: 'INSTALLATION' })
       } else {
         bandRow(null, 'BASE CABINET PRICE', fmtMoney(cabsToGC), { bold:true })
         if (freight > 0) bandRow(null, 'FREIGHT (PASS-THROUGH)', fmtMoney(freight))
@@ -399,7 +405,7 @@ export async function POST(request) {
       ensure(14)
       box(ML, y - 13, W - PRW, 13, sage); box(MR - PRW, y - 13, PRW, 13, sage)
       rgt('TOTAL', MR - PRW, y - 9.5, { bold:true, size:7.5 })
-      rgt(fmtMoney(displayBid), MR, y - 9.5, { bold:true, size:8 })
+      rgt(fmtMoney(displayBid + instL), MR, y - 9.5, { bold:true, size:8 })
       y -= 13
     }
 
@@ -417,7 +423,8 @@ export async function POST(request) {
         }
       }
     }
-    bandRows2('INCLUDED IN BID:', SEC.includedInBid.split(/\||\n/).map(s => s.trim()).filter(Boolean))
+    const taxPctShown = mfrTax > 0 && (grossCost + freight) > 0 ? ((mfrTax / (grossCost + freight)) * 100).toFixed(2).replace(/0$/, '') : (salesTax > 0 ? String(salesTax) : null)
+    bandRows2('INCLUDED IN BID:', SEC.includedInBid.split(/\||\n/).map(s => s.trim()).filter(Boolean).map(s => /^sales tax$/i.test(s) && taxPctShown ? `Sales Tax:  ${taxPctShown}%` : s))
     if (!isGW) bandRows2('ASSEMBLY, STAGING & INSTALLATION:', SEC.assembly.split('\n').map(s => s.trim()).filter(Boolean))
     bandRows2('NOT INCLUDED IN BID:', SEC.notIncluded.split('\n').map(s => s.trim()).filter(Boolean).map(s => '- ' + s.replace(/^[-•]\s*/, '')))
 
@@ -444,12 +451,14 @@ export async function POST(request) {
     y -= nH
 
     // ═ Thank-you + signature ═
-    ensure(34)
-    const tH = 34
+    ensure(50)
+    const tH = 50
     box(ML, y - tH, half, tH); box(ML + half, y - tH, W - half, tH)
     txt('**Thank you for the opportunity to submit our proposal.**', ML + 2, y - 9, { size:6 })
     txt('Unit pricing will be honored for 90 days from the date of proposal.', ML + 2, y - 17, { size:6 })
     txt('All quantities are estimated, final field measurements and approved Shop Drawings will prevail.', ML + 2, y - 25, { size:6 })
+    txt('Any new or increased tariffs enacted after the proposal date are a pass-through cost to the customer.', ML + 2, y - 33, { size:6, bold:true })
+    txt('Once materials are delivered, the General Contractor is responsible for any and all damage.', ML + 2, y - 41, { size:6, bold:true })
     line2(ML + half + 10, y - tH + 10, MR - 10, y - tH + 10, 0.5)
     ctr('Customer Signature & Date', ML + half, W - half, y - tH + 3, { size:6.5 })
     y -= tH

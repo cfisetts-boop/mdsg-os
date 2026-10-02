@@ -119,6 +119,7 @@ export default function Home() {
     setPriceLeedo(selectedJob?.price_leedo_cost || ''); setPriceRta(selectedJob?.price_rta_cost || '')
     setSellLeedo(selectedJob?.price_leedo || ''); setSellRta(selectedJob?.price_rta || '')
     setCtLocalSell(selectedJob?.ct_local_sell || ''); setCtImportSell(selectedJob?.ct_import_sell || '')
+    setInstallLeedo(selectedJob?.price_leedo_install || ''); setInstallRta(selectedJob?.price_rta_install || '')
     setCtLocalInstall(selectedJob?.ct_local_install || ''); setCtImportMat(selectedJob?.ct_import_material || ''); setCtImportInstall(selectedJob?.ct_import_install || '')
     if (selectedJob?.ct_local_material) setCtGross(String(selectedJob.ct_local_material))
     if (selectedJob?.id) {
@@ -197,6 +198,8 @@ export default function Home() {
   const [sellRta,         setSellRta]         = useState('')
   const [ctLocalSell,     setCtLocalSell]     = useState('')
   const [ctImportSell,    setCtImportSell]    = useState('')
+  const [installLeedo,    setInstallLeedo]    = useState('')
+  const [installRta,      setInstallRta]      = useState('')
   const [kanbanSort,      setKanbanSort]      = useState('date')
   const [kanbanOwner,     setKanbanOwner]     = useState('all')
   const [sowRows,         setSowRows]         = useState(null)
@@ -475,7 +478,7 @@ export default function Home() {
   async function saveProposalEdits() {
     if (!selectedJob) return
     setSavingEdits(true)
-    await supabase.from('jobs').update({
+    const { error: saveErr } = await supabase.from('jobs').update({
       name: editFields.name || selectedJob.name,
       door_style: editFields.door_style,
       drawer_box: editFields.drawer_box || null,
@@ -502,6 +505,7 @@ export default function Home() {
       gc_phone:     editFields.gc_phone,
       gc_email:     editFields.gc_email,
     }).eq('id', selectedJob.id)
+    if (saveErr) { alert('SAVE FAILED — nothing was stored: ' + saveErr.message + '\n\nTell Cole this exact message.'); setSavingEdits(false); return }
     for (const ut of editUnitTypes) {
       await supabase.from('unit_types').update({ unit_quantity: ut.unit_quantity }).eq('id', ut.id)
     }
@@ -976,7 +980,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, installLeedo: installLeedo !== '' ? Number(installLeedo) : null, installRta: installRta !== '' ? Number(installRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1431,12 +1435,12 @@ export default function Home() {
             <div style={{ background: '#fff', border: '0.5px solid #e5e5e0', borderRadius: 10, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead><tr style={{ background: '#f5f5f3' }}>
-                  {['Project', 'GC', 'Stage', 'Manufacturer', 'Cabinets', 'Bid Value', 'Margin', 'Owner'].map(h => (
+                  {['Project', 'GC', 'GW', 'Stage', 'Manufacturer', 'Cabinets', 'Bid Value', 'Margin', 'Owner'].map(h => (
                     <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 500, color: '#888', borderBottom: '0.5px solid #e5e5e0', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {loading ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Loading...</td></tr>
+                  {loading ? <tr><td colSpan={9} style={{ padding: 24, textAlign: 'center', color: '#888' }}>Loading...</td></tr>
                   : filteredJobs.map(job => {
                     const c = STAGE_COLORS[job.stage] || STAGE_COLORS['Bid']
                     return (
@@ -1446,6 +1450,7 @@ export default function Home() {
                         onMouseLeave={e => e.currentTarget.style.background = ''}>
                         <td style={{ padding: '10px 14px', fontWeight: 500 }}>{job.name}</td>
                         <td style={{ padding: '10px 14px', color: '#555' }}>{job.gc_name || '—'}</td>
+                        <td style={{ padding: '10px 14px' }}>{job.is_greenworks ? <span style={{ background:'#e3efe5', color:'#2D7A3A', borderRadius:10, padding:'2px 8px', fontSize:10, fontWeight:700 }}>🌿 GW</span> : ''}</td>
                         <td style={{ padding: '10px 14px' }}><span style={{ background: c.bg, color: c.text, borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 500 }}>{job.stage}</span></td>
                         <td style={{ padding: '10px 14px', color: '#555' }}>{job.manufacturer}</td>
                         <td style={{ padding: '10px 14px', color: '#555' }}>{job.total_cabinet_count || '—'}</td>
@@ -1689,6 +1694,10 @@ export default function Home() {
                             <span style={{ flex: 1, color: '#888', fontSize: 11 }}>{q.file_name || '—'}</span>
                             <span style={{ fontWeight: 600 }}>{q.grand_total > 0 ? '$' + Number(q.grand_total).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                             <span style={{ color: '#aaa', fontSize: 11 }}>{new Date(q.created_at).toLocaleDateString()}</span>
+                            {q.quote_type !== 'countertops' && (<>
+                            <button title="Use as Leedo cost in Pricing Lines" onClick={()=>{ setPriceLeedo(String(q.grand_total || q.gross_amount || '')); alert('Set as Leedo COST — markup applies at generate') }} style={{ padding:'2px 7px', fontSize:9, background:'#f0eff9', color:'#3C3489', border:'0.5px solid #3C3489', borderRadius:5, cursor:'pointer', fontWeight:600 }}>→Leedo$</button>
+                            <button title="Use as Imported RTA cost in Pricing Lines" onClick={()=>{ setPriceRta(String(q.grand_total || q.gross_amount || '')); alert('Set as RTA COST — markup applies at generate') }} style={{ padding:'2px 7px', fontSize:9, background:'#fdf8ee', color:'#8B6914', border:'0.5px solid #8B6914', borderRadius:5, cursor:'pointer', fontWeight:600 }}>→RTA$</button>
+                            </>)}
                             <button title="Edit quote amounts" onClick={async()=>{
                               const g = prompt('Gross amount ($):', q.gross_amount || ''); if (g === null) return
                               let body
@@ -1783,6 +1792,12 @@ export default function Home() {
                             <input type="number" min="0" value={priceRta} placeholder="blank = omit" onChange={e=>setPriceRta(e.target.value)} style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
                           <label style={{ fontSize:11, color:'#2D7A3A', display:'flex', alignItems:'center', gap:5, fontWeight:600 }}>RTA SELL $
                             <input type="number" min="0" value={sellRta} placeholder="blank = auto markup" onChange={e=>setSellRta(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #2D7A3A', borderRadius:6, fontSize:12 }}/></label>
+                        </div>
+                        <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginTop:6 }}>
+                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>Leedo Installation $ (sell)
+                            <input type="number" min="0" value={installLeedo} placeholder="blank = no line" onChange={e=>setInstallLeedo(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
+                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>RTA Staging/Assembly/Install $ (sell)
+                            <input type="number" min="0" value={installRta} placeholder="blank = no line" onChange={e=>setInstallRta(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
                         </div>
                       </div>
                       {specLib.length > 0 && (
@@ -2280,6 +2295,9 @@ export default function Home() {
                           <button key={pr} onClick={async()=>{ await supabase.from('jobs').update({ priority: pr }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, priority: pr }); loadJobs() }} style={{ padding:'3px 10px', fontSize:10, borderRadius:10, cursor:'pointer', textTransform:'capitalize', fontWeight:600, background:(selectedJob.priority||'normal')===pr ? ({ low:'#8a8a8a', normal:'#1B5EA6', high:'#e0a800', hot:'#A32D2D' })[pr] : '#f5f5f3', color:(selectedJob.priority||'normal')===pr ? '#fff' : '#888', border:'none' }}>{pr === 'hot' ? '🔥 hot' : pr}</button>
                         ))}
                       </div>
+                      <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_greenworks ? '#2D7A3A' : '#bbb', cursor:'pointer', fontWeight: selectedJob.is_greenworks ? 700 : 400 }}>
+                        <input type="checkbox" checked={!!selectedJob.is_greenworks} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_greenworks: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_greenworks: v }); loadJobs() }} style={{ width:13, height:13 }}/>🌿 Greenworks job
+                      </label>
                       <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color: selectedJob.is_test ? '#8B6914' : '#bbb', cursor:'pointer' }}>
                         <input type="checkbox" checked={!!selectedJob.is_test} onChange={async e=>{ const v = e.target.checked; await supabase.from('jobs').update({ is_test: v }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, is_test: v }); loadJobs() }} style={{ width:13, height:13 }}/>🧪 Test job
                       </label>

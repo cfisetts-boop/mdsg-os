@@ -14,7 +14,31 @@ export async function POST(request) {
     const { jobId } = await request.json()
     const { data: job } = await supabase.from('jobs').select('*').eq('id', jobId).single()
     if (!job) return Response.json({ error: 'Job not found' }, { status: 404 })
-    const rows = Array.isArray(job.scope_of_work) ? job.scope_of_work : []
+    let rows = Array.isArray(job.scope_of_work) ? job.scope_of_work : []
+    // Overlay spec rows with live Proposal Details values (label keyword → job field)
+    const OVERLAY = [
+      [/door\s*style/i, () => job.door_style],
+      [/^(finish|color)/i, () => job.finish_color],
+      [/box\s*construction/i, () => job.box_construction],
+      [/box\s*material|construction\s*material/i, () => job.cabinet_construction],
+      [/drawer\s*box|glide/i, () => job.drawer_box],
+      [/interior/i, () => job.interior_color],
+      [/shelf/i, () => job.shelf_thickness],
+      [/hinge/i, () => job.hinge_type],
+      [/manufacturer|cabinet\s*line/i, () => job.manufacturer],
+      [/no\.?\s*of\s*units|unit\s*count|total\s*units/i, () => job.units_override ?? job.total_residential_units],
+      [/amenit/i, () => job.amenities_override],
+      [/est\.?\s*delivery|delivery\s*date/i, () => job.est_delivery],
+      [/no\.?\s*of\s*deliveries|deliveries/i, () => job.deliveries_count],
+      [/hardware/i, () => job.hardware_allowance ? '$' + Number(job.hardware_allowance).toLocaleString() : null],
+    ]
+    rows = rows.map(([label, value]) => {
+      if (String(label).startsWith('— ')) return [label, value]
+      for (const [re2, get] of OVERLAY) {
+        if (re2.test(String(label))) { const v = get(); if (v !== null && v !== undefined && v !== '') return [label, String(v)]; break }
+      }
+      return [label, value]
+    })
     if (!rows.length) return Response.json({ error: 'No Scope of Work on this job yet' }, { status: 422 })
 
     const pdf = await PDFDocument.create()
@@ -32,8 +56,9 @@ export async function POST(request) {
     const dt = (t, x, yy, f = font, size = 9, color = rgb(0.1,0.1,0.1)) =>
       page.drawText(String(t), { x, y: yy, size, font: f, color })
 
+    const isGW = !!job.is_greenworks
     try {
-      const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', 'mdsg-logo.png')))
+      const logo = await pdf.embedPng(readFileSync(join(process.cwd(), 'public', isGW ? 'greenworks-logo.png' : 'mdsg-logo.png')))
       // square logo: cap by height, keep fully inside the header band
       const lh = 54, lw = (logo.width / logo.height) * lh
       page.drawImage(logo, { x: MR - lw, y: 792 - 26 - lh, width: lw, height: lh })
@@ -70,7 +95,7 @@ export async function POST(request) {
     dt('DATE:', ML + 330, y, bold, 9, gray)
     page.drawLine({ start: { x: ML + 370, y: y - 2 }, end: { x: MR, y: y - 2 }, thickness: 0.6, color: gray })
     y -= 30
-    dt('MDSG Cabinets  ·  Manufacturer Direct Sales Group', ML, y, font, 7.5, gray)
+    dt(isGW ? 'Greenworks Renovations LLC  ·  Anthony (Willy) Ramirez  ·  619-718-1578' : 'MDSG Cabinets  ·  Manufacturer Direct Sales Group', ML, y, font, 7.5, gray)
 
     const bytes = await pdf.save()
     await supabase.from('activity_log').insert({ job_id: jobId, user_name: 'MDSG', action: 'Scope of Work PDF generated' })
