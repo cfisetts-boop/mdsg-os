@@ -120,6 +120,7 @@ export default function Home() {
     setSellLeedo(selectedJob?.price_leedo || ''); setSellRta(selectedJob?.price_rta || '')
     setCtLocalSell(selectedJob?.ct_local_sell || ''); setCtImportSell(selectedJob?.ct_import_sell || '')
     setInstallLeedo(selectedJob?.price_leedo_install || ''); setInstallRta(selectedJob?.price_rta_install || '')
+    setCtMaterialSpec(selectedJob?.ct_material_spec || ''); setCtColorSpec(selectedJob?.ct_color || ''); setCtAmenities(selectedJob?.ct_amenities || '')
     setSowGW(!!selectedJob?.is_greenworks)
     setCtLocalInstall(selectedJob?.ct_local_install || ''); setCtImportMat(selectedJob?.ct_import_material || ''); setCtImportInstall(selectedJob?.ct_import_install || '')
     if (selectedJob?.ct_local_material) setCtGross(String(selectedJob.ct_local_material))
@@ -964,7 +965,7 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0 }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0, ctMaterialSpec, ctColor: ctColorSpec, ctAmenities }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
@@ -1508,7 +1509,7 @@ export default function Home() {
                 <div>
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 16 }}>{selectedJob.name}</div>
-                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinet_count], ['Bid Due', fmtD(selectedJob.bid_due_date)], ['Owner', '__OWNER_SELECT__']].filter(([label, v]) => v || label === 'Owner').map(([label, value]) => (
+                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinets_override ?? (selectedJob.cab_list?.sheet_totals?.cabinets || (selectedJob.cab_list?.unit_types || []).reduce((s, u) => s + (u.skus || []).reduce((x, r) => x + (Number(r.quantity_per_unit) || 0), 0) * (Number(u.unit_quantity) || 1), 0) || selectedJob.total_cabinet_count)], ['Bid Due', fmtD(selectedJob.bid_due_date)], ['Owner', '__OWNER_SELECT__']].filter(([label, v]) => v || label === 'Owner').map(([label, value]) => (
                       <div key={label} style={{ marginBottom: 10 }}>
                         <div style={lbl}>{label}</div>
                         {value === '__OWNER_SELECT__' ? (
@@ -2597,7 +2598,7 @@ export default function Home() {
                         </div>
                       )}
                       <div style={{ padding:'8px 10px', background:'#f8f7f4', borderRadius:8, border:'0.5px solid #e8e6e0', marginBottom:10 }}>
-                        <div style={{ fontSize:11, fontWeight:600, color:'#8B6914', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(COSTS — marked up by Margin % · type a SELL total to set the final price instead)</span></div>
+                        <div style={{ fontSize:11, fontWeight:600, color:'#8B6914', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(print on the proposal EXACTLY as typed — these are the GC's numbers)</span></div>
                         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
                           <label style={{ fontSize:11, color:'#555' }}>Local Fabricator — Material $<br/>
                             <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:130 }}/></label>
@@ -2607,10 +2608,6 @@ export default function Home() {
                             <input type="number" min="0" value={ctImportMat} placeholder="blank = omit block" onChange={e=>setCtImportMat(e.target.value)} style={{ ...inp, width:130 }}/></label>
                           <label style={{ fontSize:11, color:'#555' }}>Import — Installation $<br/>
                             <input type="number" min="0" value={ctImportInstall} placeholder="blank = omit" onChange={e=>setCtImportInstall(e.target.value)} style={{ ...inp, width:130 }}/></label>
-                          <label style={{ fontSize:11, color:'#2D7A3A', fontWeight:600 }}>Local SELL Total $<br/>
-                            <input type="number" min="0" value={ctLocalSell} placeholder="blank = auto" onChange={e=>setCtLocalSell(e.target.value)} style={{ ...inp, width:120, borderColor:'#2D7A3A' }}/></label>
-                          <label style={{ fontSize:11, color:'#2D7A3A', fontWeight:600 }}>Import SELL Total $<br/>
-                            <input type="number" min="0" value={ctImportSell} placeholder="blank = auto" onChange={e=>setCtImportSell(e.target.value)} style={{ ...inp, width:120, borderColor:'#2D7A3A' }}/></label>
                         </div>
                         <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:8 }}>
                           <label style={{ fontSize:11, color:'#555' }}>Material Spec<br/>
@@ -2618,7 +2615,7 @@ export default function Home() {
                           <label style={{ fontSize:11, color:'#555' }}>Color<br/>
                             <input value={ctColorSpec} placeholder="e.g. CARRARA ROMA or MATCH" onChange={e=>setCtColorSpec(e.target.value)} style={{ ...inp, width:190 }}/></label>
                           <label style={{ fontSize:11, color:'#555' }}>Amenities (comma sep)<br/>
-                            <input value={ctAmenities} placeholder="Amenity Kitchen, Laundry (10), Office" onChange={e=>setCtAmenities(e.target.value)} style={{ ...inp, width:220 }}/></label>
+                            <input value={ctAmenities} placeholder="type amenities — e.g. Amenity Kitchen, Laundry (10)" onChange={e=>setCtAmenities(e.target.value)} style={{ ...inp, width:220 }}/></label>
                         </div>
                       </div>
                       <label style={lbl}>Gross Margin %</label>

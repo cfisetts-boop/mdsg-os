@@ -22,7 +22,7 @@ export async function POST(request) {
     const {
       jobId, totals = {}, propConfig = {}, sender = 'Cole', bidSections = {},
       marginPct = 20, grossCostOverride = 0, notes = '', brandAs = 'mdsg',
-      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null,
+      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null, ctMaterialSpec = null, ctColor = null, ctAmenities = null,
     } = await request.json()
 
     let job = null
@@ -30,6 +30,9 @@ export async function POST(request) {
       const { data } = await supabase.from('jobs').select('*').eq('id', jobId).single()
       job = data
     }
+    const specMaterial = (ctMaterialSpec || '').trim() || propConfig.material || job?.ct_material_spec || ''
+    const specColor    = (ctColor || '').trim() || propConfig.color || job?.ct_color || job?.finish_color || ''
+    const specAmen     = (ctAmenities || '').trim() || propConfig.amenities || job?.ct_amenities || ''
 
     const SEC = {
       includedInBid: bidSections.includedInBid ?? 'Sales Tax  |  Delivery to Job Site  |  Sink cutouts per sink specifications',
@@ -49,15 +52,9 @@ export async function POST(request) {
     if (!manualMode && !sell) return Response.json({ error: 'No countertop pricing — fill in the pricing lines first' }, { status: 422 })
     // Typed lines are COST → marked up by margin; a typed SELL total overrides
     // and the displayed lines scale proportionally to sum to it.
-    const mF = margin > 0 && margin < 95 ? 1 / (1 - margin / 100) : 1
-    const sellLines = (mat, ins, sellOverride) => {
-      let m2 = Math.round(mat * mF), i2 = Math.round(ins * mF)
-      const so = num(sellOverride)
-      if (so > 0 && (m2 + i2) > 0) { const f = so / (m2 + i2); m2 = Math.round(m2 * f); i2 = Math.round(i2 * f); m2 += so - m2 - i2 }
-      return { m2, i2, tot: so > 0 ? so : m2 + i2 }
-    }
-    const loc = sellLines(locMat, locIns, ctLocalSell)
-    const imp = sellLines(impMat, impIns, ctImportSell)
+    // Manual CT lines print EXACTLY AS TYPED — no markup, no scaling (team decision 10/7)
+    const loc = { m2: locMat, i2: locIns, tot: locMat + locIns }
+    const imp = { m2: impMat, i2: impIns, tot: impMat + impIns }
     const headline = manualMode ? (locMat > 0 ? loc.tot : imp.tot) : sell
 
     const isGW = brandAs === 'greenworks'
@@ -179,10 +176,10 @@ export async function POST(request) {
       y -= 12
     }
     const units = job?.units_override ?? propConfig.units ?? ''
-    const amenLines = String(propConfig.amenities || job?.amenities_text || '').split(/\n|,/).map(s => s.trim()).filter(Boolean)
+    const amenLines = String(specAmen).split(/\n|,/).map(s => s.trim()).filter(Boolean)
     specRow('SPECIFICATIONS:', '', 'NO. OF UNITS:', units !== '' ? String(units) : '—')
-    specRow('MATERIAL SPEC:', propConfig.material || '', 'AMENITIES:', amenLines[0] || '—')
-    specRow('COLOR:', propConfig.color || job?.finish_color || '', '', amenLines[1] || '')
+    specRow('MATERIAL SPEC:', specMaterial || '—', 'AMENITIES:', amenLines[0] || '—')
+    specRow('COLOR:', specColor || 'TBD', '', amenLines[1] || '')
     if (amenLines[2]) specRow('', '', '', amenLines[2])
 
     // ═ BASE PRICE blocks ═
@@ -272,6 +269,7 @@ export async function POST(request) {
         ct_local_material: locMat || null, ct_local_install: locIns || null,
         ct_import_material: impMat || null, ct_import_install: impIns || null,
         ct_local_sell: num(ctLocalSell) || null, ct_import_sell: num(ctImportSell) || null,
+        ct_material_spec: specMaterial || null, ct_color: specColor || null, ct_amenities: specAmen || null,
       }).eq('id', jobId)
       const who = isGW ? 'Greenworks' : (SENDERS[sender] || SENDERS.Cole).name
       await supabase.from('activity_log').insert({ job_id: jobId, user_name: who, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)}${isGW ? ' · Greenworks-branded' : ''}` })
