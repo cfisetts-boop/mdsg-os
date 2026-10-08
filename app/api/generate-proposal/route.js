@@ -8,7 +8,7 @@ const GW_LOGO_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAZAAAAEICAYAAABxiqLiAADS50lEQVR42uz
 const SENDERS = {
   Cole:  { name: 'Cole Isetts',   title: 'Sales Representative', phone: '651-301-1068', email: 'cole@mdsgcabinets.com' },
   Pam:   { name: 'Pamela Isetts', title: 'President',            phone: '651-301-1063', email: 'pam@mdsgcabinets.com' },
-  Blake: { name: 'Blake Isetts',  title: 'Project Manager',      phone: '',             email: 'blake@mdsgcabinets.com' },
+  Blake: { name: 'Blake Isetts',  title: 'Project Manager',      phone: '720-750-2093', email: 'csr@mdsgcabinets.com' },
 }
 
 export async function POST(request) {
@@ -101,6 +101,18 @@ export async function POST(request) {
     }
     // Unit / bathroom / amenity counts from the cab list classifications
     const clUnits = job.cab_list?.unit_types || []
+    // UNIT TYPE BREAKDOWN fallback: when the unit_types table is empty or has no
+    // cabinet counts (job built via Cabinet List, not a parsed quote), derive the
+    // table straight from the cab list.
+    const tableHasData = sortedUnits.length > 0 && sortedUnits.some(u => Number(u.cabinet_count) > 0)
+    const clCabsPerUnit = (u) => (u.skus || []).reduce((s, r) => s + (Number(r.quantity_per_unit) || 0), 0)
+    const effUnits = tableHasData ? sortedUnits : clUnits.map((u, i) => ({
+      unit_type_name: u.unit_type_name,
+      unit_quantity: Number(u.unit_quantity) || 1,
+      cabinet_count: clCabsPerUnit(u),
+      manufacturer_price: Number(u.gross_price) || null,
+      sort_order: i,
+    }))
     const kindQty = (k) => clUnits.filter(u => (u.kind || 'unit') === k).reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)
     const nUnits = kindQty('unit'), nBaths = kindQty('bathroom'), nAmen = kindQty('amenity')
     const clCabs = job.cab_list?.sheet_totals?.cabinets
@@ -347,7 +359,7 @@ export async function POST(request) {
       txt('UNIT TYPE', ML + 2, y - 8, { bold:true, size:6.5 }); ctr('UNITS', CU, 80, y - 8, { bold:true, size:6.5 })
       ctr('CABINETS', CC, 56, y - 8, { bold:true, size:6.5 }); ctr('MFR PRICE', CP, 84, y - 8, { bold:true, size:6.5 })
       y -= 11
-      const ordered = [...sortedUnits.filter(u => kindOf(u.unit_type_name) !== 'amenity'), ...sortedUnits.filter(u => kindOf(u.unit_type_name) === 'amenity')].slice(0, 40)
+      const ordered = [...effUnits.filter(u => kindOf(u.unit_type_name) !== 'amenity'), ...effUnits.filter(u => kindOf(u.unit_type_name) === 'amenity')].slice(0, 40)
       let amenHdr = false
       for (const ut of ordered) {
         ensure(12)
@@ -365,7 +377,7 @@ export async function POST(request) {
       ensure(12)
       box(ML, y - 11, CU - ML, 11, sage); box(CU, y - 11, 80, 11, sage); box(CC, y - 11, 56, 11, sage); box(CP, y - 11, 84, 11, sage)
       txt('TOTALS', ML + 2, y - 8, { bold:true, size:6.8 })
-      ctr(String(sortedUnits.reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)), CU, 80, y - 8, { bold:true, size:6.8 })
+      ctr(String(job.units_override ?? effUnits.reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)), CU, 80, y - 8, { bold:true, size:6.8 })
       ctr(totalCabsDisplay.toLocaleString(), CC, 56, y - 8, { bold:true, size:6.8 })
       y -= 11
     }

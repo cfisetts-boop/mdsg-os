@@ -13,6 +13,7 @@ const GW_LOGO_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAZAAAAEICAYAAABxiqLiAADS50lEQVR42uz
 const SENDERS = {
   Cole: { name: 'Cole Isetts',   title: 'Sales Representative', phone: '651-301-1068', email: 'cole@mdsgcabinets.com' },
   Pam:  { name: 'Pamela Isetts', title: 'President',            phone: '651-301-1063', email: 'pam@mdsgcabinets.com' },
+  Blake: { name: 'Blake Isetts', title: 'Project Manager',      phone: '720-750-2093', email: 'csr@mdsgcabinets.com' },
   MDSG: { name: 'MDSG Team',     title: 'Manufacturer Direct Sales Group', phone: '', email: 'csr@mdsgcabinets.com' },
 }
 
