@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import TakeoffEngine from './components/TakeoffEngine'
 import CountertopCalc from './components/CountertopCalc'
@@ -121,6 +121,7 @@ export default function Home() {
     setCtLocalSell(selectedJob?.ct_local_sell || ''); setCtImportSell(selectedJob?.ct_import_sell || '')
     setInstallLeedo(selectedJob?.price_leedo_install || ''); setInstallRta(selectedJob?.price_rta_install || '')
     setCtMaterialSpec(selectedJob?.ct_material_spec || ''); setCtColorSpec(selectedJob?.ct_color || ''); setCtAmenities(selectedJob?.ct_amenities || '')
+    if (selectedJob?.proposal_draft) applyDraft(selectedJob.proposal_draft)
     setSowGW(!!selectedJob?.is_greenworks)
     setCtLocalInstall(selectedJob?.ct_local_install || ''); setCtImportMat(selectedJob?.ct_import_material || ''); setCtImportInstall(selectedJob?.ct_import_install || '')
     if (selectedJob?.ct_local_material) setCtGross(String(selectedJob.ct_local_material))
@@ -478,6 +479,45 @@ export default function Home() {
         })
     }
   }, [selectedJob?.id, loadJobShipments])
+
+  const buildDraft = () => ({
+    proposalSender, proposalNotes, proposalMargin, proposalGross, proposalFreight, proposalMfrTax,
+    proposalSalesTax, applyDiscount, discountPct, hwPieces, hwRate, hideUnitPricing, totalOnly, brandAs,
+    priceLeedo, sellLeedo, priceRta, sellRta, installLeedo, installRta, litSelected, bidSections,
+    ctSender, ctWastePct, ctMargin, ctNotes, ctGross, ctLocalInstall, ctImportMat, ctImportInstall,
+    ctMaterialSpec, ctColorSpec, ctAmenities,
+  })
+  function applyDraft(d) {
+    if (!d || typeof d !== 'object') return
+    const S = {
+      proposalSender: setProposalSender, proposalNotes: setProposalNotes, proposalMargin: setProposalMargin,
+      proposalGross: setProposalGross, proposalFreight: setProposalFreight, proposalMfrTax: setProposalMfrTax,
+      proposalSalesTax: setProposalSalesTax, applyDiscount: setApplyDiscount, discountPct: setDiscountPct,
+      hwPieces: setHwPieces, hwRate: setHwRate, hideUnitPricing: setHideUnitPricing, totalOnly: setTotalOnly,
+      brandAs: setBrandAs, priceLeedo: setPriceLeedo, sellLeedo: setSellLeedo, priceRta: setPriceRta,
+      sellRta: setSellRta, installLeedo: setInstallLeedo, installRta: setInstallRta, litSelected: setLitSelected,
+      bidSections: setBidSections, ctSender: setCtSender, ctWastePct: setCtWastePct, ctMargin: setCtMargin,
+      ctNotes: setCtNotes, ctGross: setCtGross, ctLocalInstall: setCtLocalInstall, ctImportMat: setCtImportMat,
+      ctImportInstall: setCtImportInstall, ctMaterialSpec: setCtMaterialSpec, ctColorSpec: setCtColorSpec,
+      ctAmenities: setCtAmenities,
+    }
+    for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) setter(d[k])
+  }
+  const draftReady = useRef(false)
+  useEffect(() => {
+    draftReady.current = false
+    const t = setTimeout(() => { draftReady.current = true }, 1000)
+    return () => clearTimeout(t)
+  }, [selectedJob?.id])
+  const draftBundle = JSON.stringify(selectedJob?.id ? buildDraft() : {})
+  useEffect(() => {
+    if (!selectedJob?.id || !draftReady.current) return
+    const jobId = selectedJob.id
+    const t = setTimeout(async () => {
+      try { await supabase.from('jobs').update({ proposal_draft: JSON.parse(draftBundle) }).eq('id', jobId) } catch {}
+    }, 1200)
+    return () => clearTimeout(t)
+  }, [draftBundle])  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function saveProposalEdits() {
     if (!selectedJob) return
@@ -1608,7 +1648,6 @@ export default function Home() {
                           <div><label style={lbl}>Finish / Color</label><input list="door-finish-options" value={editFields.finish_color} onChange={e => setEditFields(pv => ({ ...pv, finish_color: e.target.value }))} style={inp} />
                             <datalist id="door-finish-options">{DOOR_FINISHES.map(f => <option key={f} value={f} />)}</datalist></div>
                         </div>
-                        <div style={{ marginBottom: 12 }}><label style={lbl}>Box Construction</label><input value={editFields.box_construction} onChange={e => setEditFields(p => ({ ...p, box_construction: e.target.value }))} style={inp} /></div>
                         <div style={{ marginBottom: 14 }}><label style={lbl}>Scope Notes</label><textarea value={editFields.scope_notes} onChange={e => setEditFields(p => ({ ...p, scope_notes: e.target.value }))} style={{ ...inp, height: 56, resize: 'vertical' }} /></div>
                         {editUnitTypes.length > 0 && (
                           <div style={{ marginBottom: 14 }}>
@@ -1898,7 +1937,7 @@ export default function Home() {
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
                         <span style={{ fontSize:11, fontWeight:600, color:'#888', textTransform:'uppercase', letterSpacing:0.4 }}>Saved Proposal Sets</span>
-                        <button onClick={async()=>{ const nm = prompt('Name this proposal set (e.g. CD Set, Permit Set, Addendum 1):'); if(!nm || !nm.trim()) return; const entry = [nm.trim(), new Date().toISOString().split('T')[0], Number(selectedJob.os_bid_value)||0, selectedJob.proposal_status||'draft', authProfile?.name||'']; const sets = [...(selectedJob.proposal_sets||[]), entry]; await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ padding:'3px 10px', fontSize:10, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>💾 Save Current as Set</button>
+                        <button onClick={async()=>{ const nm = prompt('Name this proposal set (e.g. CD Set, Permit Set, Addendum 1):'); if(!nm || !nm.trim()) return; const entry = [nm.trim(), new Date().toISOString().split('T')[0], Number(selectedJob.os_bid_value)||0, selectedJob.proposal_status||'draft', authProfile?.name||'', buildDraft()]; const sets = [...(selectedJob.proposal_sets||[]), entry]; await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ padding:'3px 10px', fontSize:10, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>💾 Save Current as Set</button>
                       </div>
                       {(selectedJob.proposal_sets||[]).map((ps, i) => (
                         <div key={i} style={{ display:'flex', gap:10, alignItems:'center', fontSize:11.5, padding:'3px 0', borderTop:'0.5px dotted #eee' }}>
@@ -1907,6 +1946,7 @@ export default function Home() {
                           <span style={{ fontWeight:600 }}>{ps[2] > 0 ? '$' + Number(ps[2]).toLocaleString(undefined,{maximumFractionDigits:0}) : '—'}</span>
                           <span style={{ fontSize:9, fontWeight:700, color: ps[3]==='sent' ? '#2D7A3A' : ps[3]==='final' ? '#e0a800' : '#999', textTransform:'uppercase' }}>{ps[3]}</span>
                           <span style={{ color:'#aaa', fontSize:10 }}>{ps[4]}</span>
+                          {ps[5] && <button onClick={()=>{ applyDraft(ps[5]); alert(`Loaded "${ps[0]}" — all proposal settings restored. Generate to reproduce it.`) }} style={{ padding:'2px 10px', fontSize:10, background:'#3C3489', color:'#fff', border:'none', borderRadius:5, cursor:'pointer', fontWeight:600 }}>↺ Load</button>}
                           <button onClick={async()=>{ if(!confirm('Remove this saved set?')) return; const sets = (selectedJob.proposal_sets||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
                         </div>
                       ))}

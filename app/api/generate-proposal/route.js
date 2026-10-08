@@ -171,8 +171,10 @@ export async function POST(request) {
     const proposalNum = `${brandAs === 'greenworks' ? 'GW' : 'MDSG'}-${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}-${(job.name || 'JOB').substring(0, 3).toUpperCase()}`
 
     const boxConst = job.box_construction || ''
-    const isPlywood = /plywood/i.test(boxConst) || true
-    const isFramed  = /framed/i.test(boxConst)  || true
+    // cabinet_construction is Pam's combined value, e.g. "Frameless-Plywood"
+    const ccParts = String(job.cabinet_construction || '').split(/\s*-\s*/)
+    const bcDisplay = ccParts[0] || boxConst || 'Framed'
+    const bmDisplay = ccParts[1] || (ccParts[0] ? '' : (job.cabinet_construction || 'Plywood')) || 'Plywood'
 
     // ── PDF setup — Greenworks-style bordered grid ────────────────────────
     const pdfDoc  = await PDFDocument.create()
@@ -297,8 +299,8 @@ export async function POST(request) {
       ['DOOR STYLE/OVERLAY:', `${job.door_style || 'TBD'} / Full Overlay`],
       ['MATERIAL:',           'Maple'],
       ['COLOR:',              job.finish_color || 'TBD'],
-      ['BOX CONSTRUCTION:',   isFramed ? 'Framed' : boxConst],
-      ['BOX MATERIAL:',       job.cabinet_construction || (isPlywood ? 'Plywood' : 'Particleboard')],
+      ['BOX CONSTRUCTION:',   bcDisplay],
+      ['BOX MATERIAL:',       bmDisplay],
       ['DRAWER BOX/GLIDE:',   job.drawer_box || 'Dovetail / Undermount Soft Close'],
       ['INTERIOR:',           job.interior_color || 'White'],
       ['SHELF:',              job.shelf_thickness || '3/4"'],
