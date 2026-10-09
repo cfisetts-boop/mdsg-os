@@ -1937,9 +1937,9 @@ export default function Home() {
                     <div style={{ marginBottom: 12 }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
                         <span style={{ fontSize:11, fontWeight:600, color:'#888', textTransform:'uppercase', letterSpacing:0.4 }}>Saved Proposal Sets</span>
-                        <button onClick={async()=>{ const nm = prompt('Name this proposal set (e.g. CD Set, Permit Set, Addendum 1):'); if(!nm || !nm.trim()) return; const entry = [nm.trim(), new Date().toISOString().split('T')[0], Number(selectedJob.os_bid_value)||0, selectedJob.proposal_status||'draft', authProfile?.name||'', buildDraft()]; const sets = [...(selectedJob.proposal_sets||[]), entry]; await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ padding:'3px 10px', fontSize:10, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>💾 Save Current as Set</button>
+                        <button onClick={async()=>{ const nm = prompt('Name this proposal set (e.g. CD Set, Permit Set, Addendum 1):'); if(!nm || !nm.trim()) return; const entry = [nm.trim(), new Date().toISOString().split('T')[0], Number(selectedJob.os_bid_value)||0, selectedJob.proposal_status||'draft', authProfile?.name||'', buildDraft(), 'cab']; const sets = [...(selectedJob.proposal_sets||[]), entry]; await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ padding:'3px 10px', fontSize:10, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>💾 Save Current as Set</button>
                       </div>
-                      {(selectedJob.proposal_sets||[]).map((ps, i) => (
+                      {(selectedJob.proposal_sets||[]).map((ps, i) => [ps, i]).filter(([ps]) => ps[6] !== 'ct').map(([ps, i]) => (
                         <div key={i} style={{ display:'flex', gap:10, alignItems:'center', fontSize:11.5, padding:'3px 0', borderTop:'0.5px dotted #eee' }}>
                           <span style={{ fontWeight:600, width:160 }}>{ps[0]}</span>
                           <span style={{ color:'#888' }}>{fmtD(ps[1])}</span>
@@ -2695,6 +2695,22 @@ export default function Home() {
                       <button onClick={generateCtProposal} disabled={ctGenerating} style={{ width: '100%', padding: 10, marginTop: 12, background: ctGenerating ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
                         {ctGenerating ? 'Generating…' : '⬇ Generate Countertop Proposal PDF'}
                       </button>
+
+                      {/* CT proposal sets */}
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:12 }}>
+                        <span style={{ fontSize:10, fontWeight:700, color:'#8B6914', letterSpacing:0.5 }}>SAVED CT SETS</span>
+                        <button onClick={async()=>{ const nm = prompt('Name this countertop set (e.g. Quartz Option, Granite Alt):'); if(!nm || !nm.trim()) return; const ctVal = (Number(ctGross)||0) + (Number(ctLocalInstall)||0) || (Number(ctImportMat)||0) + (Number(ctImportInstall)||0); const entry = [nm.trim(), new Date().toISOString().split('T')[0], ctVal, 'draft', authProfile?.name||'', buildDraft(), 'ct']; const sets = [...(selectedJob.proposal_sets||[]), entry]; await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: `CT proposal set saved — "${nm.trim()}"` }) }} style={{ padding:'3px 10px', fontSize:10, background:'#8B6914', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>💾 Save Current as Set</button>
+                      </div>
+                      {(selectedJob.proposal_sets||[]).map((ps, i) => [ps, i]).filter(([ps]) => ps[6] === 'ct').map(([ps, i]) => (
+                        <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop:'0.5px dotted #eee', fontSize:11.5 }}>
+                          <span style={{ fontWeight:600 }}>{ps[0]}</span>
+                          <span style={{ color:'#888' }}>{fmtD(ps[1])}</span>
+                          <span style={{ fontWeight:600 }}>{fmt(Number(ps[2])||0)}</span>
+                          <span style={{ color:'#999' }}>{ps[4]}</span>
+                          {ps[5] && <button onClick={()=>{ applyDraft(ps[5]); alert(`Loaded "${ps[0]}" — CT settings restored. Generate to reproduce it.`) }} style={{ padding:'2px 10px', fontSize:10, background:'#8B6914', color:'#fff', border:'none', borderRadius:5, cursor:'pointer', fontWeight:600 }}>↺ Load</button>}
+                          <button onClick={async()=>{ if(!confirm('Remove this saved CT set?')) return; const sets = (selectedJob.proposal_sets||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ proposal_sets: sets }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, proposal_sets: sets }) }} style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:12 }}>✕</button>
+                        </div>
+                      ))}
                   </>)}
                     </div>
 
