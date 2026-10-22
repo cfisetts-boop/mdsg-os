@@ -59,6 +59,7 @@ const FRONT_STAGES = ['RFQ', 'Open Proposals', 'On Hold', 'Awarded']
 const PRODUCTION_STAGES = ['Shop Drawings', 'Ordered', 'Delivered', 'Closeout']
 const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics', 'Estes Express', 'R+L Carriers', 'Other']
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
+const LEAD_SOURCES = ['Jeff N.']   // industry partners — add names here as they sign on
 const OWNER_EMAILS = { Cole: 'cole@mdsgcabinets.com', Pam: 'pam@mdsgcabinets.com', Vicki: 'vicki@mdsgcabinets.com', Blake: 'csr@mdsgcabinets.com', Tabetha: 'tabetha@mdsgcabinets.com' }
 const fmtD = (d) => { if (!d) return '—'; const [y, m, dd] = String(d).split('T')[0].split('-'); return y && m && dd ? `${Number(m)}/${Number(dd)}/${y.substring(2)}` : d }
 const fmtPct = (n) => n ? (n * 100).toFixed(1) + '%' : '—'
@@ -1495,7 +1496,7 @@ export default function Home() {
                         onMouseLeave={e => e.currentTarget.style.background = ''}>
                         <td style={{ padding: '10px 14px', fontWeight: 500 }}>{job.name}</td>
                         <td style={{ padding: '10px 14px', color: '#555' }}>{job.gc_name || '—'}</td>
-                        <td style={{ padding: '10px 14px' }}>{job.is_greenworks ? <span style={{ background:'#e3efe5', color:'#2D7A3A', borderRadius:10, padding:'2px 8px', fontSize:10, fontWeight:700 }}>🌿 GW</span> : ''}</td>
+                        <td style={{ padding: '10px 14px', whiteSpace:'nowrap' }}>{job.is_greenworks ? <span style={{ background:'#e3efe5', color:'#2D7A3A', borderRadius:10, padding:'2px 8px', fontSize:10, fontWeight:700 }}>🌿 GW</span> : ''}{job.lead_source ? <span style={{ background:'#fdf8ee', color:'#8B6914', borderRadius:10, padding:'2px 8px', fontSize:10, fontWeight:700, marginLeft: job.is_greenworks ? 4 : 0 }}>🤝 {job.lead_source}</span> : ''}</td>
                         <td style={{ padding: '10px 14px' }}><span style={{ background: c.bg, color: c.text, borderRadius: 10, padding: '2px 8px', fontSize: 10, fontWeight: 500 }}>{job.stage}</span></td>
                         <td style={{ padding: '10px 14px', color: '#555' }}>{job.manufacturer}</td>
                         <td style={{ padding: '10px 14px', color: '#555' }}>{job.total_cabinet_count || '—'}</td>
@@ -1549,10 +1550,17 @@ export default function Home() {
                 <div>
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 16 }}>{selectedJob.name}</div>
-                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinets_override ?? (selectedJob.cab_list?.sheet_totals?.cabinets || (selectedJob.cab_list?.unit_types || []).reduce((s, u) => s + (u.skus || []).reduce((x, r) => x + (Number(r.quantity_per_unit) || 0), 0) * (Number(u.unit_quantity) || 1), 0) || selectedJob.total_cabinet_count)], ['Bid Due', fmtD(selectedJob.bid_due_date)], ['Owner', '__OWNER_SELECT__']].filter(([label, v]) => v || label === 'Owner').map(([label, value]) => (
+                    {[['General Contractor', selectedJob.gc_name], ['Address', [selectedJob.address, selectedJob.city, selectedJob.state, selectedJob.zip].filter(Boolean).join(', ')], ['Manufacturer', selectedJob.manufacturer], ['Quote #', selectedJob.manufacturer_quote_number], ['Total Units', selectedJob.total_residential_units], ['Total Cabinets', selectedJob.total_cabinets_override ?? (selectedJob.cab_list?.sheet_totals?.cabinets || (selectedJob.cab_list?.unit_types || []).reduce((s, u) => s + (u.skus || []).reduce((x, r) => x + (Number(r.quantity_per_unit) || 0), 0) * (Number(u.unit_quantity) || 1), 0) || selectedJob.total_cabinet_count)], ['Bid Due', fmtD(selectedJob.bid_due_date)], ['Owner', '__OWNER_SELECT__'], ['Lead Source', '__LEAD_SELECT__']].filter(([label, v]) => v || label === 'Owner' || label === 'Lead Source').map(([label, value]) => (
                       <div key={label} style={{ marginBottom: 10 }}>
                         <div style={lbl}>{label}</div>
-                        {value === '__OWNER_SELECT__' ? (
+                        {value === '__LEAD_SELECT__' ? (
+                          <select value={LEAD_SOURCES.includes(selectedJob.lead_source) || !selectedJob.lead_source ? (selectedJob.lead_source || '') : '__other'} onChange={async e=>{ let v = e.target.value || null; if (v === '__other') { v = prompt('Lead source name:', selectedJob.lead_source || '') ; if (v === null) return; v = v.trim() || null } const { error } = await supabase.from('jobs').update({ lead_source: v }).eq('id', selectedJob.id); if (error) { alert('Could not save lead source: ' + error.message); return } setSelectedJob({ ...selectedJob, lead_source: v }); loadJobs(); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: v ? `Lead source set — ${v}` : 'Lead source cleared' }) }} style={{ fontSize: 13, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:6, background: selectedJob.lead_source ? '#fdf8ee' : '#fff', fontWeight: selectedJob.lead_source ? 600 : 400 }}>
+                            <option value="">— direct / none —</option>
+                            {LEAD_SOURCES.map(s => <option key={s}>{s}</option>)}
+                            {selectedJob.lead_source && !LEAD_SOURCES.includes(selectedJob.lead_source) && <option value={selectedJob.lead_source}>{selectedJob.lead_source}</option>}
+                            <option value="__other">Other…</option>
+                          </select>
+                        ) : value === '__OWNER_SELECT__' ? (
                           <select value={selectedJob.owner || ''} onChange={async e=>{ const v = e.target.value || null; const res = await fetch('/api/assign-owner', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, owner: v, user: authProfile?.name || 'MDSG' }) }); const d = await res.json(); if (d.error) { alert('Owner change failed: ' + d.error); return } setSelectedJob({ ...selectedJob, owner: v }); loadJobs(); if (v && v !== authProfile?.name && OWNER_EMAILS[v]) { fetch('/api/send-email', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, to: [OWNER_EMAILS[v]], fromEmail: authProfile?.email, fromName: authProfile?.name, senderName: authProfile?.name, subject: `Job assigned to you: ${selectedJob.name}`, body: `${selectedJob.name} has been assigned to you by ${authProfile?.name || 'MDSG'}.\n\nGC: ${selectedJob.gc_name || '—'}\nStage: ${selectedJob.stage}\nBid due: ${selectedJob.bid_due_date || '—'}\n\nOpen the OS: https://mdsg-os.vercel.app` }) }).catch(()=>{}) } }} style={{ fontSize: 13, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:6, background:'#fff' }}>
                             <option value="">— unassigned —</option>
                             {['Cole','Pam','Vicki','Blake','Tabetha'].map(o => <option key={o}>{o}</option>)}
@@ -2832,7 +2840,7 @@ export default function Home() {
                     {['JOB','CONTRACT','+COs','BILLED','PAID','AR','TO BILL'].map(h => <div key={h} style={{ fontWeight:600, color:'#888', fontSize:10 }}>{h}</div>)}
                     {rows.map(r => (
                       <React.Fragment key={r.j.id}>
-                        <div onClick={()=>{ setSelectedJob(r.j); setView('job-detail') }} style={{ fontWeight:600, cursor:'pointer', color:'#1B5EA6' }}>{r.j.name}</div>
+                        <div onClick={()=>{ setSelectedJob(r.j); setView('job-detail') }} style={{ fontWeight:600, cursor:'pointer', color:'#1B5EA6' }}>{r.j.name}{r.j.lead_source ? <span style={{ fontSize:9, color:'#8B6914', fontWeight:700, marginLeft:6 }}>🤝 {r.j.lead_source}</span> : ''}</div>
                         <div>{fmt(r.contract)}</div>
                         <div style={{ color: r.coA > 0 ? '#2D7A3A' : '#bbb' }}>{r.coA !== 0 ? fmt(r.coA) : '—'}</div>
                         <div>{fmt(r.billed)}</div>
