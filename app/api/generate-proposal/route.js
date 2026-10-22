@@ -158,12 +158,21 @@ export async function POST(request) {
     const displayBid = sL > 0 ? sL : (cL > 0 ? Math.round(cL * mFactor) : totalBid)
     const rtaBid = sR > 0 ? sR : (cR > 0 ? Math.round(cR * mFactor) : 0)
     const instL = n0(installLeedo), instR = n0(installRta)
+    // Manual (cost/sell) mode: hardware allowance and sales tax are allocated ON TOP
+    // of the cabinets number, each on its own line (team ask 10/22)
+    const manualCab = sL > 0 || cL > 0
+    const manualTaxOn = !(taxExplicit && (Number(mfrTaxPassThrough) || 0) === 0) && mfrTax === 0 && salesTax > 0
+    const hwLine = hwToGC > 0 ? Math.round(hwToGC) : 0
+    const taxL = manualCab && manualTaxOn ? Math.round((displayBid + hwLine) * salesTax / 100) : 0
+    const taxR = rtaBid > 0 && manualTaxOn ? Math.round((rtaBid + hwLine) * salesTax / 100) : 0
+    const leedoTotal = manualCab ? displayBid + hwLine + taxL + instL : displayBid + instL
+    const rtaTotal = rtaBid + (rtaBid > 0 ? hwLine + taxR : 0) + instR
 
     // Persist OS-side financials — dashboard prefers these over Monday columns
     await supabase.from('jobs').update({
-      os_bid_value: Math.round((displayBid + instL) * 100) / 100,
-      ...((sL > 0 || cL > 0) ? { price_leedo: displayBid } : {}),
-      price_rta: rtaBid > 0 ? rtaBid : null,
+      os_bid_value: Math.round(leedoTotal * 100) / 100,
+      ...((sL > 0 || cL > 0) ? { price_leedo: leedoTotal } : {}),
+      price_rta: rtaBid > 0 ? rtaTotal : null,
       price_leedo_cost: cL > 0 ? cL : null,
       price_rta_cost: cR > 0 ? cR : null,
       price_leedo_install: instL > 0 ? instL : null,
@@ -399,19 +408,24 @@ export async function POST(request) {
       ctr('TOTAL COST', MR - PRW, PRW, y - 9, { bold:true, size:7 })
       y -= 12
     }
+    const manualBlock = (base, tax, inst, instLabel) => {
+      bandRow(null, 'CABINETS', fmtMoney(base), { bold:true })
+      if (hwLine > 0) bandRow(null, null, fmtMoney(hwLine), { rl: 'HARDWARE ALLOWANCE' })
+      if (tax > 0) bandRow(null, null, fmtMoney(tax), { rl: `SALES TAX (${salesTax}%)` })
+      if (inst > 0) bandRow(null, null, fmtMoney(inst), { rl: instLabel })
+      bandRow(null, null, fmtMoney(base + (hwLine > 0 ? hwLine : 0) + tax + inst), { rl: 'TOTAL', rlBold: true })
+    }
     if (rtaBid > 0) {
       baseBand('LEEDO — DOMESTIC MANUFACTURED')
-      bandRow(null, 'CABINETS & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
-      if (instL > 0) bandRow(null, null, fmtMoney(instL), { rl: 'INSTALLATION' })
-      bandRow(null, null, fmtMoney(displayBid + instL), { rl: 'TOTAL', rlBold: true })
+      manualBlock(displayBid, taxL, instL, 'INSTALLATION')
       baseBand('IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE')
-      bandRow(null, 'CABINETS & APPLICABLE SALES TAX', fmtMoney(rtaBid), { bold:true })
-      if (instR > 0) bandRow(null, null, fmtMoney(instR), { rl: 'STAGING, ASSEMBLY & INSTALLATION' })
-      bandRow(null, null, fmtMoney(rtaBid + instR), { rl: 'TOTAL', rlBold: true })
+      manualBlock(rtaBid, taxR, instR, 'STAGING, ASSEMBLY & INSTALLATION')
     } else {
       baseBand((job.manufacturer || 'LEEDO').toUpperCase() + ' — CABINET SUPPLY')
       if (sL > 0 || cL > 0) {
-        bandRow(null, 'CABINETS & APPLICABLE SALES TAX', fmtMoney(displayBid), { bold:true })
+        bandRow(null, 'CABINETS', fmtMoney(displayBid), { bold:true })
+        if (hwLine > 0) bandRow(null, null, fmtMoney(hwLine), { rl: 'HARDWARE ALLOWANCE' })
+        if (taxL > 0) bandRow(null, null, fmtMoney(taxL), { rl: `SALES TAX (${salesTax}%)` })
         if (instL > 0) bandRow(null, null, fmtMoney(instL), { rl: 'INSTALLATION' })
       } else {
         bandRow(null, 'BASE CABINET PRICE', fmtMoney(cabsToGC), { bold:true })
@@ -423,7 +437,7 @@ export async function POST(request) {
       ensure(14)
       box(ML, y - 13, W - PRW, 13, sage); box(MR - PRW, y - 13, PRW, 13, sage)
       rgt('TOTAL', MR - PRW, y - 9.5, { bold:true, size:7.5 })
-      rgt(fmtMoney(displayBid + instL), MR, y - 9.5, { bold:true, size:8 })
+      rgt(fmtMoney(leedoTotal), MR, y - 9.5, { bold:true, size:8 })
       y -= 13
     }
 

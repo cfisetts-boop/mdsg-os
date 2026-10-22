@@ -141,7 +141,14 @@ export async function POST(request) {
     // right CUSTOMER block rows
     const rrow = (label, value, ry, o = {}) => {
       box(R1, ry - 11, 68, 11); box(R1 + 68, ry - 11, R1W - 68, 11)
-      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(value, R1 + 70, ry - 8, { bold: o.bold, size:6.5, color: o.color, maxWidth: R1W - 72 })
+      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 })
+      // Shrink long values to fit the cell (down to 4.5pt), then trim with "..." so nothing wraps/overlaps
+      if (value == null || value === '') return
+      const f = o.bold ? bold : regular, maxW = R1W - 72
+      let v = String(value), sz = 6.5
+      while (sz > 4.5 && f.widthOfTextAtSize(v, sz) > maxW) sz -= 0.25
+      if (f.widthOfTextAtSize(v, sz) > maxW) { while (v.length > 1 && f.widthOfTextAtSize(v + '...', sz) > maxW) v = v.slice(0, -1); v = v.trimEnd() + '...' }
+      txt(v, R1 + 70, ry - 8, { bold:o.bold, size:sz, color:o.color })
     }
     const addr = job ? [job.address].filter(Boolean).join('') : ''
     const csz  = job ? [job.city, job.state].filter(Boolean).join(', ') + (job.zip ? '  ' + job.zip : '') : ''
@@ -149,10 +156,13 @@ export async function POST(request) {
     rrow('PROJECT:', (job?.name || '').toUpperCase(), hTop - 11, { bold:true })
     rrow('ADDRESS:', addr, hTop - 22, { bold:true })
     rrow('CITY/STATE/ZIP', csz, hTop - 33, { bold:true })
-    rrow('CONTACT:', job?.gc_contact || '', hTop - 44, { bold:true })
-    rrow('TELEPHONE:', job?.gc_phone || '', hTop - 55, { bold:true })
-    rrow('EMAIL:', job?.gc_email || '', hTop - 66, { color: blue })
-    box(R1, hBot, R1W, hTop - 66 - hBot)
+    const FULL_NAMES = { Cole:'Cole Isetts', Pam:'Pamela Isetts', Blake:'Blake Isetts', Vicki:'Vicki Zieman-Stay', Tabetha:'Tabetha Whelan' }
+    const salesRep = isGW ? 'Anthony (Willy) Ramirez' : (FULL_NAMES[job?.owner] || job?.owner || (SENDERS[sender] || SENDERS.Cole).name)
+    rrow('SALESPERSON:', salesRep, hTop - 44, { bold:true })
+    rrow('CONTACT:', job?.gc_contact || '', hTop - 55, { bold:true })
+    rrow('TELEPHONE:', job?.gc_phone || '', hTop - 66, { bold:true })
+    rrow('EMAIL:', job?.gc_email || '', hTop - 77, { color: blue })
+    box(R1, hBot, R1W, hTop - 77 - hBot)
     y = hBot
 
     // ═ DESCRIPTION band ═
