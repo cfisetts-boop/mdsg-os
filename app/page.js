@@ -2311,11 +2311,26 @@ export default function Home() {
                           {fileUploading ? 'Uploading...' : '+ Upload'}
                           <input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.xlsm,.png,.jpg,.jpeg,.csv,.zip,.txt,.eml,.msg,.dwg" onChange={uploadJobFile} style={{ display:'none' }} disabled={fileUploading}/>
                         </label>
+                        <button onClick={async()=>{ const label = prompt('Link name (e.g. Quote From Eclipse, Plans — OneDrive):'); if(!label || !label.trim()) return; let url = prompt('Paste the link (SharePoint / OneDrive / Drive / any URL):'); if(!url || !url.trim()) return; url = url.trim(); if(!/^https?:\/\//i.test(url)) url = 'https://' + url; const links = [...(selectedJob.file_links||[]), [label.trim(), url, authProfile?.name||'', new Date().toISOString().split('T')[0]]]; const { error } = await supabase.from('jobs').update({ file_links: links }).eq('id', selectedJob.id); if (error) { alert('Could not save link: ' + error.message); return } setSelectedJob({ ...selectedJob, file_links: links }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name||'MDSG', action: `File link added — ${label.trim()}` }) }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🔗 Add Link</button>
                       </div>
                     </div>
                     {filesLoading && <div style={{ fontSize:11, color:'#888' }}>Loading...</div>}
                     {!filesLoading && jobFiles.length === 0 && <div style={{ fontSize:11, color:'#bbb', padding:'6px 0' }}>No files yet — upload drawings, contracts, quotes, change orders</div>}
-                    {FILE_CATEGORIES.map(cat => {
+{(selectedJob.file_links||[]).length > 0 && (
+                      <div style={{ marginBottom:8 }}>
+                        <div style={{ fontSize:10, fontWeight:700, color:'#1B5EA6', letterSpacing:0.5, marginBottom:2 }}>LINKED FILES</div>
+                        {(selectedJob.file_links||[]).map((lk, i) => (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop:'0.5px dotted #eee', fontSize:12 }}>
+                            <a href={lk[1]} target="_blank" rel="noreferrer" style={{ color:'#1B5EA6', fontWeight:600, textDecoration:'underline', flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>🔗 {lk[0]}</a>
+                            <span style={{ fontSize:10, color:'#999' }}>{lk[2]}{lk[3] ? ' · ' + fmtD(lk[3]) : ''}</span>
+                            <button onClick={()=>{ navigator.clipboard?.writeText(lk[1]); alert('Link copied') }} title="Copy link" style={{ padding:'2px 8px', fontSize:10, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:5, cursor:'pointer' }}>⧉ Copy</button>
+                            <button onClick={async()=>{ if(!confirm(`Remove link "${lk[0]}"? (The file itself is untouched.)`)) return; const links = (selectedJob.file_links||[]).filter((_,j)=>j!==i); await supabase.from('jobs').update({ file_links: links }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, file_links: links }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                                        {FILE_CATEGORIES.map(cat => {
                       const catFiles = jobFiles.filter(f => f.category === cat)
                       if (!catFiles.length) return null
                       return (
