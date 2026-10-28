@@ -504,6 +504,25 @@ export default function Home() {
     }
     for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) setter(d[k])
   }
+  // Autosave SOW + Post-Award edits while typing (debounced) — nothing is lost
+  // if someone leaves the job mid-edit (team ask 10/28)
+  useEffect(() => {
+    if (!sowEditing || !selectedJob?.id || !Array.isArray(sowRows)) return
+    const jobId = selectedJob.id, rows = sowRows
+    const t = setTimeout(async () => {
+      try { await supabase.from('jobs').update({ scope_of_work: rows }).eq('id', jobId) } catch {}
+    }, 900)
+    return () => clearTimeout(t)
+  }, [sowRows])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!paEditing || !selectedJob?.id || !Array.isArray(paRows)) return
+    const jobId = selectedJob.id, rows = paRows
+    const t = setTimeout(async () => {
+      try { await supabase.from('jobs').update({ post_award: rows }).eq('id', jobId) } catch {}
+    }, 900)
+    return () => clearTimeout(t)
+  }, [paRows])  // eslint-disable-line react-hooks/exhaustive-deps
+
   const draftReady = useRef(false)
   useEffect(() => {
     draftReady.current = false
@@ -2270,7 +2289,7 @@ export default function Home() {
                         {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, brandAs: sowGW ? 'greenworks' : 'mdsg' }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
                         {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map((r, i) => { const f = fresh[i] && fresh[i][0] === r[0] ? fresh[i] : fresh.find(ff => ff[0] === r[0] && ff[1]); return (f && f[1]) ? [r[0], f[1]] : r }); setSowRows(merged); saveSow(merged); alert('Job data pulled — spec fields updated from Proposal Details.') }} title="Overwrite spec fields with current job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
                         {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
-                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Save'}</button>}
+                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Done'}</button>}
                       </div>
                     </div>
                     {!collapsed.sow && !sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
