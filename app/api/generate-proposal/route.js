@@ -256,6 +256,14 @@ export async function POST(request) {
       const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, x + (w - tw)/2, y, o) }
     const rgt = (t, rx, y, o = {}) => { const f = o.boldIt?boldIt:(o.bold?bold:regular)
       const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, rx - tw - 4, y, o) }
+    const fitCell = (t, maxW, size = 6.5, useBold = false) => {
+      if (t == null) return ''
+      let s = String(t)
+      const f = useBold ? bold : regular
+      if (f.widthOfTextAtSize(s, size) <= maxW) return s
+      while (s.length > 1 && f.widthOfTextAtSize(s + '…', size) > maxW) s = s.slice(0, -1)
+      return s + '…'
+    }
     const wrapT = (t, size, max, isBold = false) => {
       const f = isBold ? bold : regular
       const words = String(t).split(' '); const lines = []; let cur = ''
@@ -299,7 +307,7 @@ export async function POST(request) {
       : { ...senderInfo, addr1: '23463 E. Moraine Place', addr2: 'Aurora, CO  80016' }
     const lrow = (label, value, ry, lw = 58) => {
       box(L1, ry - 11, lw, 11); box(L1 + lw, ry - 11, L1W - lw, 11)
-      txt(label, L1 + 2, ry - 8, { bold:true, size:6 }); txt(value, L1 + lw + 2, ry - 8, { size:6.5, maxWidth: L1W - lw - 4 })
+      txt(label, L1 + 2, ry - 8, { bold:true, size:6 }); txt(fitCell(value, L1W - lw - 6, 6.5), L1 + lw + 2, ry - 8, { size:6.5 })
     }
     box(L1, hTop - 11, L1W, 11); txt('CONTACT:', L1 + 2, hTop - 8, { bold:true, size:6.5 })
     box(L1, hTop - 22, L1W, 11); txt(si2.name + (si2.title ? ', ' + si2.title : ''), L1 + 2, hTop - 19, { bold:true, size:7 })
@@ -316,7 +324,7 @@ export async function POST(request) {
       page.drawImage(logo, { x: C1 + (C1W - d.width)/2, y: hBot + ((hTop - 14 - hBot) - d.height)/2, width: d.width, height: d.height }) }
     const rrow = (label, value, ry, o = {}) => {
       box(R1, ry - 11, 68, 11); box(R1 + 68, ry - 11, R1W - 68, 11)
-      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(value, R1 + 70, ry - 8, { bold:o.bold, size:6.5, color:o.color, maxWidth: R1W - 72 })
+      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(fitCell(value, R1W - 74, 6.5, o.bold), R1 + 70, ry - 8, { bold:o.bold, size:6.5, color:o.color })
     }
     const addrLine = [job.address].filter(Boolean).join('')
     const cszLine  = [job.city, job.state].filter(Boolean).join(', ') + (job.zip ? '  ' + job.zip : '')
@@ -364,7 +372,7 @@ export async function POST(request) {
       const [ll, lv] = specL[i] || ['', '']
       const [rl, rv] = specR[i] || ['', '']
       box(ML, y - 12, SLW, 12); box(ML + SLW, y - 12, SVW, 12)
-      txt(ll, ML + 2, y - 9, { bold:true, size:6.8 }); txt(lv, ML + SLW + 2, y - 9, { size:6.8, maxWidth: SVW - 4 })
+      txt(ll, ML + 2, y - 9, { bold:true, size:6.8 }); txt(fitCell(lv, SVW - 6, 6.8), ML + SLW + 2, y - 9, { size:6.8 })
       box(ML + SLW + SVW, y - 12, RLW2, 12); box(ML + SLW + SVW + RLW2, y - 12, W - SLW - SVW - RLW2, 12)
       txt(rl, ML + SLW + SVW + 2, y - 9, { bold:true, size:6.8 })
       if (rv) ctr(rv, ML + SLW + SVW + RLW2, W - SLW - SVW - RLW2, y - 9, { bold:true, size:6.8 })

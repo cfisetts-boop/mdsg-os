@@ -123,6 +123,14 @@ export async function POST(request) {
       const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, x + (w - tw)/2, y, o) }
     const rgt = (t, rx, y, o = {}) => { const f = o.boldIt ? boldIt : (o.bold ? bold : regular)
       const tw = f.widthOfTextAtSize(String(t), o.size||7.5); txt(t, rx - tw - 4, y, o) }
+    const fitCell = (t, maxW, size = 6.5, useBold = false) => {
+      if (t == null) return ''
+      let s = String(t)
+      const f = useBold ? bold : regular
+      if (f.widthOfTextAtSize(s, size) <= maxW) return s
+      while (s.length > 1 && f.widthOfTextAtSize(s + '…', size) > maxW) s = s.slice(0, -1)
+      return s + '…'
+    }
 
     // ═ Title band ═
     let y = 768
@@ -146,7 +154,7 @@ export async function POST(request) {
     // left CONTACT block rows
     const lrow = (label, value, ry, lw = 58) => {
       box(L1, ry - 11, lw, 11); box(L1 + lw, ry - 11, L1W - lw, 11)
-      txt(label, L1 + 2, ry - 8, { bold:true, size:6 }); txt(value, L1 + lw + 2, ry - 8, { size:6.5, maxWidth: L1W - lw - 4 })
+      txt(label, L1 + 2, ry - 8, { bold:true, size:6 }); txt(fitCell(value, L1W - lw - 6, 6.5), L1 + lw + 2, ry - 8, { size:6.5 })
     }
     box(L1, hTop - 11, L1W, 11); txt('CONTACT:', L1 + 2, hTop - 8, { bold:true, size:6.5 })
     box(L1, hTop - 22, L1W, 11); txt(si.name, L1 + 2, hTop - 19, { bold:true, size:7.5 })
@@ -166,7 +174,7 @@ export async function POST(request) {
     // right CUSTOMER block rows
     const rrow = (label, value, ry, o = {}) => {
       box(R1, ry - 11, 68, 11); box(R1 + 68, ry - 11, R1W - 68, 11)
-      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(value, R1 + 70, ry - 8, { bold: o.bold, size:6.5, color: o.color, maxWidth: R1W - 72 })
+      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(fitCell(value, R1W - 74, 6.5, o.bold), R1 + 70, ry - 8, { bold:o.bold, size:6.5, color:o.color })
     }
     const addr = job ? [job.address].filter(Boolean).join('') : ''
     const csz  = job ? [job.city, job.state].filter(Boolean).join(', ') + (job.zip ? '  ' + job.zip : '') : ''
@@ -195,7 +203,7 @@ export async function POST(request) {
     const SL = 108, SV = 230, RU = ML + SL + SV, RUW = 120, RVW = W - SL - SV - RUW
     const specRow = (label, value, rLabel, rValue, rBold = true) => {
       box(ML, y - 12, SL, 12); box(ML + SL, y - 12, SV, 12)
-      txt(label, ML + 2, y - 9, { bold:true, size:7 }); txt(value, ML + SL + 2, y - 9, { size:7, maxWidth: SV - 4 })
+      txt(label, ML + 2, y - 9, { bold:true, size:7 }); txt(fitCell(value, SV - 6, 7), ML + SL + 2, y - 9, { size:7 })
       box(RU, y - 12, RUW, 12); box(RU + RUW, y - 12, RVW, 12)
       txt(rLabel, RU + 2, y - 9, { bold:true, size:7 })
       if (rValue) ctr(rValue, RU + RUW, RVW, y - 9, { bold: rBold, size:7 })
