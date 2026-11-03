@@ -18,7 +18,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null, master = null, preview = false } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -127,7 +127,7 @@ export async function POST(request) {
       ? Math.min(Math.max(Number(dealerDiscountPct) / 100, 0), 0.5) : null
     const discount     = applyDealerDiscount ? (discountPctIn ?? job.dealer_discount_pct ?? 0.05) : 0
     if (applyDealerDiscount && discountPctIn !== null && discountPctIn !== job.dealer_discount_pct) {
-      await supabase.from('jobs').update({ dealer_discount_pct: discountPctIn }).eq('id', jobId)
+      if (!preview) await supabase.from('jobs').update({ dealer_discount_pct: discountPctIn }).eq('id', jobId)
     }
     // Cost basis priority: explicit override from UI → job field → Σ unit mfr prices
     const grossCost    = (Number(grossCostOverride) > 0 ? Number(grossCostOverride) : 0)
@@ -158,6 +158,28 @@ export async function POST(request) {
     const displayBid = sL > 0 ? sL : (cL > 0 ? Math.round(cL * mFactor) : totalBid)
     const rtaBid = sR > 0 ? sR : (cR > 0 ? Math.round(cR * mFactor) : 0)
     const instL = n0(installLeedo), instR = n0(installRta)
+    // ── Master Cost Worksheet mode (mirrors MDSG_MASTER_COST_WORKSHEET) ──────
+    const calcMaster = (v) => {
+      if (!v) return null
+      const cc = n0(v.cabCost); if (!(cc > 0)) return null
+      const disc = cc * (n0(v.discountPct) / 100)
+      const totalCost = cc - disc
+      const withMargin = totalCost * (n0(v.marginMult) || 1)
+      const taxRate = n0(v.taxRate) / 100
+      const cabTax = withMargin * taxRate
+      const freightM = n0(v.trucks) * n0(v.perTruck)
+      const cabSell = withMargin + cabTax + freightM
+      const hwCost = n0(v.hwPieces) * n0(v.hwEach)
+      const hwSellPre = hwCost * (n0(v.hwMargin) || 1)
+      const hwSell = hwSellPre + hwSellPre * taxRate
+      const inst = n0(v.installCabs) * n0(v.installRate) + n0(v.rtaQty) * n0(v.rtaRate) + n0(v.stagingQty) * n0(v.stagingRate)
+      const total = cabSell + hwSell + inst
+      const cost = totalCost + hwCost + freightM + inst
+      return { cabSell, hwSell, inst, total, cost }
+    }
+    const mcL = calcMaster(master?.leedo)
+    const mcR = calcMaster(master?.rta)
+    const masterMode = !!(mcL || mcR)
     // Manual (cost/sell) mode: hardware allowance and sales tax are allocated ON TOP
     // of the cabinets number, each on its own line (team ask 10/22)
     const manualCab = sL > 0 || cL > 0
@@ -170,15 +192,15 @@ export async function POST(request) {
 
     // Persist OS-side financials — dashboard prefers these over Monday columns
     await supabase.from('jobs').update({
-      os_bid_value: Math.round(leedoTotal * 100) / 100,
+      os_bid_value: Math.round((masterMode ? (mcL || mcR).total : leedoTotal) * 100) / 100,
       ...((sL > 0 || cL > 0) ? { price_leedo: leedoTotal } : {}),
       price_rta: rtaBid > 0 ? rtaTotal : null,
       price_leedo_cost: cL > 0 ? cL : null,
       price_rta_cost: cR > 0 ? cR : null,
       price_leedo_install: instL > 0 ? instL : null,
       price_rta_install: instR > 0 ? instR : null,
-      os_cost_value: cL > 0 ? cL : Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100,
-      os_margin_pct: cL > 0 && displayBid > 0 ? Math.round((1 - cL / displayBid) * 1000) / 10 : (mPct > 0 && mPct < 95 ? mPct : null),
+      os_cost_value: masterMode ? Math.round((mcL || mcR).cost * 100) / 100 : (cL > 0 ? cL : Math.round((netCost + hwCost + freight + mfrTax) * 100) / 100),
+      os_margin_pct: masterMode ? Math.round((1 - (mcL || mcR).cost / (mcL || mcR).total) * 1000) / 10 : (cL > 0 && displayBid > 0 ? Math.round((1 - cL / displayBid) * 1000) / 10 : (mPct > 0 && mPct < 95 ? mPct : null)),
     }).eq('id', jobId)
     // Margin kept internal only — logged to activity but never shown on PDF
     const hardwareCost = hwCost
@@ -334,7 +356,7 @@ export async function POST(request) {
       ['EST. DELIVERY:',     job.est_delivery || '—'],
       ['NO. OF DELIVERIES:', job.deliveries_count || job.num_deliveries || '—'],
       ['TOTAL CABINETS:',    Number(job.total_cabinets_override) > 0 ? Number(job.total_cabinets_override).toLocaleString() : totalCabsDisplay.toLocaleString()],
-      ['HARDWARE ALLOW.:',   hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included'],
+      ['HARDWARE ALLOW.:',   masterMode ? ((mcL || mcR).hwSell > 0 ? fmtMoney((mcL || mcR).hwSell) : 'Not included') : (hwToGC > 0 ? fmtMoney(hwToGC) : 'Not included')],
     ]
     const SLW = 110, SVW = 230, RLW2 = 120
     const nSpec = Math.max(specL.length, specR.length)
@@ -415,7 +437,22 @@ export async function POST(request) {
       if (inst > 0) bandRow(null, null, fmtMoney(inst), { rl: instLabel })
       bandRow(null, null, fmtMoney(base + (hwLine > 0 ? hwLine : 0) + tax + inst), { rl: 'TOTAL', rlBold: true })
     }
-    if (rtaBid > 0) {
+    if (masterMode) {
+      const masterBlock = (label, m, instLabel) => {
+        if (!m) return
+        baseBand(label)
+        if (totalOnly) {
+          bandRow(null, null, fmtMoney(m.total), { rl: 'TOTAL', rlBold: true })
+        } else {
+          bandRow(null, 'CABINETS — INCLUDES FREIGHT & APPLICABLE SALES TAX', fmtMoney(m.cabSell), { bold:true })
+          if (m.hwSell > 0) bandRow(null, null, fmtMoney(m.hwSell), { rl: 'HARDWARE ALLOWANCE' })
+          if (m.inst > 0) bandRow(null, null, fmtMoney(m.inst), { rl: instLabel })
+          bandRow(null, null, fmtMoney(m.total), { rl: 'TOTAL', rlBold: true })
+        }
+      }
+      masterBlock('LEEDO — DOMESTIC MANUFACTURED', mcL, 'INSTALLATION')
+      masterBlock('IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE', mcR, 'ASSEMBLY, STAGING & INSTALLATION')
+    } else if (rtaBid > 0) {
       baseBand('LEEDO — DOMESTIC MANUFACTURED')
       manualBlock(displayBid, taxL, instL, 'INSTALLATION')
       baseBand('IMPORTED RTA — TO MATCH SPECIFICATIONS ABOVE')
@@ -521,7 +558,7 @@ export async function POST(request) {
 
     const pdfBytes = await pdfDoc.save()
 
-    await supabase.from('proposals').insert({
+    if (!preview) await supabase.from('proposals').insert({
       job_id: jobId,
       proposal_number: proposalNum,
       status: 'Draft',
@@ -531,7 +568,7 @@ export async function POST(request) {
     }).maybeSingle()
 
     // Margin is internal only — logged but never shown on PDF
-    await supabase.from('activity_log').insert({
+    if (!preview) await supabase.from('activity_log').insert({
       job_id: jobId,
       user_name: sender,
       action: `Proposal generated — ${proposalNum} · ${fmtMoney(totalBid)} · ${margin}% margin (internal)`,

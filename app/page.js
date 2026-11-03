@@ -61,6 +61,21 @@ const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
 const LEAD_SOURCES = ['Jeff N.']   // industry partners — add names here as they sign on
 const OWNER_EMAILS = { Cole: 'cole@mdsgcabinets.com', Pam: 'pam@mdsgcabinets.com', Vicki: 'vicki@mdsgcabinets.com', Blake: 'csr@mdsgcabinets.com', Tabetha: 'tabetha@mdsgcabinets.com' }
+const calcMasterClient = (v) => {
+  const n = (x) => Number(x) > 0 ? Number(x) : 0
+  const cc = n(v?.cabCost); if (!cc) return null
+  const totalCost = cc - cc * n(v.discountPct) / 100
+  const wm = totalCost * (n(v.marginMult) || 1)
+  const tax = wm * n(v.taxRate) / 100
+  const freight = n(v.trucks) * n(v.perTruck)
+  const cabSell = wm + tax + freight
+  const hwPre = n(v.hwPieces) * n(v.hwEach) * (n(v.hwMargin) || 1)
+  const hwSell = hwPre + hwPre * n(v.taxRate) / 100
+  const inst = n(v.installCabs) * n(v.installRate) + n(v.rtaQty) * n(v.rtaRate) + n(v.stagingQty) * n(v.stagingRate)
+  const cost = totalCost + n(v.hwPieces) * n(v.hwEach) + freight + inst
+  const total = cabSell + hwSell + inst
+  return { totalCost, wm, tax, freight, cabSell, hwSell, inst, total, cost, gm: total > 0 ? (1 - cost / total) : 0 }
+}
 const fmtD = (d) => { if (!d) return '—'; const [y, m, dd] = String(d).split('T')[0].split('-'); return y && m && dd ? `${Number(m)}/${Number(dd)}/${y.substring(2)}` : d }
 const fmtPct = (n) => n ? (n * 100).toFixed(1) + '%' : '—'
 
@@ -188,6 +203,11 @@ export default function Home() {
   const [libUploading,    setLibUploading]    = useState(false)
   const [libDragIdx,      setLibDragIdx]      = useState(null)
   const [litSelected,     setLitSelected]     = useState([])
+  const EMPTY_MASTER_VARIANT = () => ({ cabCost:'', discountPct:4, marginMult:1.25, taxRate:0, trucks:'', perTruck:5000, hwPieces:'', hwEach:4, hwMargin:1.4, installCabs:'', installRate:56.25, rtaQty:'', rtaRate:25, stagingQty:'', stagingRate:10 })
+  const [masterCost,      setMasterCost]      = useState({ leedo: { cabCost:'', discountPct:4, marginMult:1.25, taxRate:0, trucks:'', perTruck:5000, hwPieces:'', hwEach:4, hwMargin:1.4, installCabs:'', installRate:56.25, rtaQty:'', rtaRate:25, stagingQty:'', stagingRate:10 }, rta: { cabCost:'', discountPct:4, marginMult:1.25, taxRate:0, trucks:'', perTruck:5000, hwPieces:'', hwEach:4, hwMargin:1.4, installCabs:'', installRate:56.25, rtaQty:'', rtaRate:25, stagingQty:'', stagingRate:10 } })
+  const [masterTab,       setMasterTab]       = useState('leedo')
+  const [masterImporting, setMasterImporting] = useState(false)
+  const [previewUrl,      setPreviewUrl]      = useState(null)
   const [reportOwner,     setReportOwner]     = useState('all')
   const [reportGc,        setReportGc]        = useState('all')
   const [priceLeedo,      setPriceLeedo]      = useState('')
@@ -486,7 +506,7 @@ export default function Home() {
     proposalSalesTax, applyDiscount, discountPct, hwPieces, hwRate, hideUnitPricing, totalOnly, brandAs,
     priceLeedo, sellLeedo, priceRta, sellRta, installLeedo, installRta, litSelected, bidSections,
     ctSender, ctWastePct, ctMargin, ctNotes, ctGross, ctLocalInstall, ctImportMat, ctImportInstall,
-    ctMaterialSpec, ctColorSpec, ctAmenities,
+    ctMaterialSpec, ctColorSpec, ctAmenities, masterCost, masterTab,
   })
   function applyDraft(d) {
     if (!d || typeof d !== 'object') return
@@ -500,7 +520,7 @@ export default function Home() {
       bidSections: setBidSections, ctSender: setCtSender, ctWastePct: setCtWastePct, ctMargin: setCtMargin,
       ctNotes: setCtNotes, ctGross: setCtGross, ctLocalInstall: setCtLocalInstall, ctImportMat: setCtImportMat,
       ctImportInstall: setCtImportInstall, ctMaterialSpec: setCtMaterialSpec, ctColorSpec: setCtColorSpec,
-      ctAmenities: setCtAmenities,
+      ctAmenities: setCtAmenities, masterCost: setMasterCost, masterTab: setMasterTab,
     }
     for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) setter(d[k])
   }
@@ -1038,20 +1058,21 @@ export default function Home() {
     setCtGenerating(false)
   }
 
-  async function generateProposal() {
+  async function generateProposal(previewMode = false) {
     if (!selectedJob) return
     setProposalLoading(true)
     try {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, installLeedo: installLeedo !== '' ? Number(installLeedo) : null, installRta: installRta !== '' ? Number(installRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4 }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, installLeedo: installLeedo !== '' ? Number(installLeedo) : null, installRta: installRta !== '' ? Number(installRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4, master: masterCost, preview: !!previewMode }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
       supabase.from('jobs').update({ proposal_sections: bidSections }).eq('id', selectedJob.id).then(() => {})
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
+      if (previewMode) { setPreviewUrl(url); setProposalLoading(false); return }
       const a = document.createElement('a')
       a.href = url
       a.download = `MDSG-Proposal-${selectedJob.name.replace(/[^a-z0-9]/gi, '-')}.pdf`
@@ -1834,43 +1855,79 @@ export default function Home() {
                           <label style={lbl}>Price From Saved Quote</label>
                           <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
                             {savedQuotes.filter(q => q.quote_type !== 'countertops').map(q => (
-                              <button key={q.id} onClick={()=>applyQuoteToProposal(q)} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', background: propQuoteId===q.id ? '#3C3489' : '#f5f5f3', color: propQuoteId===q.id ? '#fff' : '#555', border:'0.5px solid #ddd' }}>
+                              <button key={q.id} onClick={()=>{ setMasterCost(mc => ({ ...mc, [masterTab]: { ...mc[masterTab], cabCost: String(q.gross_amount || q.grand_total || '') } })); alert(`Quote gross set as ${masterTab.toUpperCase()} Cabinet Cost`) }} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', background: propQuoteId===q.id ? '#3C3489' : '#f5f5f3', color: propQuoteId===q.id ? '#fff' : '#555', border:'0.5px solid #ddd' }}>
                                 {propQuoteId===q.id ? '✓ ' : ''}{q.manufacturer} · ${Number(q.gross_amount||0).toLocaleString(undefined,{maximumFractionDigits:0})} · {new Date(q.created_at).toLocaleDateString()}
                               </button>
                             ))}
                           </div>
                         </div>
                       )}
-                      <label style={lbl}>Manufacturer Gross Cost ($ — from Leedo printable summary)</label>
-                      <input type="number" min="0" value={proposalGross} placeholder="e.g. 140000" onChange={e => setProposalGross(e.target.value)} style={{ width: 160, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13, marginBottom: 10 }} />
-                      <div style={{ display:'flex', gap:10, marginBottom:10 }}>
-                        <div>
-                          <label style={lbl}>Freight $ (pass-through)</label>
-                          <input type="number" min="0" value={proposalFreight} placeholder="0" onChange={e=>setProposalFreight(e.target.value)} style={{ width:120, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
+                      {/* ══ MASTER COST WORKSHEET ══════════════════════════ */}
+                      <div style={{ border:'1px solid #c9c3e8', borderRadius:10, padding:12, marginBottom:12, background:'#fbfaff' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:'#3C3489' }}>MASTER COST WORKSHEET</span>
+                          {['leedo','rta'].map(tb => (
+                            <button key={tb} onClick={()=>setMasterTab(tb)} style={{ padding:'4px 16px', fontSize:11, fontWeight:700, borderRadius:6, cursor:'pointer', border:'0.5px solid ' + (masterTab===tb ? '#3C3489' : '#ddd'), background: masterTab===tb ? '#3C3489' : '#fff', color: masterTab===tb ? '#fff' : '#555' }}>{tb==='leedo' ? 'LEEDO' : 'IMPORTED RTA'}</button>
+                          ))}
+                          <label style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', borderRadius:6, cursor: masterImporting ? 'wait' : 'pointer', fontWeight:600 }}>
+                            {masterImporting ? 'Reading…' : '⬆ Seed from Master Excel'}
+                            <input type="file" accept=".xlsx,.xlsm" style={{ display:'none' }} disabled={masterImporting} onChange={async e=>{
+                              const f = e.target.files?.[0]; if (!f) return
+                              setMasterImporting(true)
+                              try {
+                                const res = await fetch('/api/parse-master', { method:'POST', headers:{ 'Content-Type':'application/octet-stream' }, body: f })
+                                const d = await res.json()
+                                if (d.error) alert('Could not read worksheet: ' + d.error)
+                                else { setMasterCost(mc => ({ ...mc, [masterTab]: { ...mc[masterTab], ...Object.fromEntries(Object.entries(d.parsed).filter(([,v2]) => v2 !== null)) } })); alert(`Master sheet loaded into ${masterTab.toUpperCase()} (${d.sheet})`) }
+                              } catch (err) { alert(err.message) }
+                              setMasterImporting(false); e.target.value = ''
+                            }}/>
+                          </label>
                         </div>
-                        <div>
-                          <label style={lbl}>Mfr Tax $ (pass-through)</label>
-                          <input type="number" min="0" value={proposalMfrTax} placeholder="0" onChange={e=>setProposalMfrTax(e.target.value)} style={{ width:120, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
-                        </div>
-                      </div>
-                      <div style={{ margin:'8px 0', padding:'8px 10px', background:'#f8f7f4', borderRadius:8, border:'0.5px solid #e8e6e0' }}>
-                        <div style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(Cost = Richard's number → marked up by Margin % · Sell typed = final price wins)</span></div>
-                        <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
-                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>Leedo Cost $
-                            <input type="number" min="0" value={priceLeedo} placeholder="blank = computed" onChange={e=>setPriceLeedo(e.target.value)} style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
-                          <label style={{ fontSize:11, color:'#2D7A3A', display:'flex', alignItems:'center', gap:5, fontWeight:600 }}>Leedo SELL $
-                            <input type="number" min="0" value={sellLeedo} placeholder="blank = auto markup" onChange={e=>setSellLeedo(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #2D7A3A', borderRadius:6, fontSize:12 }}/></label>
-                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>RTA Cost $
-                            <input type="number" min="0" value={priceRta} placeholder="blank = omit" onChange={e=>setPriceRta(e.target.value)} style={{ width:100, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
-                          <label style={{ fontSize:11, color:'#2D7A3A', display:'flex', alignItems:'center', gap:5, fontWeight:600 }}>RTA SELL $
-                            <input type="number" min="0" value={sellRta} placeholder="blank = auto markup" onChange={e=>setSellRta(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #2D7A3A', borderRadius:6, fontSize:12 }}/></label>
-                        </div>
-                        <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginTop:6 }}>
-                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>Leedo Installation $ (sell)
-                            <input type="number" min="0" value={installLeedo} placeholder="blank = no line" onChange={e=>setInstallLeedo(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
-                          <label style={{ fontSize:11, color:'#555', display:'flex', alignItems:'center', gap:5 }}>RTA Staging/Assembly/Install $ (sell)
-                            <input type="number" min="0" value={installRta} placeholder="blank = no line" onChange={e=>setInstallRta(e.target.value)} style={{ width:110, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }}/></label>
-                        </div>
+                        {(() => {
+                          const v = masterCost[masterTab] || {}
+                          const set = (k) => (e) => setMasterCost(mc => ({ ...mc, [masterTab]: { ...mc[masterTab], [k]: e.target.value } }))
+                          const C = calcMasterClient(v)
+                          const inM = { width:92, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }
+                          const lblM = { fontSize:10, color:'#888', fontWeight:600, display:'block', marginBottom:2 }
+                          const outM = (x) => <span style={{ fontSize:11.5, color:'#2D7A3A', fontWeight:700 }}>{x != null ? fmt(Math.round(x)) : '—'}</span>
+                          return (<>
+                            <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, marginBottom:4 }}>CABINETS</div>
+                            <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end', marginBottom:6 }}>
+                              <div><label style={lblM}>Cabinet Cost $</label><input type="number" min="0" value={v.cabCost} onChange={set('cabCost')} style={{ ...inM, width:110 }}/></div>
+                              <div><label style={lblM}>Discount %</label><input type="number" step="0.5" min="0" value={v.discountPct} onChange={set('discountPct')} style={{ ...inM, width:70 }}/></div>
+                              <div><label style={lblM}>Margin (×)</label><input type="number" step="0.01" min="1" value={v.marginMult} onChange={set('marginMult')} style={{ ...inM, width:70 }}/></div>
+                              <div><label style={lblM}>Sales Tax %</label><input type="number" step="0.01" min="0" value={v.taxRate} onChange={set('taxRate')} style={{ ...inM, width:70 }}/></div>
+                              <div><label style={lblM}>Trucks</label><input type="number" min="0" value={v.trucks} onChange={set('trucks')} style={{ ...inM, width:60 }}/></div>
+                              <div><label style={lblM}>$/Truck</label><input type="number" min="0" value={v.perTruck} onChange={set('perTruck')} style={{ ...inM, width:80 }}/></div>
+                            </div>
+                            {C && <div style={{ fontSize:11, color:'#666', marginBottom:8 }}>Net cost {outM(C.totalCost)} → w/ margin {outM(C.wm)}{C.tax > 0 ? <> + tax {outM(C.tax)}</> : null}{C.freight > 0 ? <> + freight {outM(C.freight)}</> : null} = <b>CABINETS SELL {outM(C.cabSell)}</b> · GM {(C.wm > 0 ? ((1 - C.totalCost / C.wm) * 100).toFixed(1) : 0)}%</div>}
+                            <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, marginBottom:4 }}>HARDWARE</div>
+                            <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end', marginBottom:6 }}>
+                              <div><label style={lblM}>Total Pieces</label><input type="number" min="0" value={v.hwPieces} onChange={set('hwPieces')} style={{ ...inM, width:80 }}/></div>
+                              <div><label style={lblM}>$/Piece</label><input type="number" step="0.25" min="0" value={v.hwEach} onChange={set('hwEach')} style={{ ...inM, width:70 }}/></div>
+                              <div><label style={lblM}>Margin (×)</label><input type="number" step="0.01" min="1" value={v.hwMargin} onChange={set('hwMargin')} style={{ ...inM, width:70 }}/></div>
+                              {C && C.hwSell > 0 && <div style={{ paddingBottom:5 }}>= <b>HARDWARE SELL {outM(C.hwSell)}</b></div>}
+                            </div>
+                            <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, marginBottom:4 }}>INSTALLATION</div>
+                            <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'flex-end', marginBottom:6 }}>
+                              <div><label style={lblM}>No. Cabinets</label><input type="number" min="0" value={v.installCabs} onChange={set('installCabs')} style={{ ...inM, width:80 }}/></div>
+                              <div><label style={lblM}>$/Cab</label><input type="number" step="0.25" min="0" value={v.installRate} onChange={set('installRate')} style={{ ...inM, width:70 }}/></div>
+                              <div><label style={lblM}>RTA Assembly #</label><input type="number" min="0" value={v.rtaQty} onChange={set('rtaQty')} style={{ ...inM, width:80 }}/></div>
+                              <div><label style={lblM}>$/Each</label><input type="number" step="0.25" min="0" value={v.rtaRate} onChange={set('rtaRate')} style={{ ...inM, width:60 }}/></div>
+                              <div><label style={lblM}>Unload/Stage #</label><input type="number" min="0" value={v.stagingQty} onChange={set('stagingQty')} style={{ ...inM, width:80 }}/></div>
+                              <div><label style={lblM}>$/Each</label><input type="number" step="0.25" min="0" value={v.stagingRate} onChange={set('stagingRate')} style={{ ...inM, width:60 }}/></div>
+                              {C && C.inst > 0 && <div style={{ paddingBottom:5 }}>= <b>INSTALL {outM(C.inst)}</b></div>}
+                            </div>
+                            <div style={{ display:'flex', gap:14, alignItems:'center', background:'#3C3489', borderRadius:8, padding:'8px 12px', marginTop:4 }}>
+                              <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{masterTab==='leedo' ? 'LEEDO' : 'RTA'} GRAND TOTAL</span>
+                              <span style={{ fontSize:16, fontWeight:800, color:'#fff' }}>{C ? fmt(Math.round(C.total)) : '—'}</span>
+                              {C && <span style={{ fontSize:10, color:'#c9c3e8' }}>cost {fmt(Math.round(C.cost))} · overall GM {(C.gm * 100).toFixed(1)}%</span>}
+                              {(() => { const o = calcMasterClient(masterCost[masterTab==='leedo' ? 'rta' : 'leedo']); return o ? <span style={{ marginLeft:'auto', fontSize:10, color:'#c9c3e8' }}>{masterTab==='leedo' ? 'RTA' : 'LEEDO'}: {fmt(Math.round(o.total))} — both print on the proposal</span> : <span style={{ marginLeft:'auto', fontSize:10, color:'#c9c3e8' }}>{masterTab==='leedo' ? 'RTA' : 'LEEDO'} empty — single-price proposal</span> })()}
+                            </div>
+                            <div style={{ fontSize:10, color:'#999', marginTop:4 }}>Worksheet autosaves with the job. Leave Cabinet Cost blank on both tabs to fall back to the old pricing inputs.</div>
+                          </>)
+                        })()}
                       </div>
                       {specLib.length > 0 && (
                         <div style={{ margin:'8px 0' }}>
@@ -1892,11 +1949,6 @@ export default function Home() {
                         </div>
                       )}
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
-                        <input type="checkbox" checked={applyDiscount} onChange={e=>setApplyDiscount(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
-                        Apply dealer discount of
-                        <input type="number" step="0.5" min="0" max="50" value={discountPct !== '' ? discountPct : ((selectedJob?.dealer_discount_pct || 0.05)*100)} onChange={e=>setDiscountPct(e.target.value)} onClick={e=>e.stopPropagation()} style={{ width:55, padding:'2px 6px', border:'0.5px solid #ccc', borderRadius:5, fontSize:12, margin:'0 4px' }}/>% to gross cost
-                      </label>
-                      <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Hide unit breakdown — lump sum only (shows unit/amenity counts, no per-unit table)
                       </label>
@@ -1908,36 +1960,6 @@ export default function Home() {
                         <input type="checkbox" checked={brandAs==='greenworks'} onChange={e=>setBrandAs(e.target.checked?'greenworks':'mdsg')} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Bid under Greenworks umbrella (turnkey from Willy — no MDSG branding)
                       </label>
-                      <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:12 }}>
-                        <div>
-                          <label style={lbl}>Hardware Pieces</label>
-                          <input type="number" min="0" value={hwPieces} placeholder="0" onChange={e=>setHwPieces(e.target.value)} style={{ width:100, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
-                        </div>
-                        <div>
-                          <label style={lbl}>$/Piece (our cost)</label>
-                          <input type="number" min="0" step="0.25" value={hwRate} onChange={e=>setHwRate(e.target.value)} style={{ width:90, padding:'7px 10px', border:'0.5px solid #ccc', borderRadius:6, fontSize:13 }}/>
-                        </div>
-                        {Number(hwPieces)>0 && <span style={{ fontSize:11, color:'#2D7A3A', paddingBottom:9 }}>= ${(Number(hwPieces)*Number(hwRate)).toLocaleString(undefined,{maximumFractionDigits:0})} cost → marked up with margin</span>}
-                      </div>
-                      <label style={lbl}>Gross Margin %</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-                        <input type="number" step="1" min="0" max="60" value={proposalMargin} onChange={e => setProposalMargin(e.target.value)} style={{ width: 80, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
-                        {marginPricePreview && <span style={{ fontSize: 12, color: '#3B6D11', fontWeight: 500 }}>→ sell price ≈ {marginPricePreview} (before freight/discount/tax)</span>}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        {[15, 20, 25, 30, 35].map(m => (<button key={m} onClick={() => setProposalMargin(m)} style={{ padding: '4px 9px', fontSize: 11, borderRadius: 6, cursor: 'pointer', background: Number(proposalMargin) === m ? '#3C3489' : '#f5f5f3', color: Number(proposalMargin) === m ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{m}%</button>))}
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={lbl}>Sales Tax %</label>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                        <input type="number" step="0.01" min="0" max="20" value={proposalSalesTax} onChange={e => setProposalSalesTax(e.target.value)} style={{ width: 80, padding: '7px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }} />
-                        <span style={{ fontSize: 12, color: '#555' }}>%</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                        {[0, 7.65, 8.00, 9.15].map(t => (<button key={t} onClick={() => setProposalSalesTax(t)} style={{ padding: '3px 8px', fontSize: 10, borderRadius: 6, cursor: 'pointer', background: Number(proposalSalesTax) === t ? '#3C3489' : '#f5f5f3', color: Number(proposalSalesTax) === t ? '#fff' : '#555', border: '0.5px solid #ddd' }}>{t === 0 ? 'None' : `${t}%`}</button>))}
-                      </div>
-                    </div>
                     <div style={{ marginBottom: 12 }}>
                       <label style={lbl}>Sender</label>
                       <select value={proposalSender} onChange={e => setProposalSender(e.target.value)} style={{ width: '100%', padding: '8px 10px', border: '0.5px solid #ccc', borderRadius: 6, fontSize: 13 }}>
@@ -1978,9 +2000,23 @@ export default function Home() {
                         </div>
                       ))}
                     </div>
-                    <button onClick={generateProposal} disabled={proposalLoading} style={{ width: '100%', padding: 10, background: proposalLoading ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: proposalLoading ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
+                    <div style={{ display:'flex', gap:8 }}>
+                      <button onClick={()=>generateProposal(true)} disabled={proposalLoading} style={{ flex:1, padding: 10, background: '#fff', color: '#3C3489', border: '1.5px solid #3C3489', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                        {proposalLoading ? '…' : '👁 Preview'}
+                      </button>
+                      <button onClick={()=>generateProposal(false)} disabled={proposalLoading} style={{ flex: 2, padding: 10, background: proposalLoading ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: proposalLoading ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
                       {proposalLoading ? 'Generating PDF...' : 'Generate & Download Proposal PDF'}
                     </button>
+                    </div>
+                    {previewUrl && (
+                      <div style={{ position:'fixed', inset:0, background:'rgba(20,20,30,0.75)', zIndex:300, display:'flex', flexDirection:'column', padding:24 }} onClick={()=>{ URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }}>
+                        <div style={{ display:'flex', gap:10, marginBottom:10, justifyContent:'center' }} onClick={e=>e.stopPropagation()}>
+                          <button onClick={()=>{ URL.revokeObjectURL(previewUrl); setPreviewUrl(null) }} style={{ padding:'8px 20px', fontSize:13, background:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontWeight:600 }}>✕ Close Preview</button>
+                          <button onClick={()=>{ URL.revokeObjectURL(previewUrl); setPreviewUrl(null); generateProposal(false) }} style={{ padding:'8px 20px', fontSize:13, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontWeight:700 }}>✓ Looks Good — Generate & Download</button>
+                        </div>
+                        <iframe title="Proposal preview" src={previewUrl} style={{ flex:1, border:'none', borderRadius:10, background:'#fff' }} onClick={e=>e.stopPropagation()}/>
+                      </div>
+                    )}
                   </>)}
                     </div>
                 </div>
