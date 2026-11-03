@@ -61,6 +61,18 @@ const CARRIERS = ['UPS Freight', 'FedEx Freight', 'Old Dominion', 'XPO Logistics
 const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
 const LEAD_SOURCES = ['Jeff N.']   // industry partners — add names here as they sign on
 const OWNER_EMAILS = { Cole: 'cole@mdsgcabinets.com', Pam: 'pam@mdsgcabinets.com', Vicki: 'vicki@mdsgcabinets.com', Blake: 'csr@mdsgcabinets.com', Tabetha: 'tabetha@mdsgcabinets.com' }
+const calcCtClient = (v) => {
+  const n = (x) => Number(x) > 0 ? Number(x) : 0
+  const sf = n(v?.sf); if (!sf) return null
+  const row = (label, rate, mX) => { const r = n(rate); if (!r) return null; const base = sf * r; return { label, base, sell: base * (n(mX) || 1) } }
+  const rows = [row('Materials', v.matRate, v.matMargin), row('Fabrication', v.fabRate, v.fabMargin), row('Template', v.tmplRate, v.tmplMargin), row('Installation', v.instRate, v.instMargin)].filter(Boolean)
+  if (!rows.length) return null
+  const subtotal = rows.reduce((s, r) => s + r.sell, 0)
+  const tax = subtotal * n(v.taxRate) / 100
+  const cost = rows.reduce((s, r) => s + r.base, 0)
+  const total = subtotal + tax
+  return { sf, rows, subtotal, tax, total, cost, gm: total > 0 ? 1 - cost / total : 0 }
+}
 const calcMasterClient = (v) => {
   const n = (x) => Number(x) > 0 ? Number(x) : 0
   const cc = n(v?.cabCost); if (!cc) return null
@@ -210,6 +222,8 @@ export default function Home() {
   const [previewUrl,      setPreviewUrl]      = useState(null)
   const [breakoutInstall, setBreakoutInstall] = useState(false)
   const [includeRta,      setIncludeRta]      = useState(true)
+  const [ctMaster,        setCtMaster]        = useState({ local: { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 }, import: { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 } })
+  const [ctTab,           setCtTab]           = useState('local')
   const [reportOwner,     setReportOwner]     = useState('all')
   const [reportGc,        setReportGc]        = useState('all')
   const [priceLeedo,      setPriceLeedo]      = useState('')
@@ -508,7 +522,7 @@ export default function Home() {
     proposalSalesTax, applyDiscount, discountPct, hwPieces, hwRate, hideUnitPricing, totalOnly, brandAs,
     priceLeedo, sellLeedo, priceRta, sellRta, installLeedo, installRta, litSelected, bidSections,
     ctSender, ctWastePct, ctMargin, ctNotes, ctGross, ctLocalInstall, ctImportMat, ctImportInstall,
-    ctMaterialSpec, ctColorSpec, ctAmenities, masterCost, masterTab, breakoutInstall, includeRta,
+    ctMaterialSpec, ctColorSpec, ctAmenities, masterCost, masterTab, breakoutInstall, includeRta, ctMaster, ctTab,
   })
   function applyDraft(d) {
     if (!d || typeof d !== 'object') return
@@ -522,7 +536,7 @@ export default function Home() {
       bidSections: setBidSections, ctSender: setCtSender, ctWastePct: setCtWastePct, ctMargin: setCtMargin,
       ctNotes: setCtNotes, ctGross: setCtGross, ctLocalInstall: setCtLocalInstall, ctImportMat: setCtImportMat,
       ctImportInstall: setCtImportInstall, ctMaterialSpec: setCtMaterialSpec, ctColorSpec: setCtColorSpec,
-      ctAmenities: setCtAmenities, masterCost: setMasterCost, masterTab: setMasterTab, breakoutInstall: setBreakoutInstall, includeRta: setIncludeRta,
+      ctAmenities: setCtAmenities, masterCost: setMasterCost, masterTab: setMasterTab, breakoutInstall: setBreakoutInstall, includeRta: setIncludeRta, ctMaster: setCtMaster, ctTab: setCtTab,
     }
     for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) setter(d[k])
   }
@@ -1047,7 +1061,7 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0, ctMaterialSpec, ctColor: ctColorSpec, ctAmenities }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0, ctMaterialSpec, ctColor: ctColorSpec, ctAmenities, ctMaster }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
@@ -2713,51 +2727,54 @@ export default function Home() {
                         <option value="Pam">Pamela Isetts — President</option>
                         <option value="MDSG">MDSG Team</option>
                       </select>
-                      <label style={lbl}>Waste Factor %</label>
-                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:12 }}>
-                        <input type="number" min="0" max="30" value={ctWastePct} onChange={e=>setCtWastePct(Number(e.target.value))} style={{ ...inp, width:70 }}/>
-                        <span style={{ fontSize:11, color:'#2D7A3A' }}>{ctWastePct}% added to net SF for order quantity</span>
-                      </div>
-                      {savedQuotes.filter(q => q.quote_type === 'countertops').length > 0 && (
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={lbl}>Price From Saved CT Quote</label>
-                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-                            {savedQuotes.filter(q => q.quote_type === 'countertops').map(q => (
-                              <button key={q.id} onClick={()=>setCtGross(String(q.grand_total || q.gross_amount || ''))} style={{ padding:'5px 12px', fontSize:11, borderRadius:6, cursor:'pointer', background: String(ctGross)===String(q.grand_total || q.gross_amount) ? '#8B6914' : '#f5f5f3', color: String(ctGross)===String(q.grand_total || q.gross_amount) ? '#fff' : '#555', border:'0.5px solid #ddd' }}>
-                                {String(ctGross)===String(q.grand_total || q.gross_amount) ? '✓ ' : ''}{q.manufacturer} · ${Number(q.grand_total || q.gross_amount || 0).toLocaleString(undefined,{maximumFractionDigits:0})} · {fmtD(q.created_at)}
-                              </button>
-                            ))}
-                          </div>
+{/* ══ CT MASTER WORKSHEET ══════════════════════════ */}
+                      <div style={{ border:'1px solid #e4d7b0', borderRadius:10, padding:12, marginBottom:12, background:'#fffdf6' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
+                          <span style={{ fontSize:12, fontWeight:700, color:'#8B6914' }}>COUNTERTOP COST WORKSHEET</span>
+                          {['local','import'].map(tb => (
+                            <button key={tb} onClick={()=>setCtTab(tb)} style={{ padding:'4px 16px', fontSize:11, fontWeight:700, borderRadius:6, cursor:'pointer', border:'0.5px solid ' + (ctTab===tb ? '#8B6914' : '#ddd'), background: ctTab===tb ? '#8B6914' : '#fff', color: ctTab===tb ? '#fff' : '#555' }}>{tb==='local' ? 'LOCAL FABRICATOR' : 'IMPORT'}</button>
+                          ))}
                         </div>
-                      )}
-                      <div style={{ padding:'8px 10px', background:'#f8f7f4', borderRadius:8, border:'0.5px solid #e8e6e0', marginBottom:10 }}>
-                        <div style={{ fontSize:11, fontWeight:600, color:'#8B6914', marginBottom:5 }}>Pricing Lines <span style={{ fontWeight:400, color:'#999' }}>(print on the proposal EXACTLY as typed — these are the GC's numbers)</span></div>
-                        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-                          <label style={{ fontSize:11, color:'#555' }}>Local Fabricator — Material $<br/>
-                            <input type="number" min="0" value={ctGross} placeholder="e.g. 48000" onChange={e=>setCtGross(e.target.value)} style={{ ...inp, width:130 }}/></label>
-                          <label style={{ fontSize:11, color:'#555' }}>Local — Installation $<br/>
-                            <input type="number" min="0" value={ctLocalInstall} placeholder="blank = omit" onChange={e=>setCtLocalInstall(e.target.value)} style={{ ...inp, width:130 }}/></label>
-                          <label style={{ fontSize:11, color:'#555' }}>Import Material $<br/>
-                            <input type="number" min="0" value={ctImportMat} placeholder="blank = omit block" onChange={e=>setCtImportMat(e.target.value)} style={{ ...inp, width:130 }}/></label>
-                          <label style={{ fontSize:11, color:'#555' }}>Import — Installation $<br/>
-                            <input type="number" min="0" value={ctImportInstall} placeholder="blank = omit" onChange={e=>setCtImportInstall(e.target.value)} style={{ ...inp, width:130 }}/></label>
-                        </div>
-                        <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginTop:8 }}>
-                          <label style={{ fontSize:11, color:'#555' }}>Material Spec<br/>
-                            <input value={ctMaterialSpec} placeholder="e.g. 2CM QUARTZ" onChange={e=>setCtMaterialSpec(e.target.value)} style={{ ...inp, width:150 }}/></label>
-                          <label style={{ fontSize:11, color:'#555' }}>Color<br/>
-                            <input value={ctColorSpec} placeholder="e.g. CARRARA ROMA or MATCH" onChange={e=>setCtColorSpec(e.target.value)} style={{ ...inp, width:190 }}/></label>
-                          <label style={{ fontSize:11, color:'#555' }}>Amenities (comma sep)<br/>
-                            <input value={ctAmenities} placeholder="type amenities — e.g. Amenity Kitchen, Laundry (10)" onChange={e=>setCtAmenities(e.target.value)} style={{ ...inp, width:220 }}/></label>
-                        </div>
+                        {(() => {
+                          const v = ctMaster[ctTab] || {}
+                          const set = (k) => (e) => setCtMaster(mc => ({ ...mc, [ctTab]: { ...mc[ctTab], [k]: e.target.value } }))
+                          const C = calcCtClient(v)
+                          const inC = { width:80, padding:'4px 8px', border:'0.5px solid #ccc', borderRadius:6, fontSize:12 }
+                          const lblC = { fontSize:10, color:'#888', fontWeight:600, display:'block', marginBottom:2 }
+                          const rowDef = [['Materials','matRate','matMargin'],['Fabrication','fabRate','fabMargin'],['Template','tmplRate','tmplMargin'],['Installation','instRate','instMargin']]
+                          return (<>
+                            <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:8 }}>
+                              <div><label style={lblC}>Total SF</label><input type="number" min="0" value={v.sf} onChange={set('sf')} style={{ ...inC, width:100 }}/></div>
+                              <div><label style={lblC}>Sales Tax %</label><input type="number" step="0.01" min="0" value={v.taxRate} onChange={set('taxRate')} style={{ ...inC, width:80 }}/></div>
+                            </div>
+                            {rowDef.map(([label, rk, mk]) => {
+                              const r = C?.rows.find(x => x.label === label)
+                              return (
+                                <div key={label} style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:5 }}>
+                                  <span style={{ width:86, fontSize:11, fontWeight:600, color:'#555', paddingBottom:6 }}>{label}</span>
+                                  <div><label style={lblC}>$/SF</label><input type="number" step="0.01" min="0" value={v[rk]} placeholder="blank = omit" onChange={set(rk)} style={inC}/></div>
+                                  <div><label style={lblC}>Margin (×)</label><input type="number" step="0.01" min="1" value={v[mk]} onChange={set(mk)} style={{ ...inC, width:70 }}/></div>
+                                  {r && <span style={{ fontSize:11.5, color:'#2D7A3A', fontWeight:700, paddingBottom:7 }}>= {fmt(Math.round(r.sell))}</span>}
+                                </div>
+                              )
+                            })}
+                            <div style={{ display:'flex', gap:14, alignItems:'center', background:'#8B6914', borderRadius:8, padding:'8px 12px', marginTop:8 }}>
+                              <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{ctTab==='local' ? 'LOCAL' : 'IMPORT'} TOTAL</span>
+                              <span style={{ fontSize:16, fontWeight:800, color:'#fff' }}>{C ? fmt(Math.round(C.total)) : '—'}</span>
+                              {C && C.tax > 0 && <span style={{ fontSize:10, color:'#f0e3bd' }}>incl. tax {fmt(Math.round(C.tax))}</span>}
+                              {C && <span style={{ fontSize:10, color:'#f0e3bd' }}>cost {fmt(Math.round(C.cost))} · GM {(C.gm*100).toFixed(1)}%</span>}
+                              {(() => { const o = calcCtClient(ctMaster[ctTab==='local' ? 'import' : 'local']); return o ? <span style={{ marginLeft:'auto', fontSize:10, color:'#f0e3bd' }}>{ctTab==='local' ? 'IMPORT' : 'LOCAL'}: {fmt(Math.round(o.total))} — both print</span> : <span style={{ marginLeft:'auto', fontSize:10, color:'#f0e3bd' }}>{ctTab==='local' ? 'IMPORT' : 'LOCAL'} empty</span> })()}
+                            </div>
+                          </>)
+                        })()}
                       </div>
-                      <label style={lbl}>Gross Margin %</label>
-                      <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:10 }}>
-                        <input type="number" step="1" min="0" max="60" value={ctMargin} onChange={e=>setCtMargin(e.target.value)} style={{ ...inp, width:70 }}/>
-                        {Number(ctGross)>0 && Number(ctMargin)>0 && <span style={{ fontSize:11, color:'#2D7A3A', fontWeight:500 }}>→ sell ≈ ${Math.round(Number(ctGross)/(1-Number(ctMargin)/100)).toLocaleString()}</span>}
-                      </div>
-                      <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-                        {[15,20,25,30,35].map(m=><button key={m} onClick={()=>setCtMargin(m)} style={{ padding:'3px 9px', fontSize:11, borderRadius:6, cursor:'pointer', background:Number(ctMargin)===m?'#2D7A3A':'#f5f5f3', color:Number(ctMargin)===m?'#fff':'#555', border:'0.5px solid #ddd' }}>{m}%</button>)}
+                      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:10 }}>
+                        <label style={{ fontSize:11, color:'#555' }}>Material Spec<br/>
+                          <input value={ctMaterialSpec} placeholder="e.g. 2CM QUARTZ" onChange={e=>setCtMaterialSpec(e.target.value)} style={{ ...inp, width:150 }}/></label>
+                        <label style={{ fontSize:11, color:'#555' }}>Color<br/>
+                          <input value={ctColorSpec} placeholder="e.g. CARRARA ROMA or MATCH" onChange={e=>setCtColorSpec(e.target.value)} style={{ ...inp, width:190 }}/></label>
+                        <label style={{ fontSize:11, color:'#555' }}>Amenities (comma sep)<br/>
+                          <input value={ctAmenities} placeholder="type amenities — e.g. Amenity Kitchen, Laundry (10)" onChange={e=>setCtAmenities(e.target.value)} style={{ ...inp, width:220 }}/></label>
                       </div>
                       <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginBottom:10 }}>
                         <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>

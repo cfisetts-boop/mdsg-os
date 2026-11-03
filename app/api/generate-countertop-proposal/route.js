@@ -22,8 +22,8 @@ export async function POST(request) {
   try {
     const {
       jobId, totals = {}, propConfig = {}, sender = 'Cole', bidSections = {},
-      marginPct = 20, grossCostOverride = 0, notes = '', brandAs = 'mdsg',
-      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null, ctMaterialSpec = null, ctColor = null, ctAmenities = null,
+      marginPct = 20, grossCostOverride = 0, notes = '', brandAs = 'mdsg', totalOnly = false, wastePct = 10,
+      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null, ctMaterialSpec = null, ctColor = null, ctAmenities = null, ctMaster = null,
     } = await request.json()
 
     let job = null
@@ -46,17 +46,40 @@ export async function POST(request) {
     const num = (v) => Number(v) > 0 ? Number(v) : 0
     const locMat = num(ctLocalMaterial), locIns = num(ctLocalInstall)
     const impMat = num(ctImportMaterial), impIns = num(ctImportInstall)
-    const manualMode = locMat > 0 || impMat > 0
+    const calcCt = (v) => {
+      if (!v) return null
+      const sf = num(v.sf); if (!(sf > 0)) return null
+      const mkRow = (label, rate, marginX) => {
+        const r = num(rate); if (!(r > 0)) return null
+        const base = sf * r
+        return { label, base, sell: base * (num(marginX) || 1) }
+      }
+      const rows = [
+        mkRow('MATERIALS', v.matRate, v.matMargin),
+        mkRow('FABRICATION', v.fabRate, v.fabMargin),
+        mkRow('TEMPLATE', v.tmplRate, v.tmplMargin),
+        mkRow('INSTALLATION', v.instRate, v.instMargin),
+      ].filter(Boolean)
+      if (!rows.length) return null
+      const subtotal = rows.reduce((s, r) => s + r.sell, 0)
+      const taxPct = num(v.taxRate)
+      const tax = subtotal * taxPct / 100
+      return { sf, rows, subtotal, taxPct, tax, total: subtotal + tax, cost: rows.reduce((s, r) => s + r.base, 0) }
+    }
+    const cmL = calcCt(ctMaster?.local)
+    const cmI = calcCt(ctMaster?.import)
+    const ctMasterMode = !!(cmL || cmI)
+    const manualMode = !ctMasterMode && (locMat > 0 || impMat > 0)
     const cost = Number(grossCostOverride) || 0
     const margin = Math.min(Math.max(Number(marginPct) || 0, 0), 60)
     const sell = cost > 0 ? Math.round((cost / (1 - margin / 100)) * 100) / 100 : 0
-    if (!manualMode && !sell) return Response.json({ error: 'No countertop pricing — fill in the pricing lines first' }, { status: 422 })
+    if (!manualMode && !sell && !ctMasterMode) return Response.json({ error: 'No countertop pricing — fill in the worksheet first' }, { status: 422 })
     // Typed lines are COST → marked up by margin; a typed SELL total overrides
     // and the displayed lines scale proportionally to sum to it.
     // Manual CT lines print EXACTLY AS TYPED — no markup, no scaling (team decision 10/7)
     const loc = { m2: locMat, i2: locIns, tot: locMat + locIns }
     const imp = { m2: impMat, i2: impIns, tot: impMat + impIns }
-    const headline = manualMode ? (locMat > 0 ? loc.tot : imp.tot) : sell
+    const headline = ctMasterMode ? (cmL || cmI).total : (manualMode ? (locMat > 0 ? loc.tot : imp.tot) : sell)
 
     const isGW = brandAs === 'greenworks'
     const today = new Date()
@@ -141,14 +164,7 @@ export async function POST(request) {
     // right CUSTOMER block rows
     const rrow = (label, value, ry, o = {}) => {
       box(R1, ry - 11, 68, 11); box(R1 + 68, ry - 11, R1W - 68, 11)
-      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 })
-      // Shrink long values to fit the cell (down to 4.5pt), then trim with "..." so nothing wraps/overlaps
-      if (value == null || value === '') return
-      const f = o.bold ? bold : regular, maxW = R1W - 72
-      let v = String(value), sz = 6.5
-      while (sz > 4.5 && f.widthOfTextAtSize(v, sz) > maxW) sz -= 0.25
-      if (f.widthOfTextAtSize(v, sz) > maxW) { while (v.length > 1 && f.widthOfTextAtSize(v + '...', sz) > maxW) v = v.slice(0, -1); v = v.trimEnd() + '...' }
-      txt(v, R1 + 70, ry - 8, { bold:o.bold, size:sz, color:o.color })
+      rgt(label, R1 + 68, ry - 8, { bold:true, size:6 }); txt(value, R1 + 70, ry - 8, { bold: o.bold, size:6.5, color: o.color, maxWidth: R1W - 72 })
     }
     const addr = job ? [job.address].filter(Boolean).join('') : ''
     const csz  = job ? [job.city, job.state].filter(Boolean).join(', ') + (job.zip ? '  ' + job.zip : '') : ''
@@ -156,13 +172,10 @@ export async function POST(request) {
     rrow('PROJECT:', (job?.name || '').toUpperCase(), hTop - 11, { bold:true })
     rrow('ADDRESS:', addr, hTop - 22, { bold:true })
     rrow('CITY/STATE/ZIP', csz, hTop - 33, { bold:true })
-    const FULL_NAMES = { Cole:'Cole Isetts', Pam:'Pamela Isetts', Blake:'Blake Isetts', Vicki:'Vicki Zieman-Stay', Tabetha:'Tabetha Whelan' }
-    const salesRep = isGW ? 'Anthony (Willy) Ramirez' : (FULL_NAMES[job?.owner] || job?.owner || (SENDERS[sender] || SENDERS.Cole).name)
-    rrow('SALESPERSON:', salesRep, hTop - 44, { bold:true })
-    rrow('CONTACT:', job?.gc_contact || '', hTop - 55, { bold:true })
-    rrow('TELEPHONE:', job?.gc_phone || '', hTop - 66, { bold:true })
-    rrow('EMAIL:', job?.gc_email || '', hTop - 77, { color: blue })
-    box(R1, hBot, R1W, hTop - 77 - hBot)
+    rrow('CONTACT:', job?.gc_contact || '', hTop - 44, { bold:true })
+    rrow('TELEPHONE:', job?.gc_phone || '', hTop - 55, { bold:true })
+    rrow('EMAIL:', job?.gc_email || '', hTop - 66, { color: blue })
+    box(R1, hBot, R1W, hTop - 66 - hBot)
     y = hBot
 
     // ═ DESCRIPTION band ═
@@ -214,7 +227,33 @@ export async function POST(request) {
       rgt(fmtMoney(mat + ins), MR, y - 9, { bold:true, size:7.5 })
       y -= 12
     }
-    if (manualMode) {
+    if (ctMasterMode) {
+      const ctBlock = (label, m) => {
+        if (!m) return
+        box(ML, y - 12, W - 84, 12, sage); box(MR - 84, y - 12, 84, 12, sage)
+        txt('BASE PRICE:  ' + label, ML + 8, y - 9, { bold:true, size:7.5 })
+        ctr('TOTAL COST', MR - 84, 84, y - 9, { bold:true, size:7 })
+        y -= 12
+        if (!totalOnly) {
+          for (const r of m.rows) {
+            box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+            txt(`${r.label} — ${m.sf.toLocaleString()} SF`, ML + 8, y - 9, { size:7 })
+            rgt(fmtMoney(r.sell), MR, y - 9, { bold:true, size:7 })
+            y -= 12
+          }
+          if (m.tax > 0) {
+            box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+            rgt(`SALES TAX (${m.taxPct}%)`, MR - 84, y - 9, { size:7 }); rgt(fmtMoney(m.tax), MR, y - 9, { bold:true, size:7 })
+            y -= 12
+          }
+        }
+        box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+        rgt('TOTAL', MR - 84, y - 9, { bold:true, size:7 }); rgt(fmtMoney(m.total), MR, y - 9, { bold:true, size:7.5 })
+        y -= 12
+      }
+      ctBlock('LOCAL FABRICATOR', cmL)
+      ctBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', cmI)
+    } else if (manualMode) {
       if (locMat > 0) priceBlock('LOCAL FABRICATOR - MATERIAL', loc.m2, loc.i2)
       if (impMat > 0) priceBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', imp.m2, imp.i2)
     } else {
