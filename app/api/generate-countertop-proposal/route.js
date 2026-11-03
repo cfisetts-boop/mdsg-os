@@ -23,7 +23,7 @@ export async function POST(request) {
     const {
       jobId, totals = {}, propConfig = {}, sender = 'Cole', bidSections = {},
       marginPct = 20, grossCostOverride = 0, notes = '', brandAs = 'mdsg', totalOnly = false, wastePct = 10,
-      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null, ctMaterialSpec = null, ctColor = null, ctAmenities = null, ctMaster = null,
+      ctLocalMaterial = null, ctLocalInstall = null, ctImportMaterial = null, ctImportInstall = null, ctLocalSell = null, ctImportSell = null, ctMaterialSpec = null, ctColor = null, ctAmenities = null, ctMaster = null, preview = false,
     } = await request.json()
 
     let job = null
@@ -46,13 +46,15 @@ export async function POST(request) {
     const num = (v) => Number(v) > 0 ? Number(v) : 0
     const locMat = num(ctLocalMaterial), locIns = num(ctLocalInstall)
     const impMat = num(ctImportMaterial), impIns = num(ctImportInstall)
+    // Margin accepts either form: 1.35 = multiplier, 35 = 35% gross margin
+    const normMargin = (x) => { const n2 = num(x); if (!n2) return 1; return n2 >= 3 ? (n2 < 95 ? 1 / (1 - n2 / 100) : 1) : n2 }
     const calcCt = (v) => {
       if (!v) return null
-      const sf = num(v.sf); if (!(sf > 0)) return null
+      const sf = num(v.sf)
       const mkRow = (label, rate, marginX) => {
         const r = num(rate); if (!(r > 0)) return null
-        const base = sf * r
-        return { label, base, sell: base * (num(marginX) || 1) }
+        const base = sf > 0 ? sf * r : r   // no SF → the field is the row's lump total $
+        return { label, base, sell: base * normMargin(marginX) }
       }
       const rows = [
         mkRow('MATERIALS', v.matRate, v.matMargin),
@@ -237,7 +239,7 @@ export async function POST(request) {
         if (!totalOnly) {
           for (const r of m.rows) {
             box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
-            txt(`${r.label} — ${m.sf.toLocaleString()} SF`, ML + 8, y - 9, { size:7 })
+            txt(m.sf > 0 ? `${r.label} — ${m.sf.toLocaleString()} SF` : r.label, ML + 8, y - 9, { size:7 })
             rgt(fmtMoney(r.sell), MR, y - 9, { bold:true, size:7 })
             y -= 12
           }
@@ -315,14 +317,16 @@ export async function POST(request) {
 
     const bytes = await pdfDoc.save()
     if (jobId) {
-      if (manualMode) await supabase.from('jobs').update({
-        ct_local_material: locMat || null, ct_local_install: locIns || null,
-        ct_import_material: impMat || null, ct_import_install: impIns || null,
-        ct_local_sell: num(ctLocalSell) || null, ct_import_sell: num(ctImportSell) || null,
+      if (!preview) await supabase.from('jobs').update({
+        ...(manualMode ? {
+          ct_local_material: locMat || null, ct_local_install: locIns || null,
+          ct_import_material: impMat || null, ct_import_install: impIns || null,
+          ct_local_sell: num(ctLocalSell) || null, ct_import_sell: num(ctImportSell) || null,
+        } : {}),
         ct_material_spec: specMaterial || null, ct_color: specColor || null, ct_amenities: specAmen || null,
       }).eq('id', jobId)
       const who = isGW ? 'Greenworks' : (SENDERS[sender] || SENDERS.Cole).name
-      await supabase.from('activity_log').insert({ job_id: jobId, user_name: who, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)}${isGW ? ' · Greenworks-branded' : ''}` })
+      if (!preview) await supabase.from('activity_log').insert({ job_id: jobId, user_name: who, action: `CT proposal generated — ${proposalNum} · ${fmtMoney(headline)}${isGW ? ' · Greenworks-branded' : ''}` })
     }
     return new Response(Buffer.from(bytes), {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${proposalNum}.pdf"` },

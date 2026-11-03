@@ -63,8 +63,9 @@ const LEAD_SOURCES = ['Jeff N.']   // industry partners — add names here as th
 const OWNER_EMAILS = { Cole: 'cole@mdsgcabinets.com', Pam: 'pam@mdsgcabinets.com', Vicki: 'vicki@mdsgcabinets.com', Blake: 'csr@mdsgcabinets.com', Tabetha: 'tabetha@mdsgcabinets.com' }
 const calcCtClient = (v) => {
   const n = (x) => Number(x) > 0 ? Number(x) : 0
-  const sf = n(v?.sf); if (!sf) return null
-  const row = (label, rate, mX) => { const r = n(rate); if (!r) return null; const base = sf * r; return { label, base, sell: base * (n(mX) || 1) } }
+  const sf = n(v?.sf)
+  const nm = (x) => { const m2 = n(x); if (!m2) return 1; return m2 >= 3 ? (m2 < 95 ? 1 / (1 - m2 / 100) : 1) : m2 }
+  const row = (label, rate, mX) => { const r = n(rate); if (!r) return null; const base = sf > 0 ? sf * r : r; return { label, base, sell: base * nm(mX) } }
   const rows = [row('Materials', v.matRate, v.matMargin), row('Fabrication', v.fabRate, v.fabMargin), row('Template', v.tmplRate, v.tmplMargin), row('Installation', v.instRate, v.instMargin)].filter(Boolean)
   if (!rows.length) return null
   const subtotal = rows.reduce((s, r) => s + r.sell, 0)
@@ -1023,9 +1024,9 @@ export default function Home() {
     await fetch('/api/job-files', { method: 'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, path }) })
     setJobFiles(f => f.filter(x => x.path !== path))
   }
-  async function generateCtProposal() {
+  async function generateCtProposal(previewMode = false) {
     if (!selectedJob) return
-    if (!(Number(ctGross) > 0) && !(Number(ctImportMat) > 0)) return alert('Fill in a pricing line first — Local material and/or Import material')
+    if (!(Number(ctGross) > 0) && !(Number(ctImportMat) > 0) && !calcCtClient(ctMaster.local) && !calcCtClient(ctMaster.import)) return alert('Fill in the countertop worksheet first')
     setCtGenerating(true)
     try {
       const quoteTotal   = ctQuoteResult?.total_amount || 0
@@ -1061,11 +1062,12 @@ export default function Home() {
       const res = await fetch('/api/generate-countertop-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0, ctMaterialSpec, ctColor: ctColorSpec, ctAmenities, ctMaster }),
+        body: JSON.stringify({ jobId: selectedJob.id, unitTypes: unitTypesPayload, totals: totalsPayload, wastePct: ctWastePct, propConfig, sender: ctSender, bidSections: ctBidSections, marginPct: Number(ctMargin), grossCostOverride: Number(ctGross) || 0, notes: ctNotes, hideUnitPricing, totalOnly, brandAs, ctLocalMaterial: Number(ctGross) || 0, ctLocalInstall: Number(ctLocalInstall) || 0, ctImportMaterial: Number(ctImportMat) || 0, ctImportInstall: Number(ctImportInstall) || 0, ctLocalSell: Number(ctLocalSell) || 0, ctImportSell: Number(ctImportSell) || 0, ctMaterialSpec, ctColor: ctColorSpec, ctAmenities, ctMaster, preview: !!previewMode }),
       })
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed') }
       const blob = await res.blob()
       const url  = URL.createObjectURL(blob)
+      if (previewMode) { setPreviewUrl(url); setCtGenerating(false); return }
       const a    = document.createElement('a'); a.href = url
       a.download = `MDSG-CT-Proposal-${selectedJob.name.replace(/[^a-z0-9]/gi,'-')}.pdf`
       a.click(); URL.revokeObjectURL(url)
@@ -2753,7 +2755,7 @@ export default function Home() {
                                 <div key={label} style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:5 }}>
                                   <span style={{ width:86, fontSize:11, fontWeight:600, color:'#555', paddingBottom:6 }}>{label}</span>
                                   <div><label style={lblC}>$/SF</label><input type="number" step="0.01" min="0" value={v[rk]} placeholder="blank = omit" onChange={set(rk)} style={inC}/></div>
-                                  <div><label style={lblC}>Margin (×)</label><input type="number" step="0.01" min="1" value={v[mk]} onChange={set(mk)} style={{ ...inC, width:70 }}/></div>
+                                  <div><label style={lblC}>Margin (× or %)</label><input type="number" step="0.01" min="1" value={v[mk]} onChange={set(mk)} style={{ ...inC, width:70 }}/></div>
                                   {r && <span style={{ fontSize:11.5, color:'#2D7A3A', fontWeight:700, paddingBottom:7 }}>= {fmt(Math.round(r.sell))}</span>}
                                 </div>
                               )
@@ -2802,9 +2804,14 @@ export default function Home() {
                       </div>
                     ))}
                     <button onClick={()=>setCtBidSections(DEFAULT_CT_BID_SECTIONS)} style={{ marginBottom:10, padding:'3px 10px', fontSize:11, borderRadius:6, cursor:'pointer', background:'#f5f5f3', color:'#555', border:'0.5px solid #ddd' }}>↺ Reset to defaults</button>
-                      <button onClick={generateCtProposal} disabled={ctGenerating} style={{ width: '100%', padding: 10, marginTop: 12, background: ctGenerating ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
+                      <div style={{ display:'flex', gap:8 }}>
+                      <button onClick={()=>generateCtProposal(true)} disabled={ctGenerating} style={{ flex:1, padding: 10, marginTop: 12, background: '#fff', color: '#8B6914', border: '1.5px solid #8B6914', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>
+                        {ctGenerating ? '…' : '👁 Preview'}
+                      </button>
+                      <button onClick={()=>generateCtProposal(false)} disabled={ctGenerating} style={{ flex: 2, padding: 10, marginTop: 12, background: ctGenerating ? '#888' : '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: ctGenerating ? 'default' : 'pointer', fontSize: 13, fontWeight: 500 }}>
                         {ctGenerating ? 'Generating…' : '⬇ Generate Countertop Proposal PDF'}
                       </button>
+                    </div>
 
                       {/* CT proposal sets */}
                       <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:12 }}>
