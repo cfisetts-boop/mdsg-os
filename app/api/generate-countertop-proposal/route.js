@@ -296,10 +296,23 @@ export async function POST(request) {
 
     // ═ NOTES band (shop drawings) ═
     y -= 6
-    box(ML, y - 16, W - 160, 16, sage); box(MR - 160, y - 16, 160, 16)
+    const wrapNotes = (t, size, maxW) => {
+      const words = String(t).split(' '); const lines = []; let cur = ''
+      for (const w2 of words) {
+        const cand = cur ? cur + ' ' + w2 : w2
+        if (bold.widthOfTextAtSize(cand, size) <= maxW) cur = cand
+        else { if (cur) lines.push(cur); cur = w2 }
+      }
+      if (cur) lines.push(cur)
+      return lines.length ? lines : ['']
+    }
+    const nLines = wrapNotes(SEC.bottomNotes, 7, W - 215)
+    const nH = 8 + nLines.length * 9
+    box(ML, y - nH, W - 160, nH, sage); box(MR - 160, y - nH, 160, nH)
     txt('NOTES:', ML + 3, y - 11, { boldIt:true, size:8 })
-    txt(SEC.bottomNotes, ML + 40, y - 11, { bold:true, size:7.5, maxWidth: W - 210 })
-    y -= 16
+    let ny2 = y - 11
+    for (const nl of nLines) { txt(nl, ML + 40, ny2, { bold:true, size:7 }); ny2 -= 9 }
+    y -= nH
 
     // ═ Thank-you + signature cell ═
     const tH = 34
