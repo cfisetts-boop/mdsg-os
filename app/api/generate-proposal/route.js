@@ -18,7 +18,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null, master = null, preview = false } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null, master = null, preview = false, breakoutInstall = false } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -443,6 +443,14 @@ export async function POST(request) {
         baseBand(label)
         if (totalOnly) {
           bandRow(null, null, fmtMoney(m.total), { rl: 'TOTAL', rlBold: true })
+        } else if (breakoutInstall && m.inst > 0) {
+          // Cabinets broken out from installation — separate totals
+          bandRow(null, 'CABINETS — INCLUDES FREIGHT & APPLICABLE SALES TAX', fmtMoney(m.cabSell), { bold:true })
+          if (m.hwSell > 0) bandRow(null, null, fmtMoney(m.hwSell), { rl: 'HARDWARE ALLOWANCE' })
+          bandRow(null, null, fmtMoney(m.cabSell + m.hwSell), { rl: 'CABINET SUPPLY TOTAL', rlBold: true })
+          bandRow(null, instLabel, fmtMoney(m.inst), { bold:true })
+          bandRow(null, null, fmtMoney(m.inst), { rl: 'INSTALLATION TOTAL', rlBold: true })
+          bandRow(null, null, fmtMoney(m.total), { rl: 'GRAND TOTAL', rlBold: true })
         } else {
           bandRow(null, 'CABINETS — INCLUDES FREIGHT & APPLICABLE SALES TAX', fmtMoney(m.cabSell), { bold:true })
           if (m.hwSell > 0) bandRow(null, null, fmtMoney(m.hwSell), { rl: 'HARDWARE ALLOWANCE' })
@@ -492,7 +500,10 @@ export async function POST(request) {
         }
       }
     }
-    const taxPctShown = mfrTax > 0 && (grossCost + freight) > 0 ? ((mfrTax / (grossCost + freight)) * 100).toFixed(2).replace(/0$/, '') : (salesTax > 0 ? String(salesTax) : null)
+    const masterTaxPct = n0(master?.leedo?.taxRate) || n0(master?.rta?.taxRate)
+    const taxPctShown = masterMode
+      ? (masterTaxPct > 0 ? String(masterTaxPct) : null)
+      : (mfrTax > 0 && (grossCost + freight) > 0 ? ((mfrTax / (grossCost + freight)) * 100).toFixed(2).replace(/0$/, '') : (salesTax > 0 ? String(salesTax) : null))
     bandRows2('INCLUDED IN BID:', SEC.includedInBid.split(/\||\n/).map(s => s.trim()).filter(Boolean).map(s => /^sales tax$/i.test(s) && taxPctShown ? `Sales Tax:  ${taxPctShown}%` : s))
     if (!isGW) bandRows2('ASSEMBLY, STAGING & INSTALLATION:', SEC.assembly.split('\n').map(s => s.trim()).filter(Boolean))
     bandRows2('NOT INCLUDED IN BID:', SEC.notIncluded.split('\n').map(s => s.trim()).filter(Boolean).map(s => '- ' + s.replace(/^[-•]\s*/, '')))
