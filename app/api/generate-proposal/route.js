@@ -376,7 +376,7 @@ export async function POST(request) {
       const m = clUnits.find(u => (u.unit_type_name || '').trim().toUpperCase() === (name || '').trim().toUpperCase())
       return m ? (m.kind || 'unit') : 'unit'
     }
-    if (hideUnitPricing || totalOnly) {
+    {
       box(ML, y - 12, W, 12, sage); txt('PROJECT SCOPE:', ML + 2, y - 9, { bold:true, size:7.5 })
       const bits = []
       const scopeUnits = Number(job.units_override) > 0 ? Number(job.units_override) : nUnits
@@ -386,34 +386,6 @@ export async function POST(request) {
       bits.push(`${scopeCabs.toLocaleString()} Total Cabinets`)
       txt(bits.join('   ·   '), ML + 95, y - 9, { bold:true, size:7 })
       y -= 12
-    } else {
-      box(ML, y - 12, W, 12, sage); ctr('UNIT TYPE BREAKDOWN', ML, W, y - 9, { bold:true, size:7.5 }); y -= 12
-      const CU = MR - 220, CC = MR - 140, CP = MR - 84
-      box(ML, y - 11, CU - ML, 11); box(CU, y - 11, 80, 11); box(CC, y - 11, 56, 11); box(CP, y - 11, 84, 11)
-      txt('UNIT TYPE', ML + 2, y - 8, { bold:true, size:6.5 }); ctr('UNITS', CU, 80, y - 8, { bold:true, size:6.5 })
-      ctr('CABINETS', CC, 56, y - 8, { bold:true, size:6.5 }); ctr('MFR PRICE', CP, 84, y - 8, { bold:true, size:6.5 })
-      y -= 11
-      const ordered = [...effUnits.filter(u => kindOf(u.unit_type_name) !== 'amenity'), ...effUnits.filter(u => kindOf(u.unit_type_name) === 'amenity')].slice(0, 40)
-      let amenHdr = false
-      for (const ut of ordered) {
-        ensure(12)
-        if (!amenHdr && kindOf(ut.unit_type_name) === 'amenity') {
-          box(ML, y - 11, W, 11, rgb(0.90, 0.92, 0.90)); txt('AMENITIES', ML + 2, y - 8, { bold:true, size:6.5 }); y -= 11
-          amenHdr = true
-        }
-        box(ML, y - 11, CU - ML, 11); box(CU, y - 11, 80, 11); box(CC, y - 11, 56, 11); box(CP, y - 11, 84, 11)
-        txt(String(ut.unit_type_name || '').substring(0, 58), ML + 2, y - 8, { size:6.8 })
-        ctr(String(ut.unit_quantity || 1), CU, 80, y - 8, { size:6.8 })
-        ctr(String(ut.cabinet_count || 0), CC, 56, y - 8, { size:6.8 })
-        rgt(ut.manufacturer_price ? fmtMoney(ut.manufacturer_price) : '—', MR, y - 8, { size:6.8 })
-        y -= 11
-      }
-      ensure(12)
-      box(ML, y - 11, CU - ML, 11, sage); box(CU, y - 11, 80, 11, sage); box(CC, y - 11, 56, 11, sage); box(CP, y - 11, 84, 11, sage)
-      txt('TOTALS', ML + 2, y - 8, { bold:true, size:6.8 })
-      ctr(String(job.units_override ?? effUnits.reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)), CU, 80, y - 8, { bold:true, size:6.8 })
-      ctr(totalCabsDisplay.toLocaleString(), CC, 56, y - 8, { bold:true, size:6.8 })
-      y -= 11
     }
 
     // ═ PRICING — BASE PRICE blocks ═
@@ -451,8 +423,7 @@ export async function POST(request) {
           bandRow(null, 'CABINETS — INCLUDES FREIGHT & APPLICABLE SALES TAX', fmtMoney(m.cabSell), { bold:true })
           if (m.hwSell > 0) bandRow(null, null, fmtMoney(m.hwSell), { rl: 'HARDWARE ALLOWANCE' })
           bandRow(null, null, fmtMoney(m.cabSell + m.hwSell), { rl: 'CABINET SUPPLY TOTAL', rlBold: true })
-          bandRow(null, instLabel, fmtMoney(m.inst), { bold:true })
-          bandRow(null, null, fmtMoney(m.inst), { rl: 'INSTALLATION TOTAL', rlBold: true })
+          bandRow(null, instLabel, fmtMoney(m.inst), { bold:true, rl: 'TOTAL', rlBold: true })
           bandRow(null, null, fmtMoney(m.total), { rl: 'GRAND TOTAL', rlBold: true })
         } else {
           bandRow(null, 'CABINETS — INCLUDES FREIGHT & APPLICABLE SALES TAX', fmtMoney(m.cabSell), { bold:true })
