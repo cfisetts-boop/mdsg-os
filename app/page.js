@@ -329,7 +329,7 @@ export default function Home() {
       ['HINGES', j.hinge_type || ''],
       ['MANUFACTURER CONTACT', j.manufacturer || ''],
       ['ESTIMATED DELIVERY DATE', j.est_delivery || ''],
-      ['NUMBER OF TRUCKLOADS', ''],
+      ['NUMBER OF TRUCKLOADS', j.deliveries_count || j.num_deliveries || ''],
       ['— COUNTERTOPS: KITCHEN —', ''],
       ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
       ['— COUNTERTOPS: BATH —', ''],
@@ -1955,10 +1955,16 @@ export default function Home() {
                             {specLib.map(r => {
                               const specText = [selectedJob.door_style, selectedJob.cabinet_construction, selectedJob.box_construction, selectedJob.drawer_box].filter(Boolean).join(' ').toLowerCase()
                               const tagList = (r.tags || '').split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 2)
-                              const match = tagList.some(t => specText.includes(t) || t.split(/[\s/-]+/).some(w => w.length > 3 && specText.includes(w)))
+                              const specFrameless = /frameless/.test(specText), specFramed = !specFrameless && /\bframed\b/.test(specText)
+                              const STOPW = ['particle','board','plywood','standard','overlay','panel','soft','close','full','euro']
+                              const match = tagList.some(t => {
+                                const tFrameless = /frameless/.test(t), tFramed = !tFrameless && /\bframed\b/.test(t)
+                                if ((tFramed && specFrameless) || (tFrameless && specFramed)) return false
+                                return specText.includes(t) || t.split(/[\s/-]+/).some(w => w.length > 3 && !STOPW.includes(w) && specText.includes(w))
+                              })
                               const on = litSelected.includes(r.id)
                               return (
-                                <label key={r.id} style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'3px 8px', borderRadius:6, cursor:'pointer', border:'0.5px solid ' + (on ? '#3C3489' : '#e0e0e0'), background: on ? '#f0eff9' : '#fff', color: match ? '#2D7A3A' : '#555', fontWeight: match ? 700 : 400 }}>
+                                <label key={r.id} title={on && ((/frameless/.test((r.tags||'').toLowerCase()) && specFramed) || (/\bframed\b/.test((r.tags||'').toLowerCase()) && specFrameless)) ? 'Selected, but this sheet does not match this job\'s construction' : undefined} style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'3px 8px', borderRadius:6, cursor:'pointer', border: (on && ((/frameless/.test((r.tags||'').toLowerCase()) && specFramed) || (/\bframed\b/.test((r.tags||'').toLowerCase()) && specFrameless))) ? '1.5px solid #A32D2D' : '0.5px solid ' + (on ? '#3C3489' : '#e0e0e0'), background: on ? '#f0eff9' : '#fff', color: match ? '#2D7A3A' : '#555', fontWeight: match ? 700 : 400 }}>
                                   <input type="checkbox" checked={on} onChange={()=>setLitSelected(pv => on ? pv.filter(x => x !== r.id) : [...pv, r.id])} style={{ width:12, height:12 }}/>
                                   {r.title.length > 38 ? r.title.substring(0, 38) + '…' : r.title}
                                 </label>

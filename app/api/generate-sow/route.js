@@ -32,6 +32,7 @@ export async function POST(request) {
       [/amenit/i, () => job.amenities_override],
       [/est\.?\s*delivery|delivery\s*date/i, () => job.est_delivery],
       [/no\.?\s*of\s*deliveries|deliveries/i, () => job.deliveries_count],
+      [/truckloads?/i, () => job.deliveries_count || job.num_deliveries],
       [/hardware/i, () => job.hardware_allowance ? '$' + Number(job.hardware_allowance).toLocaleString() : null],
     ]
     // Typed SOW values always win; job data only fills rows left BLANK.
