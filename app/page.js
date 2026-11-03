@@ -1687,11 +1687,10 @@ export default function Home() {
                         <div style={{ fontSize:11, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.4, marginBottom:8, marginTop:4 }}>Cabinet Specs</div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
                           <div><label style={lbl}>Door Style</label>
-                            <select value={editFields.door_style} onChange={e => setEditFields(pv => ({ ...pv, door_style: e.target.value }))} style={inp}>
-                              <option value="">— select —</option>
-                              {(DOOR_STYLES[cabList?.product_line || 'framed'] || []).map(d => <option key={d} value={d}>{d}</option>)}
-                              {editFields.door_style && !(DOOR_STYLES[cabList?.product_line || 'framed'] || []).includes(editFields.door_style) && <option value={editFields.door_style}>{editFields.door_style}</option>}
-                            </select></div>
+                            <input list="door-style-options" value={editFields.door_style} placeholder="pick or type any door style" onChange={e => setEditFields(pv => ({ ...pv, door_style: e.target.value }))} style={inp} />
+                            <datalist id="door-style-options">
+                              {(DOOR_STYLES[cabList?.product_line || 'framed'] || []).map(d => <option key={d} value={d} />)}
+                            </datalist></div>
                           <div><label style={lbl}>Drawer Box &amp; Glide</label>
                             <select value={editFields.drawer_box} onChange={e => setEditFields(pv => ({ ...pv, drawer_box: e.target.value }))} style={inp}>
                               <option value="">— select —</option>
