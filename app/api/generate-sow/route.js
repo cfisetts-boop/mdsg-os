@@ -34,8 +34,11 @@ export async function POST(request) {
       [/no\.?\s*of\s*deliveries|deliveries/i, () => job.deliveries_count],
       [/hardware/i, () => job.hardware_allowance ? '$' + Number(job.hardware_allowance).toLocaleString() : null],
     ]
+    // Typed SOW values always win; job data only fills rows left BLANK.
+    // (Explicit refresh is the Pull Job Data button in the app.)
     rows = rows.map(([label, value]) => {
       if (String(label).startsWith('— ')) return [label, value]
+      if (value !== null && value !== undefined && String(value).trim() !== '') return [label, value]
       for (const [re2, get] of OVERLAY) {
         if (re2.test(String(label))) { const v = get(); if (v !== null && v !== undefined && v !== '') return [label, String(v)]; break }
       }
