@@ -209,6 +209,7 @@ export default function Home() {
   const [masterImporting, setMasterImporting] = useState(false)
   const [previewUrl,      setPreviewUrl]      = useState(null)
   const [breakoutInstall, setBreakoutInstall] = useState(false)
+  const [includeRta,      setIncludeRta]      = useState(true)
   const [reportOwner,     setReportOwner]     = useState('all')
   const [reportGc,        setReportGc]        = useState('all')
   const [priceLeedo,      setPriceLeedo]      = useState('')
@@ -507,7 +508,7 @@ export default function Home() {
     proposalSalesTax, applyDiscount, discountPct, hwPieces, hwRate, hideUnitPricing, totalOnly, brandAs,
     priceLeedo, sellLeedo, priceRta, sellRta, installLeedo, installRta, litSelected, bidSections,
     ctSender, ctWastePct, ctMargin, ctNotes, ctGross, ctLocalInstall, ctImportMat, ctImportInstall,
-    ctMaterialSpec, ctColorSpec, ctAmenities, masterCost, masterTab, breakoutInstall,
+    ctMaterialSpec, ctColorSpec, ctAmenities, masterCost, masterTab, breakoutInstall, includeRta,
   })
   function applyDraft(d) {
     if (!d || typeof d !== 'object') return
@@ -521,7 +522,7 @@ export default function Home() {
       bidSections: setBidSections, ctSender: setCtSender, ctWastePct: setCtWastePct, ctMargin: setCtMargin,
       ctNotes: setCtNotes, ctGross: setCtGross, ctLocalInstall: setCtLocalInstall, ctImportMat: setCtImportMat,
       ctImportInstall: setCtImportInstall, ctMaterialSpec: setCtMaterialSpec, ctColorSpec: setCtColorSpec,
-      ctAmenities: setCtAmenities, masterCost: setMasterCost, masterTab: setMasterTab, breakoutInstall: setBreakoutInstall,
+      ctAmenities: setCtAmenities, masterCost: setMasterCost, masterTab: setMasterTab, breakoutInstall: setBreakoutInstall, includeRta: setIncludeRta,
     }
     for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) setter(d[k])
   }
@@ -1066,7 +1067,7 @@ export default function Home() {
       const response = await fetch('/api/generate-proposal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, installLeedo: installLeedo !== '' ? Number(installLeedo) : null, installRta: installRta !== '' ? Number(installRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4, master: masterCost, preview: !!previewMode, breakoutInstall }),
+        body: JSON.stringify({ jobId: selectedJob.id, sender: proposalSender, notes: proposalNotes, marginPct: Number(proposalMargin), grossCostOverride: Number(proposalGross) || 0, salesTaxPct: Number(proposalSalesTax), additionalLineItems, bidSections, freightPassThrough: proposalFreight !== '' ? Number(proposalFreight) : null, mfrTaxPassThrough: proposalMfrTax !== '' ? Number(proposalMfrTax) : null, applyDealerDiscount: applyDiscount, dealerDiscountPct: discountPct, costLeedo: priceLeedo !== '' ? Number(priceLeedo) : null, sellLeedo: sellLeedo !== '' ? Number(sellLeedo) : null, costRta: priceRta !== '' ? Number(priceRta) : null, sellRta: sellRta !== '' ? Number(sellRta) : null, installLeedo: installLeedo !== '' ? Number(installLeedo) : null, installRta: installRta !== '' ? Number(installRta) : null, literaturePaths: litSelected.map(id => (specLib.find(s => s.id === id) || {}).file_path).filter(Boolean), hideUnitPricing, totalOnly, brandAs, hwPieces: Number(hwPieces) || 0, hwRate: Number(hwRate) || 4, master: masterCost, preview: !!previewMode, breakoutInstall, includeRta }),
       })
       if (!response.ok) { const err = await response.json(); throw new Error(err.error || 'Failed') }
       // Persist the bid sections on the job so they reload next time (needs jobs.proposal_sections jsonb column)
@@ -1958,6 +1959,12 @@ export default function Home() {
                         <input type="checkbox" checked={breakoutInstall} onChange={e=>setBreakoutInstall(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Break out installation — cabinet supply and installation get separate totals on the proposal
                       </label>
+                      {calcMasterClient(masterCost.rta) && (
+                        <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color: includeRta ? '#8B6914' : '#555', fontWeight: includeRta ? 600 : 400 }}>
+                          <input type="checkbox" checked={includeRta} onChange={e=>setIncludeRta(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
+                          Print Imported RTA block on this proposal (RTA tab has pricing — uncheck to keep it internal)
+                        </label>
+                      )}
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={totalOnly} onChange={e=>setTotalOnly(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Grand total only — hide Base/Freight/Tax/Hardware lines, show one TOTAL

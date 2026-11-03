@@ -18,7 +18,7 @@ export async function POST(request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     )
 
-    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null, master = null, preview = false, breakoutInstall = false } = await request.json()
+    const { jobId, sender = 'Cole', notes, markupMultiplier, marginPct, grossCostOverride, salesTaxPct, bidSections = {}, freightPassThrough = null, mfrTaxPassThrough = null, applyDealerDiscount = true, hwPieces = 0, hwRate = 4.00, hideUnitPricing = false, totalOnly = false, brandAs = 'mdsg', dealerDiscountPct = null, literaturePaths = [], priceLeedo = null, priceRta = null, costLeedo = null, sellLeedo = null, costRta = null, sellRta = null, installLeedo = null, installRta = null, master = null, preview = false, breakoutInstall = false, includeRta = true } = await request.json()
 
     const DEFAULT_SECTIONS = {
       includedInBid: 'Sales Tax  |  Delivery to Job Site',
@@ -178,7 +178,7 @@ export async function POST(request) {
       return { cabSell, hwSell, inst, total, cost }
     }
     const mcL = calcMaster(master?.leedo)
-    const mcR = calcMaster(master?.rta)
+    const mcR = includeRta === false ? null : calcMaster(master?.rta)
     const masterMode = !!(mcL || mcR)
     // Manual (cost/sell) mode: hardware allowance and sales tax are allocated ON TOP
     // of the cabinets number, each on its own line (team ask 10/22)
@@ -379,8 +379,11 @@ export async function POST(request) {
     if (hideUnitPricing || totalOnly) {
       box(ML, y - 12, W, 12, sage); txt('PROJECT SCOPE:', ML + 2, y - 9, { bold:true, size:7.5 })
       const bits = []
-      if (nUnits > 0) bits.push(`${nUnits} Units`); if (nBaths > 0) bits.push(`${nBaths} Bathrooms`); if (nAmen > 0) bits.push(`${nAmen} Amenities`)
-      bits.push(`${totalCabsDisplay.toLocaleString()} Total Cabinets`)
+      const scopeUnits = Number(job.units_override) > 0 ? Number(job.units_override) : nUnits
+      const scopeAmen = Number(job.amenities_override) > 0 ? Number(job.amenities_override) : nAmen
+      const scopeCabs = Number(job.total_cabinets_override) > 0 ? Number(job.total_cabinets_override) : totalCabsDisplay
+      if (scopeUnits > 0) bits.push(`${scopeUnits} Units`); if (nBaths > 0) bits.push(`${nBaths} Bathrooms`); if (scopeAmen > 0) bits.push(`${scopeAmen} Amenities`)
+      bits.push(`${scopeCabs.toLocaleString()} Total Cabinets`)
       txt(bits.join('   ·   '), ML + 95, y - 9, { bold:true, size:7 })
       y -= 12
     } else {
