@@ -1862,7 +1862,8 @@ export default function Home() {
                           </div>
                         </div>
                       )}
-                      {/* ══ MASTER COST WORKSHEET ══════════════════════════ */}
+                    </div>
+                    {/* ══ MASTER COST WORKSHEET ══════════════════════════ */}
                       <div style={{ border:'1px solid #c9c3e8', borderRadius:10, padding:12, marginBottom:12, background:'#fbfaff' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
                           <span style={{ fontSize:12, fontWeight:700, color:'#3C3489' }}>MASTER COST WORKSHEET</span>
