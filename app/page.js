@@ -223,7 +223,7 @@ export default function Home() {
   const [previewUrl,      setPreviewUrl]      = useState(null)
   const [breakoutInstall, setBreakoutInstall] = useState(false)
   const [includeRta,      setIncludeRta]      = useState(true)
-  const [ctMaster,        setCtMaster]        = useState({ local: { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 }, import: { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 } })
+  const [ctMaster,        setCtMaster]        = useState({ local: { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 }, import: { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 }, other: { ...{ sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 }, blockTitle:'', materialSpec:'', color:'' } })
   const [ctTab,           setCtTab]           = useState('local')
   const [reportOwner,     setReportOwner]     = useState('all')
   const [reportGc,        setReportGc]        = useState('all')
@@ -2739,8 +2739,8 @@ export default function Home() {
                       <div style={{ border:'1px solid #e4d7b0', borderRadius:10, padding:12, marginBottom:12, background:'#fffdf6' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10, flexWrap:'wrap' }}>
                           <span style={{ fontSize:12, fontWeight:700, color:'#8B6914' }}>COUNTERTOP COST WORKSHEET</span>
-                          {['local','import'].map(tb => (
-                            <button key={tb} onClick={()=>setCtTab(tb)} style={{ padding:'4px 16px', fontSize:11, fontWeight:700, borderRadius:6, cursor:'pointer', border:'0.5px solid ' + (ctTab===tb ? '#8B6914' : '#ddd'), background: ctTab===tb ? '#8B6914' : '#fff', color: ctTab===tb ? '#fff' : '#555' }}>{tb==='local' ? 'LOCAL FABRICATOR' : 'IMPORT'}</button>
+                          {['local','import','other'].map(tb => (
+                            <button key={tb} onClick={()=>setCtTab(tb)} style={{ padding:'4px 16px', fontSize:11, fontWeight:700, borderRadius:6, cursor:'pointer', border:'0.5px solid ' + (ctTab===tb ? '#8B6914' : '#ddd'), background: ctTab===tb ? '#8B6914' : '#fff', color: ctTab===tb ? '#fff' : '#555' }}>{tb==='local' ? 'LOCAL FABRICATOR' : tb==='import' ? 'IMPORT' : 'OTHER'}</button>
                           ))}
                         </div>
                         {(() => {
@@ -2754,6 +2754,11 @@ export default function Home() {
                             <div style={{ display:'flex', gap:10, alignItems:'flex-end', marginBottom:8 }}>
                               <div><label style={lblC}>Total SF</label><input type="number" min="0" value={v.sf} onChange={set('sf')} style={{ ...inC, width:100 }}/></div>
                               <div><label style={lblC}>Sales Tax %</label><input type="number" step="0.01" min="0" value={v.taxRate} onChange={set('taxRate')} style={{ ...inC, width:80 }}/></div>
+                              {ctTab === 'other' && (<>
+                                <div><label style={lblC}>Block Title</label><input value={v.blockTitle || ''} placeholder="ALTERNATE OPTION" onChange={set('blockTitle')} style={{ ...inC, width:140 }}/></div>
+                                <div><label style={lblC}>Material Spec (this option)</label><input value={v.materialSpec || ''} placeholder="e.g. 3CM GRANITE" onChange={set('materialSpec')} style={{ ...inC, width:150 }}/></div>
+                                <div><label style={lblC}>Color (this option)</label><input value={v.color || ''} placeholder="e.g. Steel Grey" onChange={set('color')} style={{ ...inC, width:130 }}/></div>
+                              </>)}
                             </div>
                             {rowDef.map(([label, rk, mk]) => {
                               const r = C?.rows.find(x => x.label === label)
@@ -2767,11 +2772,11 @@ export default function Home() {
                               )
                             })}
                             <div style={{ display:'flex', gap:14, alignItems:'center', background:'#8B6914', borderRadius:8, padding:'8px 12px', marginTop:8 }}>
-                              <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{ctTab==='local' ? 'LOCAL' : 'IMPORT'} TOTAL</span>
+                              <span style={{ fontSize:11, fontWeight:700, color:'#fff' }}>{ctTab==='local' ? 'LOCAL' : ctTab==='import' ? 'IMPORT' : 'OTHER'} TOTAL</span>
                               <span style={{ fontSize:16, fontWeight:800, color:'#fff' }}>{C ? fmt(Math.round(C.total)) : '—'}</span>
                               {C && C.tax > 0 && <span style={{ fontSize:10, color:'#f0e3bd' }}>incl. tax {fmt(Math.round(C.tax))}</span>}
                               {C && <span style={{ fontSize:10, color:'#f0e3bd' }}>cost {fmt(Math.round(C.cost))} · GM {(C.gm*100).toFixed(1)}%</span>}
-                              {(() => { const o = calcCtClient(ctMaster[ctTab==='local' ? 'import' : 'local']); return o ? <span style={{ marginLeft:'auto', fontSize:10, color:'#f0e3bd' }}>{ctTab==='local' ? 'IMPORT' : 'LOCAL'}: {fmt(Math.round(o.total))} — both print</span> : <span style={{ marginLeft:'auto', fontSize:10, color:'#f0e3bd' }}>{ctTab==='local' ? 'IMPORT' : 'LOCAL'} empty</span> })()}
+                              {(() => { const others = ['local','import','other'].filter(t2 => t2 !== ctTab).map(t2 => { const o = calcCtClient(ctMaster[t2]); return o ? `${t2.toUpperCase()}: ${fmt(Math.round(o.total))}` : null }).filter(Boolean); return <span style={{ marginLeft:'auto', fontSize:10, color:'#f0e3bd' }}>{others.length ? others.join(' · ') + ' — all filled options print' : 'other options empty'}</span> })()}
                             </div>
                           </>)
                         })()}

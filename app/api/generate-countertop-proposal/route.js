@@ -70,7 +70,8 @@ export async function POST(request) {
     }
     const cmL = calcCt(ctMaster?.local)
     const cmI = calcCt(ctMaster?.import)
-    const ctMasterMode = !!(cmL || cmI)
+    const cmO = calcCt(ctMaster?.other)
+    const ctMasterMode = !!(cmL || cmI || cmO)
     const manualMode = !ctMasterMode && (locMat > 0 || impMat > 0)
     const cost = Number(grossCostOverride) || 0
     const margin = Math.min(Math.max(Number(marginPct) || 0, 0), 60)
@@ -81,7 +82,7 @@ export async function POST(request) {
     // Manual CT lines print EXACTLY AS TYPED — no markup, no scaling (team decision 10/7)
     const loc = { m2: locMat, i2: locIns, tot: locMat + locIns }
     const imp = { m2: impMat, i2: impIns, tot: impMat + impIns }
-    const headline = ctMasterMode ? (cmL || cmI).total : (manualMode ? (locMat > 0 ? loc.tot : imp.tot) : sell)
+    const headline = ctMasterMode ? (cmL || cmI || cmO).total : (manualMode ? (locMat > 0 ? loc.tot : imp.tot) : sell)
 
     const isGW = brandAs === 'greenworks'
     const today = new Date()
@@ -238,12 +239,17 @@ export async function POST(request) {
       y -= 12
     }
     if (ctMasterMode) {
-      const ctBlock = (label, m) => {
+      const ctBlock = (label, m, specLine = null) => {
         if (!m) return
         box(ML, y - 12, W - 84, 12, sage); box(MR - 84, y - 12, 84, 12, sage)
         txt('BASE PRICE:  ' + label, ML + 8, y - 9, { bold:true, size:7.5 })
         ctr('TOTAL COST', MR - 84, 84, y - 9, { bold:true, size:7 })
         y -= 12
+        if (specLine) {
+          box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
+          txt(specLine, ML + 8, y - 9, { bold:true, size:6.8 })
+          y -= 12
+        }
         if (!totalOnly) {
           for (const r of m.rows) {
             box(ML, y - 12, W - 84, 12); box(MR - 84, y - 12, 84, 12)
@@ -263,6 +269,12 @@ export async function POST(request) {
       }
       ctBlock('LOCAL FABRICATOR', cmL)
       ctBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', cmI)
+      {
+        const o = ctMaster?.other || {}
+        const oSpec = [o.materialSpec, o.color].filter(s => s && String(s).trim()).map(String)
+        ctBlock(String(o.blockTitle || 'ALTERNATE OPTION').toUpperCase(), cmO,
+          oSpec.length ? 'MATERIAL SPEC: ' + (oSpec[0] || '—') + (oSpec[1] ? '   ·   COLOR: ' + oSpec[1] : '') : null)
+      }
     } else if (manualMode) {
       if (locMat > 0) priceBlock('LOCAL FABRICATOR - MATERIAL', loc.m2, loc.i2)
       if (impMat > 0) priceBlock('IMPORT MATERIAL to MATCH MATERIAL SPEC ABOVE', imp.m2, imp.i2)
