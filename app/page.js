@@ -62,6 +62,7 @@ const fmt = (n) => n ? '$' + Math.round(n).toLocaleString() : '—'
 const LEAD_SOURCES = ['Jeff N.']   // industry partners — add names here as they sign on
 const OWNER_EMAILS = { Cole: 'cole@mdsgcabinets.com', Pam: 'pam@mdsgcabinets.com', Vicki: 'vicki@mdsgcabinets.com', Blake: 'csr@mdsgcabinets.com', Tabetha: 'tabetha@mdsgcabinets.com' }
 const calcCtClient = (v) => {
+  if (!v || typeof v !== 'object') return null
   const n = (x) => Number(x) > 0 ? Number(x) : 0
   const sf = n(v?.sf)
   const nm = (x) => { const m2 = n(x); if (!m2) return 1; return m2 >= 3 ? (m2 < 95 ? 1 / (1 - m2 / 100) : 1) : m2 }
@@ -540,7 +541,11 @@ export default function Home() {
       ctImportInstall: setCtImportInstall, ctMaterialSpec: setCtMaterialSpec, ctColorSpec: setCtColorSpec,
       ctAmenities: setCtAmenities, masterCost: setMasterCost, masterTab: setMasterTab, breakoutInstall: setBreakoutInstall, includeRta: setIncludeRta, ctMaster: setCtMaster, ctTab: setCtTab,
     }
-    for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) setter(d[k])
+    const CTV0 = { sf:'', matRate:'', matMargin:1.35, fabRate:'', fabMargin:1.2, tmplRate:'', tmplMargin:1.2, instRate:'', instMargin:1.2, taxRate:0 }
+    for (const [k, setter] of Object.entries(S)) if (d[k] !== undefined && d[k] !== null) {
+      if (k === 'ctMaster') setter({ local: { ...CTV0, ...(d.ctMaster.local || {}) }, import: { ...CTV0, ...(d.ctMaster.import || {}) }, other: { ...CTV0, blockTitle:'', materialSpec:'', color:'', ...(d.ctMaster.other || {}) } })
+      else setter(d[k])
+    }
   }
   // Autosave SOW + Post-Award edits while typing (debounced) — nothing is lost
   // if someone leaves the job mid-edit (team ask 10/28)
@@ -2637,6 +2642,7 @@ export default function Home() {
                               <span style={{ width:70, color:'#888' }}>{fmtD(r[1])}</span>
                               <span style={{ width:90, fontWeight:600 }}>{fmt(Number(r[2])||0)}</span>
                               <button onClick={()=>{ const nv = inv.map((x,j)=> j===i ? [x[0],x[1],x[2], x[3]==='paid'?'unpaid':'paid'] : x); saveFin({ invoices: nv }) }} style={{ padding:'2px 10px', fontSize:10, borderRadius:10, border:'none', cursor:'pointer', fontWeight:600, background: r[3]==='paid' ? '#2D7A3A' : '#f0d9a8', color: r[3]==='paid' ? '#fff' : '#7a5c00' }}>{r[3]==='paid' ? '✓ PAID' : 'UNPAID'}</button>
+                              {r[3]==='paid' && r[5] ? <span style={{ fontSize:10, color:'#2D7A3A' }}>{fmtD(r[5])}</span> : null}
                               <button onClick={()=>{ if(!confirm('Remove invoice?')) return; saveFin({ invoices: inv.filter((_,j)=>j!==i) }) }} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D' }}>✕</button>
                             </div>
                           ))}
@@ -2734,6 +2740,7 @@ export default function Home() {
                         <option value="Cole">Cole Isetts — Sales Representative</option>
                         <option value="Pam">Pamela Isetts — President</option>
                         <option value="MDSG">MDSG Team</option>
+                        <option value="Greenworks">Greenworks Team</option>
                       </select>
 {/* ══ CT MASTER WORKSHEET ══════════════════════════ */}
                       <div style={{ border:'1px solid #e4d7b0', borderRadius:10, padding:12, marginBottom:12, background:'#fffdf6' }}>
@@ -2955,6 +2962,44 @@ export default function Home() {
                   ))}
                 </div>
                 {T('coP') > 0 && <div style={{ fontSize:12, color:'#8B6914', marginBottom:10 }}>⏳ {fmt(T('coP'))} in pending change orders (not counted until approved)</div>}
+                {(() => {
+                  const openInv = rows.flatMap(r => (r.j.invoices || []).filter(i => i[3] !== 'paid').map(i => {
+                    const due = i[4] || (i[1] ? new Date(new Date(i[1]).getTime() + 30*86400000).toISOString().split('T')[0] : null)
+                    const od = due && due < todayISO ? daysPast(due) : 0
+                    return { j: r.j, num: i[0], date: i[1], amt: Number(i[2]) || 0, due, od }
+                  })).sort((a, b) => b.od - a.od || String(a.due || '').localeCompare(String(b.due || '')))
+                  const mNow = todayISO.substring(0, 7)
+                  const paidMo = rows.flatMap(r => r.j.invoices || []).filter(i => i[3] === 'paid' && String(i[5] || '').substring(0, 7) === mNow).reduce((s, i) => s + (Number(i[2]) || 0), 0)
+                  const buckets = [['Current', 0, 0], ['1–30 Past Due', 1, 30], ['31–60 Past Due', 31, 60], ['61+ Past Due', 61, 999999]].map(([l, lo, hi]) => [l, openInv.filter(x => x.od >= lo && x.od <= hi).reduce((s, x) => s + x.amt, 0)])
+                  return (<>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:10, marginBottom:14 }}>
+                      {[...buckets.map(([l, v], bi) => [l, v, bi === 0 ? '#2D7A3A' : bi === 1 ? '#8B6914' : '#A32D2D']), ['Collected This Month', paidMo, '#2D7A3A']].map(([l, v, c2]) => (
+                        <div key={l} style={{ ...card, marginBottom:0, textAlign:'center', padding:10 }}>
+                          <div style={{ fontSize:9, color:'#888', fontWeight:600, textTransform:'uppercase', letterSpacing:0.3 }}>{l}</div>
+                          <div style={{ fontSize:15, fontWeight:700, color: v > 0 ? c2 : '#ccc', marginTop:3 }}>{fmt(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {openInv.length > 0 && (
+                      <div style={card}>
+                        <div style={{ fontWeight:500, marginBottom:8 }}>Open Invoices — Chase List <span style={{ fontSize:10, color:'#999', fontWeight:400 }}>(no due date entered = net 30 from invoice date)</span></div>
+                        <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr', gap:6, fontSize:12 }}>
+                          {['JOB', 'INV / APP #', 'SENT', 'DUE', 'AMOUNT', 'STATUS'].map(h => <div key={h} style={{ fontWeight:600, color:'#888', fontSize:10 }}>{h}</div>)}
+                          {openInv.map((x, i) => (
+                            <React.Fragment key={i}>
+                              <div onClick={()=>{ setSelectedJob(x.j); setView('job-detail') }} style={{ fontWeight:600, cursor:'pointer', color:'#1B5EA6' }}>{x.j.name}</div>
+                              <div>{x.num}</div>
+                              <div style={{ color:'#888' }}>{fmtD(x.date)}</div>
+                              <div style={{ color: x.od > 0 ? '#A32D2D' : '#555', fontWeight: x.od > 0 ? 700 : 400 }}>{fmtD(x.due)}</div>
+                              <div style={{ fontWeight:600 }}>{fmt(x.amt)}</div>
+                              <div>{x.od > 0 ? <span style={{ fontSize:10, fontWeight:700, color:'#fff', background:'#A32D2D', borderRadius:10, padding:'2px 8px' }}>{x.od}d OVERDUE</span> : <span style={{ fontSize:10, fontWeight:600, color:'#2D7A3A' }}>current</span>}</div>
+                            </React.Fragment>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>)
+                })()}
                 <div style={card}>
                   <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr', gap:6, fontSize:12 }}>
                     {['JOB','CONTRACT','+COs','BILLED','PAID','AR','TO BILL'].map(h => <div key={h} style={{ fontWeight:600, color:'#888', fontSize:10 }}>{h}</div>)}
