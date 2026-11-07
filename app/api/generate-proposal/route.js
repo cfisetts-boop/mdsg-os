@@ -487,7 +487,8 @@ export async function POST(request) {
       ? (masterTaxPct > 0 ? String(masterTaxPct) : null)
       : (mfrTax > 0 && (grossCost + freight) > 0 ? ((mfrTax / (grossCost + freight)) * 100).toFixed(2).replace(/0$/, '') : (salesTax > 0 ? String(salesTax) : null))
     bandRows2('INCLUDED IN BID:', SEC.includedInBid.split(/\||\n/).map(s => s.trim()).filter(Boolean).map(s => /^sales tax$/i.test(s) && taxPctShown ? `Sales Tax:  ${taxPctShown}%` : s))
-    if (!isGW) bandRows2('ASSEMBLY, STAGING & INSTALLATION:', SEC.assembly.split('\n').map(s => s.trim()).filter(Boolean))
+    const anyInstall = (mcL?.inst > 0) || (mcR?.inst > 0) || instL > 0 || instR > 0
+    if (!isGW && anyInstall) bandRows2('ASSEMBLY, STAGING & INSTALLATION:', SEC.assembly.split('\n').map(s => s.trim()).filter(Boolean))
     bandRows2('NOT INCLUDED IN BID:', SEC.notIncluded.split('\n').map(s => s.trim()).filter(Boolean).map(s => '- ' + s.replace(/^[-•]\s*/, '')))
 
     // ═ NOTES (General) box ═
