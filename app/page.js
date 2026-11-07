@@ -1352,6 +1352,25 @@ export default function Home() {
                   ))}
                 </div>
               )}
+              {(() => {
+                const rfqs = jobs.filter(j => !j.is_test && !j.pending_review && j.stage === 'RFQ')
+                  .sort((a, b) => String(a.bid_due_date || '9999').localeCompare(String(b.bid_due_date || '9999')))
+                if (!rfqs.length) return null
+                return (
+                  <div style={{ background:'#eef3fa', border:'0.5px solid #b9cfe8', borderRadius:10, padding:14, marginBottom:12 }}>
+                    <div style={{ fontSize:12, fontWeight:700, color:'#1B5EA6', marginBottom:6 }}>📌 RFQs — Bids Due ({rfqs.length})</div>
+                    {rfqs.map(j => (
+                      <div key={j.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'4px 0', borderTop:'0.5px dotted #b9cfe8', fontSize:12 }}>
+                        <span style={{ width:120, fontWeight:800, fontSize:12.5, color: j.bid_due_date ? (j.bid_due_date < todayISO ? '#A32D2D' : j.bid_due_date <= new Date(Date.now()+3*86400000).toISOString().split('T')[0] ? '#B86E00' : '#1B5EA6') : '#aaa' }}>{j.bid_due_date ? 'DUE ' + fmtD(j.bid_due_date) : 'no due date'}</span>
+                        {j.bid_due_date && j.bid_due_date < todayISO && <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:'#A32D2D', borderRadius:10, padding:'1px 7px' }}>PAST DUE</span>}
+                        <span onClick={()=>{ setSelectedJob(j); setView('job-detail') }} style={{ fontWeight:600, color:'#1B5EA6', cursor:'pointer', textDecoration:'underline' }}>{j.name}</span>
+                        <span style={{ color:'#888' }}>{j.gc_name || ''}</span>
+                        <span style={{ marginLeft:'auto', fontSize:11, color:'#888' }}>{j.owner || ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
               <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:8 }}>
                 <div style={{ display:'flex', gap:4, alignItems:'center' }}>
                   <span style={{ fontSize:11, color:'#888' }}>Owner:</span>
@@ -2739,6 +2758,9 @@ export default function Home() {
                       <select value={ctSender} onChange={e=>setCtSender(e.target.value)} style={{ ...inp, width: 180, marginBottom: 12 }}>
                         <option value="Cole">Cole Isetts — Sales Representative</option>
                         <option value="Pam">Pamela Isetts — President</option>
+                        <option value="Blake">Blake Isetts — Project Manager</option>
+                        <option value="Vicki">Vicki</option>
+                        <option value="Tabetha">Tabetha</option>
                         <option value="MDSG">MDSG Team</option>
                         <option value="Greenworks">Greenworks Team</option>
                       </select>

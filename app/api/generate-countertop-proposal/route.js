@@ -15,6 +15,8 @@ const SENDERS = {
   Pam:  { name: 'Pamela Isetts', title: 'President',            phone: '651-301-1063', email: 'pam@mdsgcabinets.com' },
   Blake: { name: 'Blake Isetts', title: 'Project Manager',      phone: '720-750-2093', email: 'csr@mdsgcabinets.com' },
   MDSG: { name: 'MDSG Team',     title: 'Manufacturer Direct Sales Group', phone: '', email: 'csr@mdsgcabinets.com' },
+  Vicki: { name: 'Vicki',        title: 'MDSG Cabinets', phone: '', email: 'vicki@mdsgcabinets.com' },
+  Tabetha: { name: 'Tabetha',    title: 'MDSG Cabinets', phone: '', email: 'tabetha@mdsgcabinets.com' },
   Greenworks: { name: 'Greenworks Team', title: 'Greenworks Renovations, LLC', phone: '619-718-1578', email: 'greenworksrenovationsllc@gmail.com', addr1: '5328 S. Jebel Way', addr2: 'Centennial, CO  80015' },
 }
 
