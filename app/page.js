@@ -265,6 +265,7 @@ export default function Home() {
     : { gp: true, ctp: true, uq: true, cab: true, ps: true, lit: true }
   const isCol = (k) => collapsed[k] !== undefined ? collapsed[k] : !!stageDefaults(selectedJob?.stage)[k]
   const tog = (k) => setCollapsed(c => ({ ...c, [k]: !(c[k] !== undefined ? c[k] : !!stageDefaults(selectedJob?.stage)[k]) }))
+  const sowDragIdx = useRef(null)
   const [dashCollapsed, setDashCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('mdsg_dash_collapsed') || '{}') } catch { return {} } })
   useEffect(() => { try { localStorage.setItem('mdsg_dash_collapsed', JSON.stringify(dashCollapsed)) } catch {} }, [dashCollapsed])
   const dtog = (k) => setDashCollapsed(c => ({ ...c, [k]: !c[k] }))
@@ -2418,11 +2419,13 @@ export default function Home() {
                       return (
                       <div>
                         {sowRows.map((r, i) => (!sowEditing && hid[i]) ? null : (
-                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none', opacity: sowEditing && hid[i] ? 0.45 : 1 }}>
+                          <div key={i}
+                            onDragOver={sowEditing ? (e)=>e.preventDefault() : undefined}
+                            onDrop={sowEditing ? (e)=>{ e.preventDefault(); const from = sowDragIdx.current; sowDragIdx.current = null; if (from === null || from === undefined || from === i) return; setSowRows(rs=>{ const c = [...rs]; const [m] = c.splice(from, 1); c.splice(i, 0, m); return c }) } : undefined}
+                            style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none', opacity: sowEditing && hid[i] ? 0.45 : 1 }}>
                             {sowEditing ? (
                               <>
-                                <button title="Move up" onClick={()=>setSowRows(rs=>{ if(i===0) return rs; const c=[...rs]; const t=c[i-1]; c[i-1]=c[i]; c[i]=t; return c })} style={{ background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:12, padding:'0 2px' }}>▲</button>
-                                <button title="Move down" onClick={()=>setSowRows(rs=>{ if(i===rs.length-1) return rs; const c=[...rs]; const t=c[i+1]; c[i+1]=c[i]; c[i]=t; return c })} style={{ background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:12, padding:'0 2px' }}>▼</button>
+                                <span draggable onDragStart={(e)=>{ sowDragIdx.current = i; e.dataTransfer.effectAllowed = 'move' }} title="Drag to reorder — drop on any row, in any section" style={{ cursor:'grab', color:'#bbb', fontSize:13, padding:'0 4px', userSelect:'none' }}>⠿</span>
                                 <input value={r[0]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[e.target.value,x[1],x[2]]:x))} style={{ width:240, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
                                 <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value,x[2]]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
                                 <button title="Insert line below (e.g. another unit-matrix line)" onClick={()=>setSowRows(rs=>{ const c=[...rs]; c.splice(i+1, 0, ['','']); return c })} style={{ background:'none', border:'none', cursor:'pointer', color:'#2D7A3A', fontSize:14, fontWeight:700 }}>+</button>
