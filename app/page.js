@@ -256,10 +256,20 @@ export default function Home() {
   const [loginBusy,       setLoginBusy]       = useState(false)
   const [savedQuotes,      setSavedQuotes]      = useState([])
   const [propQuoteId,      setPropQuoteId]      = useState('')
-  const [collapsed,        setCollapsed]        = useState(() => { try { return { lit: true, ...JSON.parse(localStorage.getItem('mdsg_collapsed') || '{}') } } catch { return { lit: true } } })
+  const [collapsed,        setCollapsed]        = useState(() => { try { return JSON.parse(localStorage.getItem('mdsg_collapsed') || '{}') } catch { return {} } })
   useEffect(() => { try { localStorage.setItem('mdsg_collapsed', JSON.stringify(collapsed)) } catch {} }, [collapsed])
-  const tog = (k) => setCollapsed(c => ({ ...c, [k]: !c[k] }))
-  const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{collapsed[k] ? '▸' : '▾'}</button>
+  // Stage-aware card defaults: bidding stages open bid cards, post-award stages open delivery/money cards.
+  // A user's own toggle (stored per browser) always wins over the default.
+  const stageDefaults = (stage) => ['RFQ', 'Open Proposals', 'On Hold'].includes(stage || 'RFQ')
+    ? { pa: true, trk: true, punch: true, fin: true, uq: true, lit: true }
+    : { gp: true, ctp: true, uq: true, cab: true, ps: true, lit: true }
+  const isCol = (k) => collapsed[k] !== undefined ? collapsed[k] : !!stageDefaults(selectedJob?.stage)[k]
+  const tog = (k) => setCollapsed(c => ({ ...c, [k]: !(c[k] !== undefined ? c[k] : !!stageDefaults(selectedJob?.stage)[k]) }))
+  const [dashCollapsed, setDashCollapsed] = useState(() => { try { return JSON.parse(localStorage.getItem('mdsg_dash_collapsed') || '{}') } catch { return {} } })
+  useEffect(() => { try { localStorage.setItem('mdsg_dash_collapsed', JSON.stringify(dashCollapsed)) } catch {} }, [dashCollapsed])
+  const dtog = (k) => setDashCollapsed(c => ({ ...c, [k]: !c[k] }))
+  const DChev = ({ k }) => <span style={{ fontSize:12, color:'#999', marginRight:6 }}>{dashCollapsed[k] ? '\u25b8' : '\u25be'}</span>
+  const Chevron = ({ k }) => <button onClick={()=>tog(k)} style={{ background:'none', border:'none', cursor:'pointer', fontSize:13, color:'#999', padding:'0 6px 0 0' }}>{isCol(k) ? '▸' : '▾'}</button>
   const [paRows,          setPaRows]          = useState(null)
   const [paEditing,       setPaEditing]       = useState(false)
   const [paSaving,        setPaSaving]        = useState(false)
@@ -327,6 +337,7 @@ export default function Home() {
       ['— PROJECT —', ''],
       ['NUMBER OF UNITS', nU],
       ['NUMBER OF AMENITIES', nA],
+      ['UNIT MATRIX', ''],
       ['— CABINETS —', ''],
       ['DOOR STYLE', j.door_style || ''],
       ['COLOR', j.finish_color || ''],
@@ -341,12 +352,12 @@ export default function Home() {
       ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
       ['— COUNTERTOPS: BATH —', ''],
       ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
-      ['— COUNTERTOPS: AMENITIES —', ''],
+      ['— COUNTERTOPS: AMENITIES —', '', 'off'],
       ['MATERIAL (QUARTZ/GRANITE/SOLID SURFACE)', ''], ['2 OR 3 CM', ''], ['MANUFACTURER/SUPPLIER', ''], ['COLOR/FINISH', ''], ['EDGE FINISH', ''],
       ['CT SUPPLIER/FABRICATOR CONTACT', ''],
       ['CT ESTIMATED DELIVERY DATE', ''],
       ['NUMBER OF CONTAINERS/DELIVERIES', ''],
-      ['— SINKS —', ''],
+      ['— SINKS —', '', 'off'],
       ['UNIT KITCHEN: MANUFACTURER/MODEL', ''], ['UNIT KITCHEN: UNDERMOUNT/DROP-IN', ''],
       ['UNIT BATHS: MANUFACTURER/MODEL', ''], ['UNIT BATHS: UNDERMOUNT/DROP-IN', ''],
       ['AMENITIES: MANUFACTURER/MODEL', ''], ['AMENITIES: UNDERMOUNT/DROP-IN', ''],
@@ -623,7 +634,7 @@ export default function Home() {
     for (const ut of editUnitTypes) {
       await supabase.from('unit_types').update({ unit_quantity: ut.unit_quantity }).eq('id', ut.id)
     }
-    await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: 'Cole', action: 'Proposal details edited' })
+    await logActivity(selectedJob.id, 'Proposal details edited')
     const { data } = await supabase.from('jobs').select('*, unit_types(*), activity_log(*), reminders(*)').eq('id', selectedJob.id).single()
     if (data) setSelectedJob(data)
     setSavingEdits(false)
@@ -867,12 +878,19 @@ export default function Home() {
     setCabExporting(false)
   }
 
+  const logActivity = async (jobId, action) => {
+    const user = authProfile?.name || 'MDSG'
+    const recent = (selectedJob?.activity_log || []).filter(l => !String(l.action || '').startsWith('__')).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+    if (recent && recent.action === action && recent.user_name === user && (Date.now() - new Date(recent.created_at)) < 3600000) return
+    try { await supabase.from('activity_log').insert({ job_id: jobId, user_name: user, action }) } catch {}
+  }
+
   async function saveSow(rows) {
     setSowSaving(true)
     await supabase.from('jobs').update({ scope_of_work: rows }).eq('id', selectedJob.id)
     setSelectedJob({ ...selectedJob, scope_of_work: rows })
     setSowRows(rows); setSowSaving(false); setSowEditing(false)
-    await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: 'Cole', action: 'Scope of Work updated' })
+    await logActivity(selectedJob.id, 'Scope of Work updated')
   }
 
   async function handleCtQuoteUpload(e) {
@@ -927,6 +945,8 @@ export default function Home() {
       }
       const to = emailTo.split(/[,;]/).map(s => s.trim()).filter(Boolean)
       const cc = emailCc.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+      const me = (authProfile?.email || '').trim()
+      if (me && ![...to, ...cc].some(x => x.toLowerCase() === me.toLowerCase())) cc.push(me)
       const resp = await fetch('/api/send-email', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1331,8 +1351,8 @@ export default function Home() {
                 if (!mine.length) return null
                 return (
                   <div style={{ background:'#f0f6f1', border:'0.5px solid #c4dcc8', borderRadius:10, padding:14, marginBottom:12 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#2D7A3A', marginBottom:6 }}>✔ My Tasks ({mine.length})</div>
-                    {mine.sort((a,b)=>String(a.t[2]||'9999').localeCompare(String(b.t[2]||'9999'))).map((x, k) => (
+                    <div onClick={()=>dtog('tasks')} style={{ fontSize:12, fontWeight:700, color:'#2D7A3A', marginBottom:6, cursor:'pointer' }}><DChev k="tasks"/>✔ My Tasks ({mine.length})</div>
+                    {!dashCollapsed.tasks && mine.sort((a,b)=>String(a.t[2]||'9999').localeCompare(String(b.t[2]||'9999'))).map((x, k) => (
                       <div key={k} style={{ display:'flex', gap:10, alignItems:'center', padding:'4px 0', borderTop:'0.5px dotted #c4dcc8', fontSize:12 }}>
                         <input type="checkbox" onChange={async()=>{ const nv = (x.j.tasks||[]).map((tt,jj)=> jj===x.i ? [tt[0],tt[1],tt[2],true,new Date().toISOString().split('T')[0]] : tt); await supabase.from('jobs').update({ tasks: nv }).eq('id', x.j.id); loadJobs() }} style={{ width:15, height:15, cursor:'pointer' }}/>
                         <span style={{ flex:1 }}>{x.t[0]}</span>
@@ -1345,8 +1365,8 @@ export default function Home() {
               })()}
               {jobs.filter(j => j.pending_review).length > 0 && (
                 <div style={{ background:'#fdf8ee', border:'0.5px solid #e8d9b0', borderRadius:10, padding:14, marginBottom:12 }}>
-                  <div style={{ fontSize:12, fontWeight:700, color:'#8B6914', marginBottom:8 }}>📥 Inbound RFQs — awaiting review ({jobs.filter(j => j.pending_review).length})</div>
-                  {jobs.filter(j => j.pending_review).map(j => (
+                  <div onClick={()=>dtog('rfq')} style={{ fontSize:12, fontWeight:700, color:'#8B6914', marginBottom:8, cursor:'pointer' }}><DChev k="rfq"/>📥 Inbound RFQs — awaiting review ({jobs.filter(j => j.pending_review).length})</div>
+                  {!dashCollapsed.rfq && jobs.filter(j => j.pending_review).map(j => (
                     <div key={j.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'6px 0', borderTop:'0.5px dotted #e8d9b0', fontSize:12 }}>
                       <span style={{ fontWeight:600, flex:1 }}>{j.name}</span>
                       <span style={{ color:'#888' }}>{j.gc_name || '—'}</span>
@@ -1364,8 +1384,8 @@ export default function Home() {
                 if (!rfqs.length) return null
                 return (
                   <div style={{ background:'#eef3fa', border:'0.5px solid #b9cfe8', borderRadius:10, padding:14, marginBottom:12 }}>
-                    <div style={{ fontSize:12, fontWeight:700, color:'#1B5EA6', marginBottom:6 }}>📌 RFQs — Bids Due ({rfqs.length})</div>
-                    {rfqs.map(j => (
+                    <div onClick={()=>dtog('due')} style={{ fontSize:12, fontWeight:700, color:'#1B5EA6', marginBottom:6, cursor:'pointer' }}><DChev k="due"/>📌 RFQs — Bids Due ({rfqs.length})</div>
+                    {!dashCollapsed.due && rfqs.map(j => (
                       <div key={j.id} style={{ display:'flex', gap:10, alignItems:'center', padding:'4px 0', borderTop:'0.5px dotted #b9cfe8', fontSize:12 }}>
                         <span style={{ width:120, fontWeight:800, fontSize:12.5, color: j.bid_due_date ? (j.bid_due_date < todayISO ? '#A32D2D' : j.bid_due_date <= new Date(Date.now()+3*86400000).toISOString().split('T')[0] ? '#B86E00' : '#1B5EA6') : '#aaa' }}>{j.bid_due_date ? 'DUE ' + fmtD(j.bid_due_date) : 'no due date'}</span>
                         {j.bid_due_date && j.bid_due_date < todayISO && <span style={{ fontSize:9, fontWeight:700, color:'#fff', background:'#A32D2D', borderRadius:10, padding:'1px 7px' }}>PAST DUE</span>}
@@ -1391,8 +1411,8 @@ export default function Home() {
               </div>
               {followUps.length > 0 && (
                 <div style={{ background: '#FDF8EC', border: '0.5px solid #e0c98a', borderRadius: 10, padding: 14, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#8B6914', marginBottom: 8 }}>⏰ Bid Follow-Ups Needed ({followUps.length})</div>
-                  {followUps.slice(0, 8).map(j => (
+                  <div onClick={()=>dtog('fu')} style={{ fontSize: 12, fontWeight: 600, color: '#8B6914', marginBottom: 8, cursor:'pointer' }}><DChev k="fu"/>⏰ Bid Follow-Ups Needed ({followUps.length})</div>
+                  {!dashCollapsed.fu && followUps.slice(0, 8).map(j => (
                     <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: '0.5px dotted #e8dcc0', fontSize: 12 }}>
                       <span onClick={() => { setSelectedJob(j); setView('job-detail') }} style={{ fontWeight: 600, cursor: 'pointer', color: '#1B5EA6', flex: 1 }}>{j.name}</span>
                       <span style={{ color: '#888' }}>{j.owner || '—'}</span>
@@ -1672,7 +1692,7 @@ export default function Home() {
                           </div>
                       }
                     </div>
-                    {!collapsed.pd && (<>
+                    {!isCol('pd') && (<>
                     {!editingProposal ? (
                       <div>
                         {[['Door Style', selectedJob.door_style], ['Finish / Color', selectedJob.finish_color], ['Drawer Box', selectedJob.drawer_box], ['Construction', selectedJob.cabinet_construction], ['Interior', selectedJob.interior_color], ['Shelf', selectedJob.shelf_thickness], ['Hinge', selectedJob.hinge_type], ['Box Construction', selectedJob.box_construction], ['Hardware Allowance', selectedJob.hardware_allowance ? fmt(selectedJob.hardware_allowance) : null], ['Scope Notes', selectedJob.scope_notes]].filter(([, v]) => v).map(([label, value]) => (
@@ -1785,7 +1805,7 @@ export default function Home() {
 
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 16 }}><Chevron k="ps"/>Pricing Summary</div>
-                    {!collapsed.ps && (<>
+                    {!isCol('ps') && (<>
                     {[['Manufacturer Gross', selectedJob.manufacturer_gross_cost], ['Freight', selectedJob.freight_cost]].map(([label, value]) => (
                       <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec' }}>
                         <span style={{ color: '#555' }}>{label}</span><span style={{ fontWeight: 500 }}>{fmt(value)}</span>
@@ -1806,8 +1826,8 @@ export default function Home() {
                     </div>
 
                   <div style={card}>
-                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="uq"/>Upload Manufacturer Quote PDF</div>
-                    {!collapsed.uq && (<>
+                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="uq"/>Manual Pricing (legacy) — Upload Manufacturer Quote PDF</div>
+                    {!isCol('uq') && (<>
                     <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
                       <div style={{ color: '#555', fontSize: 13 }}>{quoteUploading ? 'Parsing with AI...' : 'Click to upload PDF quote'}</div>
                       <div style={{ color: '#999', fontSize: 11, marginTop: 4 }}>Leedo · Skyline · SMART · Ukon</div>
@@ -1896,7 +1916,7 @@ export default function Home() {
                         <button onClick={async()=>{ const st = selectedJob.proposal_status === 'sent' ? 'final' : 'sent'; const upd2 = { proposal_status: st, proposal_sent_at: st==='sent' ? new Date().toISOString().split('T')[0] : null }; await supabase.from('jobs').update(upd2).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, ...upd2 }); await supabase.from('activity_log').insert({ job_id: selectedJob.id, user_name: authProfile?.name || 'MDSG', action: 'Proposal ' + (st==='sent' ? 'marked SENT' : 'SENT removed') }) }} style={{ padding:'4px 12px', fontSize:11, background: selectedJob.proposal_status === 'sent' ? '#2D7A3A' : '#f5f5f3', color: selectedJob.proposal_status === 'sent' ? '#fff' : '#555', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer', fontWeight:600 }}>✉ SENT</button>
                       </div>
                     </div>
-                    {!collapsed.gp && (<>
+                    {!isCol('gp') && (<>
                     <div style={{ marginBottom: 14 }}>
                       {savedQuotes.filter(q => q.quote_type !== 'countertops').length > 0 && (
                         <div style={{ marginBottom: 10 }}>
@@ -1980,8 +2000,8 @@ export default function Home() {
                       </div>
                       {specLib.length > 0 && (
                         <div style={{ margin:'8px 0' }}>
-                          <div onClick={()=>setCollapsed(pv=>({ ...pv, lit: !pv.lit }))} style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:4, cursor:'pointer', userSelect:'none' }}>{collapsed.lit ? '▸' : '▾'} Attach Spec Literature <span style={{ fontWeight:400, color:'#999' }}>({specLib.length} sheets · matches to this job's specs in green{litSelected.length ? ` · ${litSelected.length} selected` : ''})</span></div>
-                          {!collapsed.lit && <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                          <div onClick={()=>setCollapsed(pv=>({ ...pv, lit: !pv.lit }))} style={{ fontSize:11, fontWeight:600, color:'#3C3489', marginBottom:4, cursor:'pointer', userSelect:'none' }}>{isCol('lit') ? '▸' : '▾'} Attach Spec Literature <span style={{ fontWeight:400, color:'#999' }}>({specLib.length} sheets · matches to this job's specs in green{litSelected.length ? ` · ${litSelected.length} selected` : ''})</span></div>
+                          {!isCol('lit') && <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                             {specLib.map(r => {
                               const specText = [selectedJob.door_style, selectedJob.cabinet_construction, selectedJob.box_construction, selectedJob.drawer_box].filter(Boolean).join(' ').toLowerCase()
                               const tagList = (r.tags || '').split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 2)
@@ -2003,10 +2023,6 @@ export default function Home() {
                           </div>}
                         </div>
                       )}
-                      <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
-                        <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
-                        Hide unit breakdown — lump sum only (shows unit/amenity counts, no per-unit table)
-                      </label>
                       <label style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12, cursor:'pointer', fontSize:12, color:'#555' }}>
                         <input type="checkbox" checked={breakoutInstall} onChange={e=>setBreakoutInstall(e.target.checked)} style={{ width:15, height:15, cursor:'pointer' }}/>
                         Break out installation — cabinet supply and installation get separate totals on the proposal
@@ -2095,7 +2111,7 @@ export default function Home() {
                     <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
                       <div style={{ fontWeight:500 }}><Chevron k="tsk"/>Tasks & Reminders{Array.isArray(selectedJob.tasks) && selectedJob.tasks.filter(t=>!t[3]).length > 0 && <span style={{ fontSize:11, color:'#888', fontWeight:400, marginLeft:8 }}>{selectedJob.tasks.filter(t=>!t[3]).length} open</span>}</div>
                     </div>
-                    {!collapsed.tsk && (<>
+                    {!isCol('tsk') && (<>
                     {(selectedJob.tasks || []).map((t, i) => (
                       <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
                         <input type="checkbox" checked={!!t[3]} onChange={async()=>{ const nv = (selectedJob.tasks||[]).map((x,j)=> j===i ? [x[0],x[1],x[2],!x[3], !x[3] ? new Date().toISOString().split('T')[0] : null] : x); await supabase.from('jobs').update({ tasks: nv }).eq('id', selectedJob.id); setSelectedJob({ ...selectedJob, tasks: nv }); loadJobs() }} style={{ width:15, height:15, cursor:'pointer' }}/>
@@ -2117,7 +2133,7 @@ export default function Home() {
                     </div>
                     </>)}
                   
-                    {!collapsed.tsk && (<div>
+                    {!isCol('tsk') && (<div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                     <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, marginTop:10 }}>REMINDERS</div>
                       <button onClick={() => setShowReminderForm(true)} style={{ fontSize: 11, padding: '4px 10px', background: 'transparent', border: '0.5px solid #ccc', borderRadius: 6, cursor: 'pointer' }}>+ Add</button>
@@ -2153,7 +2169,7 @@ export default function Home() {
                       <button onClick={()=>openEmailPanel('generic')} style={{ padding:'4px 14px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer', fontWeight:500 }}>✉ New Email</button>
                       {jobEmails.length > 0 && <span style={{ fontSize:11, color:'#888' }}>{jobEmails.length} sent from this job</span>}
                     </div>
-                    {!collapsed.em && (<>
+                    {!isCol('em') && (<>
                     {emailOpen && (
                       <div style={{ border:'0.5px solid #b9cbe0', background:'#f4f8fc', borderRadius:8, padding:14, marginBottom:12 }}>
                         <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
@@ -2303,7 +2319,7 @@ export default function Home() {
                           {L.product_line && <span style={{ color:'#3C3489', fontWeight:600, textTransform:'capitalize' }}> · {L.product_line}</span>}
                           {cabEditing && <span style={{ color:'#B8860B', fontWeight:600 }}> — EDITING</span>}
                         </div>
-                        <div style={{ display: collapsed.cab ? 'none' : 'block', maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
+                        <div style={{ display: isCol('cab') ? 'none' : 'block', maxHeight:480, overflowY:'auto', border:'0.5px solid #eee', borderRadius:8 }}>
                           {(L.unit_types || []).map((ut, ui) => (
                             <div key={ui} style={{ borderBottom:'0.5px solid #eee' }}>
                               <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'#EEEDFE', fontSize:12, fontWeight:600, position:'sticky', top:0, zIndex:1 }}>
@@ -2390,24 +2406,30 @@ export default function Home() {
                         {!sowRows && !sowEditing && <button onClick={()=>{ setSowRows(sowTemplate()); setSowEditing(true) }} style={{ padding:'4px 12px', fontSize:11, background:'#3C3489', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>+ Start from Template</button>}
                         {sowRows && !sowEditing && <button onClick={()=>setSowGW(v=>!v)} style={{ padding:'4px 12px', fontSize:11, background: sowGW ? '#2D7A3A' : '#f5f5f3', color: sowGW ? '#fff' : '#555', border:'0.5px solid ' + (sowGW ? '#2D7A3A' : '#ddd'), borderRadius:6, cursor:'pointer', fontWeight: sowGW ? 700 : 400 }}>{sowGW ? '🌿 Greenworks branding ON' : 'MDSG branding'}</button>}
                         {sowRows && !sowEditing && <button onClick={async()=>{ const res = await fetch('/api/generate-sow', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ jobId: selectedJob.id, brandAs: sowGW ? 'greenworks' : 'mdsg' }) }); if(res.ok){ const b = await res.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href=u; a.download=`${selectedJob.name.replace(/[^a-zA-Z0-9_-]/g,'_')}_Scope_of_Work.pdf`; a.click(); URL.revokeObjectURL(u) } else { const d = await res.json(); alert(d.error || 'SOW PDF failed') } }} style={{ padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🖨 Print / Share PDF</button>}
-                        {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map((r, i) => { const f = fresh[i] && fresh[i][0] === r[0] ? fresh[i] : fresh.find(ff => ff[0] === r[0] && ff[1]); return (f && f[1]) ? [r[0], f[1]] : r }); fresh.forEach((fr, fi) => { if (!merged.some(r => r[0] === fr[0])) merged.splice(Math.min(fi, merged.length), 0, fr) }); setSowRows(merged); saveSow(merged); alert('Job data pulled — spec fields updated from Proposal Details.') }} title="Overwrite spec fields with current job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
+                        {sowRows && !sowEditing && <button onClick={()=>{ const fresh = sowTemplate(); const merged = sowRows.map((r, i) => { const f = fresh[i] && fresh[i][0] === r[0] ? fresh[i] : fresh.find(ff => ff[0] === r[0] && ff[1]); return (f && f[1]) ? [r[0], f[1], r[2]] : r }); fresh.forEach((fr, fi) => { if (!merged.some(r => r[0] === fr[0])) merged.splice(Math.min(fi, merged.length), 0, fr) }); setSowRows(merged); saveSow(merged); alert('Job data pulled — spec fields updated from Proposal Details.') }} title="Overwrite spec fields with current job data" style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>↻ Pull Job Data</button>}
                         {sowRows && !sowEditing && <button onClick={()=>setSowEditing(true)} style={{ padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px solid #ddd', borderRadius:6, cursor:'pointer' }}>✎ Edit</button>}
-                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>r[0].trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Done'}</button>}
+                        {sowEditing && <button onClick={()=>saveSow(sowRows.filter(r=>String(r[0]).trim() || String(r[1]||'').trim()))} disabled={sowSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{sowSaving?'Saving...':'✓ Done'}</button>}
                       </div>
                     </div>
-                    {!collapsed.sow && !sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
-                    {!collapsed.sow && sowRows && (
+                    {!isCol('sow') && !sowRows && !sowEditing && <div style={{ fontSize:12, color:'#bbb' }}>No scope documented yet — start from the template and adapt per project.</div>}
+                    {!isCol('sow') && sowRows && (() => {
+                      const hid = []; let curOff = false
+                      sowRows.forEach(r => { const h = String(r[0]).startsWith('— '); if (h) curOff = r[2] === 'off'; hid.push(!h && curOff) })
+                      return (
                       <div>
-                        {sowRows.map((r, i) => (
-                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none' }}>
+                        {sowRows.map((r, i) => (!sowEditing && hid[i]) ? null : (
+                          <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', borderTop: i>0 ? '0.5px dotted #eee' : 'none', opacity: sowEditing && hid[i] ? 0.45 : 1 }}>
                             {sowEditing ? (
                               <>
-                                <input value={r[0]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[e.target.value,x[1]]:x))} style={{ width:260, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
-                                <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                <button title="Move up" onClick={()=>setSowRows(rs=>{ if(i===0) return rs; const c=[...rs]; const t=c[i-1]; c[i-1]=c[i]; c[i]=t; return c })} style={{ background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:12, padding:'0 2px' }}>▲</button>
+                                <button title="Move down" onClick={()=>setSowRows(rs=>{ if(i===rs.length-1) return rs; const c=[...rs]; const t=c[i+1]; c[i+1]=c[i]; c[i]=t; return c })} style={{ background:'none', border:'none', cursor:'pointer', color:'#999', fontSize:12, padding:'0 2px' }}>▼</button>
+                                <input value={r[0]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[e.target.value,x[1],x[2]]:x))} style={{ width:240, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12, fontWeight:600 }}/>
+                                <input value={r[1]} onChange={e=>setSowRows(rs=>rs.map((x,j)=>j===i?[x[0],e.target.value,x[2]]:x))} style={{ flex:1, padding:'3px 8px', border:'0.5px solid #ccc', borderRadius:4, fontSize:12 }}/>
+                                <button title="Insert line below (e.g. another unit-matrix line)" onClick={()=>setSowRows(rs=>{ const c=[...rs]; c.splice(i+1, 0, ['','']); return c })} style={{ background:'none', border:'none', cursor:'pointer', color:'#2D7A3A', fontSize:14, fontWeight:700 }}>+</button>
                                 <button onClick={()=>setSowRows(rs=>rs.filter((_,j)=>j!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'#A32D2D', fontSize:13 }}>✕</button>
                               </>
                             ) : r[0].startsWith('— ') ? (
-                              <span style={{ flex:1, fontSize:11, fontWeight:700, color:'#3C3489', letterSpacing:0.5, background:'#f0eff9', padding:'3px 8px', borderRadius:4 }}>{r[0].replace(/—/g,'').trim()}</span>
+                              <span onClick={()=>{ const nv = sowRows.map((x,j)=> j===i ? [x[0], x[1], x[2]==='off' ? '' : 'off'] : x); setSowRows(nv); saveSow(nv) }} title="Click to include / exclude this section from the printed SOW" style={{ flex:1, fontSize:11, fontWeight:700, color: r[2]==='off' ? '#999' : '#3C3489', letterSpacing:0.5, background: r[2]==='off' ? '#f5f5f3' : '#f0eff9', padding:'3px 8px', borderRadius:4, cursor:'pointer' }}>{(r[2]==='off' ? '▸ ' : '▾ ') + r[0].replace(/—/g,'').trim()}{r[2]==='off' ? <span style={{ fontWeight:400, textTransform:'none' }}>  — hidden from printed SOW, click to include</span> : null}</span>
                             ) : (
                               <>
                                 <span style={{ width:260, fontSize:12, fontWeight:600, color:'#555' }}>{r[0]}</span>
@@ -2418,7 +2440,8 @@ export default function Home() {
                         ))}
                         {sowEditing && <button onClick={()=>setSowRows(rs=>[...rs, ['','']])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Row</button>}
                       </div>
-                    )}
+                      )
+                    })()}
                   </div>
 
                                     {/* ── Job Files ──────────────────────────────────────── */}
@@ -2508,7 +2531,7 @@ export default function Home() {
                         </label>
                       </div>
                     </div>
-                    {!collapsed.trk && (<>
+                    {!isCol('trk') && (<>
                     <div style={{ marginTop:10 }}>
                       <div style={{ fontSize:11, color:'#888', fontWeight:600, marginBottom:4 }}>KEY DATES</div>
                       {(selectedJob.key_dates || []).map((kd, i) => (
@@ -2526,7 +2549,7 @@ export default function Home() {
                     </div>
                   </>)}
                     
-                    {!collapsed.trk && (<div>
+                    {!isCol('trk') && (<div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
                     <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}><span style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5 }}>SHIPMENTS</span></div>
                       <button onClick={() => setShowShipmentForm(true)} style={{ fontSize: 11, padding: '4px 12px', background: '#3C3489', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>+ Add Load</button>
@@ -2612,7 +2635,7 @@ export default function Home() {
                         {paEditing && <button onClick={()=>savePa(paRows.filter(r=>r[1].trim()))} disabled={paSaving} style={{ padding:'4px 12px', fontSize:11, background:'#2D7A3A', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>{paSaving?'Saving...':'✓ Done Editing'}</button>}
                       </div>
                     </div>
-                    {!collapsed.pa && paRows && (() => {
+                    {!isCol('pa') && paRows && (() => {
                       let lastPhase = null
                       return paRows.map((r, i) => {
                         const showPhase = r[0] !== lastPhase; lastPhase = r[0]
@@ -2638,7 +2661,7 @@ export default function Home() {
                         )
                       })
                     })()}
-                    {!collapsed.pa && paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
+                    {!isCol('pa') && paEditing && <button onClick={()=>setPaRows(rs=>[...rs, ['PHASE','',false,null]])} style={{ marginTop:8, padding:'4px 12px', fontSize:11, background:'#f5f5f3', border:'0.5px dashed #bbb', borderRadius:6, cursor:'pointer', color:'#555' }}>+ Add Task</button>}
                   </div>
                   )}
 
@@ -2659,7 +2682,7 @@ export default function Home() {
                             <div style={{ fontWeight:500 }}><Chevron k="fin"/>Billing & Change Orders</div>
                             <span style={{ fontSize:11, color:'#888' }}>Contract {fmt(contract)}{coApproved > 0 ? ` + COs ${fmt(coApproved)} = ${fmt(revised)}` : ''} · Billed {fmt(billed)} · Paid {fmt(paid)}{billed - paid > 0 ? ` · AR ${fmt(billed - paid)}` : ''}</span>
                           </div>
-                          {!collapsed.fin && (<>
+                          {!isCol('fin') && (<>
                           <div style={{ fontSize:10, fontWeight:700, color:'#3C3489', letterSpacing:0.5, margin:'6px 0 2px' }}>INVOICES / PAY APPS</div>
                           {inv.map((r, i) => (
                             <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'2px 0', fontSize:12 }}>
@@ -2715,7 +2738,7 @@ export default function Home() {
                         try { await navigator.clipboard.writeText(url); alert('Share link copied!\n\n' + url + '\n\nAnyone with this link can view and check off punch items for this job — send it to Willy or the GC super.') } catch { prompt('Copy this link:', url) }
                       }} style={{ marginLeft:'auto', padding:'4px 12px', fontSize:11, background:'#1B5EA6', color:'#fff', border:'none', borderRadius:6, cursor:'pointer' }}>🔗 Share Link</button>
                     </div>
-                    {!collapsed.punch && (
+                    {!isCol('punch') && (
                       <div>
                         {(selectedJob.punch_list || []).map((it, i) => (
                           <div key={i} style={{ display:'flex', gap:8, alignItems:'center', padding:'3px 0', fontSize:12 }}>
@@ -2737,7 +2760,7 @@ export default function Home() {
                                     {/* ── Countertop Proposal Configuration ─────────────────────── */}
                   <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
                     <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}><Chevron k="ctp"/>Generate Countertop Proposal</div>
-                    {!collapsed.ctp && (<>
+                    {!isCol('ctp') && (<>
                     <div style={{ margin:'0 0 14px', padding:'10px 12px', background:'#fbf9f4', border:'0.5px solid #e5ddc8', borderRadius:8 }}>
                       <label style={{ padding:'5px 12px', fontSize:11, background:'#8B6914', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
                         {ctQuoteUploading ? 'Parsing…' : '⬆ Upload CT Quote (Excel or PDF)'}
@@ -2826,9 +2849,6 @@ export default function Home() {
                       </div>
                       <div style={{ display:'flex', gap:16, flexWrap:'wrap', marginBottom:10 }}>
                         <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>
-                          <input type="checkbox" checked={hideUnitPricing} onChange={e=>setHideUnitPricing(e.target.checked)} style={{ width:14, height:14 }}/> Hide unit breakdown
-                        </label>
-                        <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>
                           <input type="checkbox" checked={totalOnly} onChange={e=>setTotalOnly(e.target.checked)} style={{ width:14, height:14 }}/> Grand total only
                         </label>
                         <label style={{ display:'flex', alignItems:'center', gap:6, cursor:'pointer', fontSize:12, color:'#555' }}>
@@ -2879,7 +2899,7 @@ export default function Home() {
 
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="log"/>Activity Log</div>
-                    {!collapsed.log && (selectedJob.activity_log || []).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12).map(log => (
+                    {!isCol('log') && (selectedJob.activity_log || []).filter(l => !String(l.action || '').startsWith('__')).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12).map(log => (
                       <div key={log.id} style={{ paddingBottom: 10, marginBottom: 10, borderBottom: '0.5px solid #f0f0ec', fontSize: 12 }}>
                         <div>{log.action}</div>
                         <div style={{ color: '#888', fontSize: 11, marginTop: 2, display:'flex', alignItems:'center' }}>{log.user_name} · {new Date(log.created_at).toLocaleDateString()}
@@ -2887,7 +2907,7 @@ export default function Home() {
                         </div>
                       </div>
                     ))}
-                    {(selectedJob.activity_log || []).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
+                    {(selectedJob.activity_log || []).filter(l => !String(l.action || '').startsWith('__')).length === 0 && <div style={{ color: '#888', fontSize: 12 }}>No activity yet</div>}
                   </div>
 
                   

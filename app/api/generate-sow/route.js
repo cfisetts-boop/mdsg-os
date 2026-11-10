@@ -37,14 +37,22 @@ export async function POST(request) {
     ]
     // Typed SOW values always win; job data only fills rows left BLANK.
     // (Explicit refresh is the Pull Job Data button in the app.)
-    rows = rows.map(([label, value]) => {
-      if (String(label).startsWith('— ')) return [label, value]
-      if (value !== null && value !== undefined && String(value).trim() !== '') return [label, value]
+    rows = rows.map((r) => {
+      const [label, value] = r
+      if (String(label).startsWith('— ')) return r
+      if (value !== null && value !== undefined && String(value).trim() !== '') return r
       for (const [re2, get] of OVERLAY) {
-        if (re2.test(String(label))) { const v = get(); if (v !== null && v !== undefined && v !== '') return [label, String(v)]; break }
+        if (re2.test(String(label))) { const v = get(); if (v !== null && v !== undefined && v !== '') return [label, String(v), r[2]]; break }
       }
-      return [label, value]
+      return r
     })
+    // Sections toggled off in the app (header row carries 'off') are left out of the print
+    { let secOff = false
+      rows = rows.filter((r) => {
+        const isHead = String(r[0] || '').startsWith('— ')
+        if (isHead) { secOff = r[2] === 'off'; return !secOff }
+        return !secOff
+      }) }
     if (!rows.length) return Response.json({ error: 'No Scope of Work on this job yet' }, { status: 422 })
 
     const pdf = await PDFDocument.create()
