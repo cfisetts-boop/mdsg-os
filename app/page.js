@@ -310,6 +310,9 @@ export default function Home() {
   ]
   const sowTemplate = () => {
     const j = selectedJob || {}
+    const kq = (k) => (j.unit_types || []).filter(u => (u.kind || 'unit') === k).reduce((s, u) => s + (Number(u.unit_quantity) || 1), 0)
+    const nU = Number(j.units_override) > 0 ? Number(j.units_override) : (kq('unit') || j.total_residential_units || '')
+    const nA = Number(j.amenities_override) > 0 ? Number(j.amenities_override) : (kq('amenity') || j.amenity_unit_count || '')
     return [
       ['— MDSG CONTACT —', ''],
       ['MDSG SALES CONTACT', authProfile?.name || j.owner || ''],
@@ -321,6 +324,9 @@ export default function Home() {
       ['TELEPHONE', j.gc_phone || ''],
       ['EMAIL', j.gc_email || ''],
       ['SITE CONTACT', ''], ['SITE TELEPHONE', ''], ['SITE EMAIL', ''],
+      ['— PROJECT —', ''],
+      ['NUMBER OF UNITS', nU],
+      ['NUMBER OF AMENITIES', nA],
       ['— CABINETS —', ''],
       ['DOOR STYLE', j.door_style || ''],
       ['COLOR', j.finish_color || ''],
