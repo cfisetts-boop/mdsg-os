@@ -134,7 +134,27 @@ export default function Home() {
   useEffect(() => {
     setBidSections(selectedJob?.proposal_sections ? { ...DEFAULT_BID_SECTIONS, ...selectedJob.proposal_sections } : DEFAULT_BID_SECTIONS)
     setProposalGross(selectedJob?.manufacturer_gross_cost > 0 ? String(selectedJob.manufacturer_gross_cost) : '')
-    setSowRows(Array.isArray(selectedJob?.scope_of_work) ? selectedJob.scope_of_work : null)
+    // One-time migration: make sure every existing SOW has the UNIT MATRIX section
+    {
+      let rows = Array.isArray(selectedJob?.scope_of_work) ? selectedJob.scope_of_work : null
+      if (rows && !rows.some(r => r[0] === '— UNIT MATRIX —')) {
+        const upd = [...rows]
+        const inlineIdx = upd.findIndex(r => r[0] === 'UNIT MATRIX')
+        if (inlineIdx >= 0) {
+          // older inline row: give it a section header above, keep any typed value
+          upd.splice(inlineIdx, 0, ['— UNIT MATRIX —', ''])
+          upd[inlineIdx + 1] = ['UNITS', upd[inlineIdx + 1][1] || '', upd[inlineIdx + 1][2]]
+        } else {
+          // insert the section before — CABINETS — (or at the end if that header is gone)
+          const cabIdx = upd.findIndex(r => r[0] === '— CABINETS —')
+          const at = cabIdx >= 0 ? cabIdx : upd.length
+          upd.splice(at, 0, ['— UNIT MATRIX —', ''], ['UNITS', ''], ['AMENITIES', ''])
+        }
+        rows = upd
+        if (selectedJob?.id) supabase.from('jobs').update({ scope_of_work: upd }).eq('id', selectedJob.id).then(() => {})
+      }
+      setSowRows(rows)
+    }
     setSowEditing(false)
     setPaRows(Array.isArray(selectedJob?.post_award) ? selectedJob.post_award : null)
     setPaEditing(false)
