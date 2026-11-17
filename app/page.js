@@ -625,7 +625,7 @@ export default function Home() {
     return () => clearTimeout(t)
   }, [draftBundle])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function saveProposalEdits() {
+  async function saveProposalEdits(stay = false) {
     if (!selectedJob) return
     setSavingEdits(true)
     const { error: saveErr } = await supabase.from('jobs').update({
@@ -664,9 +664,19 @@ export default function Home() {
     const { data } = await supabase.from('jobs').select('*, unit_types(*), activity_log(*), reminders(*)').eq('id', selectedJob.id).single()
     if (data) setSelectedJob(data)
     setSavingEdits(false)
-    setEditingProposal(false)
-    loadJobs()
+    if (!stay) { setEditingProposal(false); loadJobs() }
   }
+
+  // Proposal Details autosave: while editing, any change is saved ~1.2s after you stop typing
+  const pdSnapRef = useRef('')
+  useEffect(() => { if (editingProposal) pdSnapRef.current = JSON.stringify({ f: editFields, u: editUnitTypes }) }, [editingProposal])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!editingProposal) return
+    const now = JSON.stringify({ f: editFields, u: editUnitTypes })
+    if (now === pdSnapRef.current) return
+    const t = setTimeout(() => { pdSnapRef.current = now; saveProposalEdits(true) }, 1200)
+    return () => clearTimeout(t)
+  }, [editFields, editUnitTypes])  // eslint-disable-line react-hooks/exhaustive-deps
 
   async function createShipment() {
     if (!selectedJob) return
