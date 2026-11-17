@@ -100,7 +100,7 @@ const emptyShipment = {
 }
 
 export default function Home() {
-  const [jobs, setJobs] = useState([])
+  const [allJobs, setAllJobs] = useState([])
   const [view, setView] = useState('dashboard')
   const [selectedJob, setSelectedJob] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -452,7 +452,7 @@ export default function Home() {
       .from('jobs')
       .select('*, unit_types(*)')
       .order('created_at', { ascending: false })
-    if (data) setJobs(data)
+    if (data) setAllJobs(data)
     setLoading(false)
   }, [])
 
@@ -480,7 +480,9 @@ export default function Home() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  const visibleJobs = authProfile?.scope === 'own' ? jobs.filter(j => j.owner === authProfile.name) : jobs
+  // Single scoping point: accounts with scope 'own' (outside sales) only ever see their own jobs.
+  const jobs = authProfile?.scope === 'own' ? allJobs.filter(j => j.owner === authProfile.name) : allJobs
+  const visibleJobs = jobs
   // Outside sales reps: no pricing/proposal access. Legacy pricing cards retired 11/17/26 (data kept).
   const isOutsideSales = authProfile?.role === 'outside'
   const HIDE_LEGACY_PRICING = true
@@ -1327,8 +1329,8 @@ export default function Home() {
           {nav('reports', 'Reports')}
           {nav('financials', 'Financials')}
           {nav('library', 'Spec Library')}
-          {nav('agent-pipeline', '⚡ Agent Pipeline')}
-          {nav('takeoff', 'Upload Mfr Quote')}
+          {!isOutsideSales && nav('agent-pipeline', '⚡ Agent Pipeline')}
+          {!isOutsideSales && nav('takeoff', 'Upload Mfr Quote')}
           {nav('shipments', `Shipments${inTransitCount > 0 ? ` (${inTransitCount})` : ''}`)}
           {nav('reminders', `Reminders${visibleReminders.length > 0 ? ` (${visibleReminders.length})` : ''}`)}
         </div>
@@ -1839,11 +1841,9 @@ export default function Home() {
 
                   
 
-                  <div style={card}>
-                    {!isOutsideSales && (
-<div style={{ fontWeight: 500, marginBottom: 16 }}><Chevron k="ps"/>Pricing Summary</div>
-)}
-
+                  {!isOutsideSales && (
+<div style={card}>
+                    <div style={{ fontWeight: 500, marginBottom: 16 }}><Chevron k="ps"/>Pricing Summary</div>
                     {!isCol('ps') && (<>
                     {[['Manufacturer Gross', selectedJob.manufacturer_gross_cost], ['Freight', selectedJob.freight_cost]].map(([label, value]) => (
                       <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13, borderBottom: '0.5px solid #f0f0ec' }}>
@@ -1863,12 +1863,12 @@ export default function Home() {
                     </div>
                   </>)}
                     </div>
-
-                  <div style={card}>
-                    {!HIDE_LEGACY_PRICING && (
-<div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="uq"/>Manual Pricing (legacy) — Upload Manufacturer Quote PDF</div>
 )}
 
+
+                  {!HIDE_LEGACY_PRICING && (
+<div style={card}>
+                    <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="uq"/>Manual Pricing (legacy) — Upload Manufacturer Quote PDF</div>
                     {!isCol('uq') && (<>
                     <label style={{ display: 'block', border: '1.5px dashed #ccc', borderRadius: 8, padding: 20, textAlign: 'center', cursor: 'pointer', background: '#fafaf8' }}>
                       <div style={{ color: '#555', fontSize: 13 }}>{quoteUploading ? 'Parsing with AI...' : 'Click to upload PDF quote'}</div>
@@ -1947,13 +1947,13 @@ export default function Home() {
                         )}
                   </>)}
                     </div>
-
-                  <div style={card}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: 14 }}>
-                      {!isOutsideSales && (
-<div style={{ fontWeight: 500 }}><Chevron k="gp"/>Generate Proposal PDF</div>
 )}
 
+
+                  {!isOutsideSales && (
+<div style={card}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: 14 }}>
+                      <div style={{ fontWeight: 500 }}><Chevron k="gp"/>Generate Proposal PDF</div>
                       {selectedJob.proposal_status === 'sent' && <span style={{ fontSize:10, fontWeight:700, background:'#2D7A3A', color:'#fff', padding:'2px 8px', borderRadius:10 }}>SENT {fmtD(selectedJob.proposal_sent_at)}</span>}
                       {selectedJob.proposal_status === 'final' && <span style={{ fontSize:10, fontWeight:700, background:'#e0a800', color:'#fff', padding:'2px 8px', borderRadius:10 }}>FINAL</span>}
                       <div style={{ marginLeft:'auto', display:'flex', gap:6 }}>
@@ -2145,6 +2145,8 @@ export default function Home() {
                     )}
                   </>)}
                     </div>
+)}
+
                 </div>
 
                 <div>
@@ -2277,12 +2279,10 @@ export default function Home() {
                   </div>
 
                                     {/* ── Cab List ───────────────────────────────────────── */}
-                  <div style={card}>
+                  {!HIDE_LEGACY_PRICING && (
+<div style={card}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-                      {!HIDE_LEGACY_PRICING && (
-<div style={{ fontWeight:500 }}><Chevron k="cab"/>Cabinet List</div>
-)}
-
+                      <div style={{ fontWeight:500 }}><Chevron k="cab"/>Cabinet List</div>
                       {cabList && !cabEditing && (
                         <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
                           {['framed','frameless'].map(pl => (
@@ -2445,6 +2445,8 @@ export default function Home() {
                       )
                     })()}
                   </div>
+)}
+
 
                                     {/* ── Scope of Work ──────────────────────────────────── */}
                   <div style={card}>
@@ -2808,11 +2810,9 @@ export default function Home() {
                   )}
 
                                     {/* ── Countertop Proposal Configuration ─────────────────────── */}
-                  <div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
-                    {!isOutsideSales && (
-<div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}><Chevron k="ctp"/>Generate Countertop Proposal</div>
-)}
-
+                  {!isOutsideSales && (
+<div style={{ ...card, borderColor: '#2D7A3A', marginBottom: 16 }}>
+                    <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 14 }}><Chevron k="ctp"/>Generate Countertop Proposal</div>
                     {!isCol('ctp') && (<>
                     <div style={{ margin:'0 0 14px', padding:'10px 12px', background:'#fbf9f4', border:'0.5px solid #e5ddc8', borderRadius:8 }}>
                       <label style={{ padding:'5px 12px', fontSize:11, background:'#8B6914', color:'#fff', borderRadius:6, cursor:'pointer', fontWeight:500 }}>
@@ -2949,6 +2949,8 @@ export default function Home() {
                       ))}
                   </>)}
                     </div>
+)}
+
 
                   <div style={card}>
                     <div style={{ fontWeight: 500, marginBottom: 12 }}><Chevron k="log"/>Activity Log</div>
